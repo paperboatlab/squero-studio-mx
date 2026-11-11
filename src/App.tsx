@@ -83,7 +83,7 @@ export function App() {
   const [status, setStatus] = useState<LinkStatus>("idle");
   const [paperboat, setPaperboat] = useState<Variable[]>([]);
   const [pbLoaded, setPbLoaded] = useState(false);
-  const [url, setUrl] = useState("ws://localhost:8780");
+  const [url, setUrl] = useState("ws://localhost:8765");
   const [editor, setEditor] = useState<EditorSettings>(() => {
     try { return { ...DEFAULT_EDITOR_SETTINGS, ...JSON.parse(localStorage.getItem("mx.editor") ?? "{}") }; }
     catch { return DEFAULT_EDITOR_SETTINGS; }
