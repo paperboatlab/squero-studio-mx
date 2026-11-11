@@ -15,9 +15,38 @@ type Line = { level: "info" | "ok" | "warn"; text: string; cmd?: boolean };
 
 const solver: Solver = "rk45";
 
+const INITIAL_FILES: Record<string, string> = {
+  "surface.jl": `# surface.jl — a matrix, a selection, a chart
+n = 512
+X, Y = meshgrid(range(-3, 3, length=n))
+R = @. hypot(X, Y) + eps()
+A = @. sin(R * 3.4) / (R * 3.4)
+sel = A[A .> 0.42]
+
+surf(X, Y, A)
+colormap(:viridis)
+view(-37.5, 30)
+
+# state_space(A, B, C, D) → Paperboat
+`,
+  "lorenz.jl": `# lorenz.jl — scaffold
+# the kernel opens this file and its workspace
+`,
+  "state_space.jl": `# state_space.jl — A, B, C, D → Paperboat
+# A, B, C, D and x0 are handed to a state_space block.
+`,
+  "export.jl": `# export.jl — scaffold
+savefig("surface.png")
+writematrix(A, "data/run-07.csv")
+`,
+};
+
 export function App() {
   const [tab, setTab] = useState<Tab>("3d");
   const [rightTab, setRightTab] = useState<RightTab>("workspace");
+  const [files, setFiles] = useState<Record<string, string>>(INITIAL_FILES);
+  const [selectedFile, setSelectedFile] = useState("surface.jl");
+  const [selectedVar, setSelectedVar] = useState("A");
   const [status, setStatus] = useState<LinkStatus>("idle");
   const [paperboat, setPaperboat] = useState<Variable[]>([]);
   const [shared, setShared] = useState<Set<string>>(() => new Set(["k"]));
@@ -123,6 +152,13 @@ export function App() {
     setInput(history[next]);
   };
 
+  const pickVar = (name: string) => {
+    setSelectedVar(name);
+    if (name === "A") setTab("3d");
+    else if (name === "x" || name === "t") setTab("2d");
+  };
+
+  const picked = rows.find((r) => r.name === selectedVar) ?? rows[0];
   const active = rows.filter((r) => r.shared).length;
 
   return (
@@ -140,14 +176,17 @@ export function App() {
 
       <aside className="panel files">
         <div className="head"><b>files</b><span className="sp" /><span className="tag">.jl</span></div>
-        <div className="file on">surface.jl</div>
-        <div className="file">lorenz.jl</div>
-        <div className="file">state_space.jl</div>
-        <div className="file">export.jl</div>
-        <div className="foot">4 files · 1 open</div>
+        {Object.keys(files).map((f) => (
+          <button key={f} className={`file ${selectedFile === f ? "on" : ""}`} onClick={() => setSelectedFile(f)}>{f}</button>
+        ))}
+        <div className="foot">{Object.keys(files).length} files · 1 open</div>
       </aside>
 
-      <Script />
+      <Script
+        file={selectedFile}
+        code={files[selectedFile]}
+        onChange={(code) => setFiles((prev) => ({ ...prev, [selectedFile]: code }))}
+      />
 
       <main className="stage">
         <div className="tabs">
@@ -155,7 +194,7 @@ export function App() {
             <button key={t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>{t === "3d" ? "3d" : t === "2d" ? "2d graph" : "table"}</button>
           ))}
           <span className="sp" />
-          <span className="tag">A · 512 × 512 · {"Matrix{Float64}"}</span>
+          <span className="tag">{picked.name} · {picked.shape} · {picked.type}</span>
         </div>
 
         <div className="stage-body">
@@ -206,7 +245,15 @@ export function App() {
           <div className="tabbody">
             <div className="vars">
               {rows.filter((r) => r.source === "mx").map((v) => (
-                <div className={`varc ${v.shared ? "on" : ""}`} key={v.name}>
+                <div
+                  className={`varc ${selectedVar === v.name ? "on" : ""}`}
+                  key={v.name}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={selectedVar === v.name}
+                  onClick={() => pickVar(v.name)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pickVar(v.name); } }}
+                >
                   <div className="vmeta">
                     <div className="nm">{v.name}</div>
                     <div className="sh">{v.shape} · {v.type}</div>
@@ -214,7 +261,12 @@ export function App() {
                   <div className="glyph">
                     {v.preview ? <Sparkline values={v.preview} width={50} height={26} fill label={`${v.name} preview`} /> : <span className="scalar">{String(v.value ?? "—")}</span>}
                   </div>
-                  <button className={`tie ${v.shared ? "on" : ""}`} disabled={!v.shareable} title={v.shareable ? "Share with Paperboat" : "Matrices travel to a block, not a variable"} onClick={() => toggle(v.name)} />
+                  <button
+                    className={`tie ${v.shared ? "on" : ""}`}
+                    disabled={!v.shareable}
+                    title={v.shareable ? "Share with Paperboat" : "Matrices travel to a block, not a variable"}
+                    onClick={(e) => { e.stopPropagation(); toggle(v.name); }}
+                  />
                 </div>
               ))}
             </div>
@@ -237,7 +289,7 @@ export function App() {
             <div className="lbl">workspace → project</div>
             <div className="shared-list">
               {rows.map((v) => (
-                <div className="shared-row" key={v.name}>
+                <div className="shared-row" key={v.name} role="button" tabIndex={0} onClick={() => pickVar(v.name)}>
                   <span className="nm">{v.name}</span>
                   <span className="shape">{v.shape}</span>
                   <span className={`src ${v.source}`}>{v.source === "mx" ? "MX" : "PB"}</span>

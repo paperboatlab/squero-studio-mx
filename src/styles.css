@@ -172,3 +172,22 @@ h2, p { margin: 0; }
 .cin input { flex: 1; min-width: 0; background: transparent; border: 0; box-shadow: none; outline: none; padding: 2px 0; color: #f2f2ee; font: 400 11.5px var(--font-mono); }
 .cin input::placeholder { color: var(--text-on-screen-muted); }
 .lines .cmdline { color: #f2f2ee; }
+
+/* Selection: file buttons and workspace cards are real choices. */
+.files .file { width: 100%; border: 0; border-radius: 0; background: none; padding: 0 12px; text-align: left; }
+.varc { cursor: pointer; }
+.varc:focus-visible, .shared-row:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.shared-row { cursor: pointer; }
+.cm-host { height: 100%; }
+.cm-editor { height: 100%; }
+.editor .code { padding: 0; }
+
+/* The Scope's frame: the app owns .instrument/.screen/figcaption (scope.css says so). */
+.instrument { margin: 0; min-width: 0; height: 100%; display: flex; flex-direction: column; }
+.instrument .screen { flex: 1; min-height: 0; position: relative; }
+.instrument figcaption { flex: none; display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; font: var(--size-2xs) var(--font-sans); color: var(--text-muted); }
+.instrument figcaption output { color: var(--text); font-family: var(--font-mono); }
+.instrument figcaption span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scope-wrap .instrument figcaption { color: var(--text-on-screen-muted); }
+.scope-wrap .instrument figcaption output { color: var(--text-on-screen); }
+.scope-wrap .instrument .scope-status { color: var(--text-on-screen); }

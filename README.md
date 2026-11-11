@@ -80,6 +80,14 @@ npm run build
 `@paperboat/shared` is a sibling checkout (`file:../paperboat-shared`); install its dependencies
 first if needed.
 
+### Editor
+
+The script surface is CodeMirror 6 (`src/editor/CodeEditor.tsx`): Julia stream mode, line
+numbers, history, rectangular selection, a lint gutter, and the app's token colours. A small
+habit linter flags `%` comments (Julia uses `#`); the gutter is the seam for kernel diagnostics
+and an LSP later. The same wrapper takes `@codemirror/legacy-modes/mode/modelica`, so Squero OM
+can reuse it once it moves to `@paperboat/editor`.
+
 ### Console
 
 The bottom console is a real command line, not a log. It accepts:
