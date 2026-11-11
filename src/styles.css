@@ -348,3 +348,7 @@ h2, p { margin: 0; }
 /* Double-click the project title to rename it in place, as in Paperboat. */
 .proj .proj-name { cursor: text; }
 .proj-input { width: 180px; height: 22px; padding: 0 6px; border: 1px solid var(--line-ink); border-radius: 3px; background: var(--surface-raised); color: var(--text); font: 400 12px var(--font-mono); }
+
+/* A single plot fills the stage: no 1,1 subplot header, no grid gutter. */
+.figure-grid.single { grid-template-columns: 1fr; grid-template-rows: 1fr; padding: 0; gap: 0; }
+.figure-grid.single .figure-tile { border: 0; border-radius: 0; }

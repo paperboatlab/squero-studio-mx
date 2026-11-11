@@ -596,7 +596,7 @@ export function App() {
             <button key={t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>{t === "3d" ? "3d" : t === "2d" ? "2d graph" : t === "figure" ? "figure" : "table"}</button>
           ))}
           <span className="sp" />
-          <span className="tag">{tab === "3d" ? "surface · A" : tab === "2d" ? `${selectedVar || "y"}(t)` : tab === "figure" ? `figure · ${figure?.rows ?? 1}×${figure?.cols ?? 1}` : `table · ${picked?.name ?? "A"}`}</span>
+          <span className="tag">{tab === "3d" ? "surface · A" : tab === "2d" ? `${selectedVar || "y"}(t)` : tab === "figure" ? (figure && figure.rows === 1 && figure.cols === 1 ? "figure" : `figure · ${figure?.rows ?? 1}×${figure?.cols ?? 1}`) : `table · ${picked?.name ?? "A"}`}</span>
           <button className="key small stage-hide" onClick={() => setChartHidden(true)} title="Hide chart">×</button>
         </div>
 

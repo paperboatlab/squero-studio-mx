@@ -3,7 +3,7 @@
 // parser so the examples open the right tiles now.
 export type FigureKind = "line" | "surface" | "heat" | "scatter";
 export type FigureTile = { row: number; col: number; kind: FigureKind; title: string };
-export type Figure = { rows: number; cols: number; tiles: FigureTile[] };
+export type Figure = { rows: number; cols: number; tiles: FigureTile[]; explicit: boolean };
 
 export function parseFigure(code: string): Figure | null {
   const statements = code
@@ -32,5 +32,5 @@ export function parseFigure(code: string): Figure | null {
     const kind: FigureKind = call[1] === "plot" ? "line" : call[1] === "scatter" ? "scatter" : call[1] === "imagesc" || call[1] === "heatmap" ? "heat" : "surface";
     tiles.push({ ...current, kind, title: statement });
   }
-  return tiles.length ? { rows, cols, tiles } : null;
+  return tiles.length ? { rows, cols, tiles, explicit } : null;
 }
