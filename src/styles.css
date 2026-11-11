@@ -191,3 +191,64 @@ h2, p { margin: 0; }
 .scope-wrap .instrument figcaption { color: var(--text-on-screen-muted); }
 .scope-wrap .instrument figcaption output { color: var(--text-on-screen); }
 .scope-wrap .instrument .scope-status { color: var(--text-on-screen); }
+
+/* The right-hand answer tokens from the design study. */
+.cm-answer-gutter { border-left: 1px solid rgb(255 255 255 / .06); }
+.cm-answer-gutter .cm-gutterElement { display: flex; align-items: center; justify-content: flex-end; padding: 0 8px 0 10px; }
+.cm-answer { display: inline-flex; align-items: center; gap: 5px; height: 16px; padding: 0 5px; border: 1px solid rgb(255 255 255 / .14); border-radius: 3px; background: rgb(255 255 255 / .04); color: #9d9d97; font: 400 9.5px / 16px var(--font-mono); white-space: nowrap; }
+.cm-answer canvas { width: 24px; height: 10px; display: block; }
+.cm-answer.k-chart { color: var(--signal); border-color: color-mix(in srgb, var(--signal) 45%, transparent); }
+.cm-answer.k-run { color: var(--signal); border-color: color-mix(in srgb, var(--signal) 45%, transparent); }
+
+/* Resizable, hideable chart panel. */
+.app.split { grid-template-columns: 220px minmax(320px, 1fr) 6px var(--stage-w, 540px) 320px; }
+.app.split .splitter { grid-column: 3; grid-row: 2; position: relative; cursor: col-resize; background: transparent; touch-action: none; }
+.app.split .splitter::after { content: ""; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: var(--line); }
+.app.split .splitter:hover::after { width: 2px; left: calc(50% - .5px); background: var(--line-strong); }
+.app.split .stage { grid-column: 4; }
+.app.split .rightpane { grid-column: 5; }
+.app.split.chart-hidden { grid-template-columns: 220px minmax(320px, 1fr) 0 0 320px; }
+.app.split.chart-hidden .splitter, .app.split.chart-hidden .stage { display: none; }
+
+/* The Files panel around the shared FileTree (styles from @paperboat/shared/files.css). */
+.files .rail-tabs { display: flex; align-items: center; gap: 12px; min-height: 36px; padding: 0 12px; border-bottom: 1px solid var(--line); background: var(--surface-raised); }
+.files .rail-tab { font: 400 12px var(--font-mono); color: var(--text-muted); }
+.files .rail-tab.on { color: var(--text); font-weight: 500; }
+.files .rail-tab.on::before { content: "[ "; } .files .rail-tab.on::after { content: " ]"; }
+.files .rail-add { margin-left: auto; height: 20px; padding: 0 6px; }
+.files .files-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; width: 100%; }
+.files .files-head { display: flex; align-items: baseline; gap: 8px; padding: 8px 12px 4px; border-bottom: 1px solid var(--line); }
+.files .files-head .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 12px var(--font-mono); }
+.files .files-head .lbl { margin-left: auto; white-space: nowrap; }
+
+/* Workspace: per-script variables, a filter and the chart pill. */
+.varsearch { display: flex; align-items: center; gap: 6px; padding: 5px 7px; background: var(--surface-well); border-radius: var(--radius-md); box-shadow: var(--well-shadow); }
+.varsearch input { flex: 1; min-width: 0; background: transparent; border: 0; box-shadow: none; padding: 0; font: 400 11px var(--font-mono); color: var(--text); }
+.varsearch input::placeholder { color: var(--text-muted); }
+.varc { grid-template-columns: minmax(0, 1fr) 50px auto 16px; }
+.varc .glyph { width: 50px; }
+.chartpill { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 17px; padding: 0 5px; border: 1px solid var(--line); border-radius: 3px; color: var(--text-muted); font: 400 9px var(--font-mono); cursor: pointer; }
+.chartpill:hover { color: var(--signal-text); border-color: color-mix(in srgb, var(--signal) 45%, var(--line)); }
+.ws-empty { padding: 18px 8px; text-align: center; color: var(--text-muted); font: 400 11px var(--font-sans); display: flex; flex-direction: column; gap: 8px; align-items: center; }
+
+/* Workspace cards: type first, a readable glyph, then the chart and share keys. */
+.varc { grid-template-columns: 20px minmax(0, 1fr) auto 16px; }
+.typeicon { width: 20px; height: 20px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 3px; color: var(--text-muted); background: var(--surface-sunken); }
+.typeicon svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1; }
+.typeicon.t-matrix { color: var(--signal-text); }
+.typeicon .hash { font: 500 10px var(--font-mono); }
+.axes-legend { position: absolute; right: 12px; bottom: 10px; display: flex; gap: 10px; padding: 4px 7px; border: 1px solid var(--screen-line); border-radius: 4px; background: rgb(12 12 12 / .72); color: var(--text-on-screen); font: 400 10px var(--font-mono); }
+.axes-legend span { display: inline-flex; align-items: center; gap: 4px; }
+.axes-legend i { width: 12px; height: 1px; display: block; }
+.ax-x, .ax-z { background: #8a8a84; }
+.ax-y { background: var(--signal); }
+
+.axis-triad { position: absolute; left: 12px; bottom: 10px; width: 64px; height: 60px; font: 500 10px var(--font-mono); }
+.axis-triad line { stroke-width: 1.5; }
+.axis-triad text { fill: var(--text); }
+
+/* Topbar menus and the workspace-folder edit key. */
+.topbar .menubar { margin-left: 4px; }
+.topbar .menu-title { height: 26px; padding: 0 8px; }
+.files-head .edit-root { border: 0; background: none; padding: 0; color: var(--text-muted); font: 400 9.5px var(--font-mono); cursor: pointer; }
+.files-head .edit-root:hover { color: var(--text); }

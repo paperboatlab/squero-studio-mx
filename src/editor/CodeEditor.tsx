@@ -5,7 +5,7 @@ import { useEffect, useRef } from "react";
 import { EditorState } from "@codemirror/state";
 import {
   EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter,
-  drawSelection, dropCursor, rectangularSelection, crosshairCursor,
+  drawSelection, dropCursor, rectangularSelection, crosshairCursor, gutter, GutterMarker,
 } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { HighlightStyle, StreamLanguage, syntaxHighlighting } from "@codemirror/language";
@@ -53,6 +53,64 @@ const habitLint = linter((view): Diagnostic[] => {
   return out;
 });
 
+type AnswerKind = "heat" | "spark" | "dots" | "chart" | "ok" | "run" | "type";
+
+/** A right-hand token: the shape/value a line produced, as in the design study. */
+class AnswerMarker extends GutterMarker {
+  constructor(private readonly text: string, private readonly kind: AnswerKind) { super(); }
+  eq(other: AnswerMarker) { return this.text === other.text && this.kind === other.kind; }
+  toDOM() {
+    const el = document.createElement("span");
+    el.className = `cm-answer k-${this.kind}`;
+    if (this.kind === "heat" || this.kind === "spark" || this.kind === "dots") {
+      const canvas = document.createElement("canvas");
+      canvas.width = 48; canvas.height = 20;
+      const g = canvas.getContext("2d")!;
+      if (this.kind === "heat") {
+        for (let x = 0; x < 24; x++) for (let y = 0; y < 10; y++) {
+          const v = (Math.sin(x * 0.6) * Math.cos(y * 0.7) + 1) / 2;
+          g.fillStyle = `hsl(${250 - v * 190}, ${60 + v * 20}%, ${20 + v * 45}%)`;
+          g.fillRect(x * 2, y * 2, 2, 2);
+        }
+      } else if (this.kind === "spark") {
+        g.strokeStyle = "#ff5a1f"; g.lineWidth = 2;
+        g.beginPath();
+        for (let x = 0; x < 48; x++) {
+          const y = 10 - Math.sin(x * 0.25) * 7;
+          x ? g.lineTo(x, y) : g.moveTo(x, y);
+        }
+        g.stroke();
+      } else {
+        g.fillStyle = "rgba(255,90,31,.85)";
+        for (let i = 0; i < 70; i++) g.fillRect((i * 37) % 48, (i * 13) % 20, 1.5, 1.5);
+      }
+      el.append(canvas);
+    }
+    el.append(document.createTextNode(this.text));
+    return el;
+  }
+}
+
+function answerFor(text: string): AnswerMarker | null {
+  const t = text.trim();
+  if (!t || t.startsWith("#")) return null;
+  if (/^sel\s*=/.test(t)) return new AnswerMarker("1 284", "dots");
+  if (/\bsurf\b/.test(t)) return new AnswerMarker("→ chart", "chart");
+  if (/\bstate_space\b/.test(t)) return new AnswerMarker("→ run", "run");
+  if (/\b(colormap|view|clim)\b/.test(t)) return new AnswerMarker("ok", "ok");
+  if (/^n\s*=/.test(t)) return new AnswerMarker("Int64", "type");
+  if (/\bhypot\b/.test(t)) return new AnswerMarker("512 × 512", "spark");
+  if (/\b(meshgrid|A\s*=)/.test(t)) return new AnswerMarker("512 × 512", "heat");
+  return null;
+}
+
+const answerGutter = gutter({
+  class: "cm-answer-gutter",
+  side: "after",
+  lineMarker(view, line) { return answerFor(view.state.doc.lineAt(line.from).text); },
+  initialSpacer: () => new AnswerMarker("512 × 512", "heat"),
+});
+
 export function CodeEditor({ value, file, onChange }: { value: string; file: string; onChange: (value: string) => void }) {
   const host = useRef<HTMLDivElement>(null);
   const change = useRef(onChange);
@@ -77,6 +135,7 @@ export function CodeEditor({ value, file, onChange }: { value: string; file: str
           syntaxHighlighting(highlight),
           lintGutter(),
           habitLint,
+          answerGutter,
           EditorView.lineWrapping,
           EditorView.updateListener.of((u) => { if (u.docChanged) change.current(u.state.doc.toString()); }),
           theme,

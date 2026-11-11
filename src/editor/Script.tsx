@@ -1,7 +1,7 @@
 // The script panel: document header, editable CodeMirror body, run strip.
 import { CodeEditor } from "./CodeEditor.tsx";
 
-export function Script({ file, code, onChange }: { file: string; code: string; onChange: (code: string) => void }) {
+export function Script({ file, code, onChange, onRun }: { file: string; code: string; onChange: (code: string) => void; onRun: () => void }) {
   return (
     <section className="panel editor">
       <div className="head">
@@ -9,8 +9,8 @@ export function Script({ file, code, onChange }: { file: string; code: string; o
         <span className="tag">Ln 1, Col 1</span>
         <span className="sp" />
         <span className="tag">changed 0</span>
-        <button className="key small">Run cell</button>
-        <button className="key small">▶</button>
+        <button className="key small" onClick={onRun}>Run cell</button>
+        <button className="key small" onClick={onRun}>▶</button>
       </div>
       <div className="code">
         <CodeEditor key={file} value={code} file={file} onChange={onChange} />

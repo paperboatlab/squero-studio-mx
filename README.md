@@ -58,13 +58,17 @@ Versioning follows Julia for the product (`1.11.5`) and tracks the frontend sepa
 ```
 src/
   App.tsx                 the shell: files, workspace, stage, shared variables, console
-  chart/surface.ts        a height field as a Station mesh entity (the 3D chart)
-  chart/samples.ts        demo workspace and run samples
+  chart/surface.ts        the peaks surface + axes as Station mesh/line entities
+  chart/samples.ts        demo workspaces and run samples
+  editor/CodeEditor.tsx   CodeMirror 6, Julia mode, lint gutter, answer tokens
+  files/FilePanel.tsx     the MX mutations around the shared FileTree
+  kernel/localEval.ts     the pre-kernel console evaluator
+  kernel/protocol.ts      squero-kernel/0 types (hello, eval, whos, get/set, snapshot)
   paperboat/link.ts       a minimal paperboat/0 client
   paperboat/variables.ts  the shared-variable contract (scalars by name; matrices to blocks)
-  kernel/protocol.ts      squero-kernel/0 types (hello, eval, whos, get/set, snapshot)
   sim/stateSpace.ts       the A/B/C/D → Paperboat run contract
-test/                     pure tests for the mesh and the variable merge
+  workspace/mat.ts        a MAT v4 writer for the numeric workspace
+test/                     mesh, variables, MAT and local-evaluator tests
 ```
 
 ## Run
@@ -88,25 +92,47 @@ habit linter flags `%` comments (Julia uses `#`); the gutter is the seam for ker
 and an LSP later. The same wrapper takes `@codemirror/legacy-modes/mode/modelica`, so Squero OM
 can reuse it once it moves to `@paperboat/editor`.
 
+### Workspace
+
+Like MATLAB's, the workspace is **the session**, not the open file: a run adds/overwrites its
+variables, other variables stay until `clear`, and switching scripts does not change it. `clear`
+empties it, `clear x` removes one binding and `clc` only clears the console. The filter searches
+name, shape and type; the chart pill on a card opens the right chart (`3d` for a matrix, `2d` for
+a vector, `table` for a scalar).
+
+`File ▸ Export workspace (.mat)…` writes a MAT v4 file (double matrices/vectors/scalars) that
+MATLAB and Octave load directly.
+
+### Files and menus
+
+The Files rail is `@paperboat/shared/files` — the same tree as Squero Studio OM. It supports
+folders, selection, new file/folder, rename, duplicate, delete, copy path and drag-to-move; the
+root's `edit` key changes the workspace folder. The topbar menus expose the same actions plus
+find, clear, chart visibility, run and simulate.
+
 ### Console
 
 The bottom console is a real command line, not a log. It accepts:
 
 ```
-help · whos · clear/clc · attach · detach
+help · whos · clear [name] · clc · attach · detach
 share <name> · unshare <name> · simulate/run · version
 ```
 
-A bare variable name (`A`, `k`) inspects it. Anything else is queued for `squero-kernel/0` until
-the Julia kernel is attached; the console says so instead of pretending to evaluate it. Arrow Up /
-Arrow Down recall history.
+Assignments and simple expressions evaluate **locally** before the kernel is attached:
+`gg=3`, `x = 1:5`, `A = zeros(2,3)`, `gg + 4` → `ans`. Numbers, vectors, matrices, ranges,
+common math functions and the MATLAB-style builders are supported. Anything else is queued for
+`squero-kernel/0` with a clear message. Arrow Up/Arrow Down recall history.
 
 ## Status
 
 Scaffold: the shell, the shared Station renderer as a 3D chart, the shared Scope, and the
 variable/solver contracts. Next:
 
-- `squero-julia-kernel` container + `squero-kernel/0` launcher.
+- `squero-julia-kernel` container + `squero-kernel/0` launcher; the local evaluator then hands
+  simple expressions to the same workspace.
+- The session module/`clear` contract in the kernel: a fresh `Module` per session, or
+  `Base.delete_binding` where available.
 - `state_space`/`rhs` toolkit blocks in Paperboat and the run dock.
 - `Plot3D`/`Axes3D`/`ColorBar`/`Plot2D` in `@paperboat/shared/plot` (pb#312).
 - `StationPanel`/`StationGraph` into `@paperboat/shared/station`.

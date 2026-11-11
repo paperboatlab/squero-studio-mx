@@ -77,3 +77,20 @@ export function pointsEntity(points: readonly [number, number, number][], id = "
     color: "var(--signal)",
   }));
 }
+
+/** Three axes and their ticks, drawn by the same SceneView as the surface. */
+export function chartAxes(): Entity[] {
+  const out: Entity[] = [];
+  const add = (id: string, from: [number, number, number], to: [number, number, number], color: string) =>
+    out.push({ id, shape: "line", pos: from, to, color });
+  const ink = "#55554f";
+  add("axis.x", [-2.2, 0.002, 2.2], [2.2, 0.002, 2.2], ink);
+  add("axis.z", [-2.2, 0.002, 2.2], [-2.2, 0.002, -2.2], ink);
+  add("axis.y", [-2.2, 0.002, 2.2], [-2.2, 1.35, 2.2], "#ff5a1f");
+  for (const t of [-2, -1, 0, 1, 2]) {
+    add(`axis.x.${t}`, [t, 0.002, 2.2], [t, 0.002, 2.05], ink);
+    add(`axis.z.${t}`, [-2.2, 0.002, t], [-2.05, 0.002, t], ink);
+  }
+  for (const h of [0.5, 1]) add(`axis.y.${h}`, [-2.2, h, 2.2], [-2.05, h, 2.2], "#ff5a1f");
+  return out;
+}
