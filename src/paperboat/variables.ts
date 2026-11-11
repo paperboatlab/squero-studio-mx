@@ -85,5 +85,5 @@ export function toPaperboat(mx: readonly WorkspaceVariable[], paperboat: readonl
 
 /** The message the link sends when the shared set changes. */
 export function setMessage(mx: readonly WorkspaceVariable[], paperboat: readonly Variable[]) {
-  return { type: "variables.set" as const, variables: toPaperboat(mx, paperboat) };
+  return { type: "variables.set" as const, source: "mx" as const, variables: toPaperboat(mx, paperboat) };
 }
