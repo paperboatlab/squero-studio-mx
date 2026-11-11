@@ -4,18 +4,24 @@ import type { Command } from "@paperboat/shared";
 import type { Variable } from "@paperboat/shared/protocol";
 import { FigureView } from "./plot/FigureView.tsx";
 import { parseFigure, type Figure } from "./plot/figure.ts";
-import { demoWorkspaces, type WorkspaceVariable } from "./chart/samples.ts";
+import { captureFigure, downloadBlob, encodeFigure, figureFileBase, zipFiles, type FigureFormat, FIGURE_FORMATS } from "./plot/export.ts";
+import type { WorkspaceVariable } from "./chart/samples.ts";
 import { Script } from "./editor/Script.tsx";
 import { DEFAULT_EDITOR_SETTINGS, type EditorSettings } from "./editor/CodeEditor.tsx";
 import { SqueroLogo } from "./shell/SqueroLogo.tsx";
+import { AboutModal } from "./shell/AboutModal.tsx";
 import { FilePanel, type FilePanelHandle } from "./files/FilePanel.tsx";
-import { askWrite, canWrite, loadDirHandle, readTree, saveDirHandle, storageOf, writeFile } from "./files/storage.ts";
+import { askWrite, canWrite, loadDirHandle, readTree, saveDirHandle, storageOf } from "./files/storage.ts";
+import { loadServerWorkspace, serverStorage, type ServerWorkspace } from "./files/server.ts";
 import { downloadMat } from "./workspace/mat.ts";
 import { evaluate, variableFrom, varsOf } from "./kernel/localEval.ts";
 import { PaperboatLink, type LinkStatus } from "./paperboat/link.ts";
 import { mergeShared, setMessage } from "./paperboat/variables.ts";
 
 type RightTab = "workspace" | "shared" | "figures";
+
+/** The workspace lives on disk; this is the folder the picker starts from and the default. */
+export const DEFAULT_WORKSPACE = "~/Documents/paperboat/squero-studio/mx";
 type FigureEntry = { id: string; source: string; time: number; figure: Figure };
 type Line = { level: "info" | "ok" | "warn"; text: string; cmd?: boolean };
 
@@ -37,69 +43,26 @@ function TypeIcon({ type }: { type: string }) {
   return <span className="typeicon t-scalar" title={type} aria-label="scalar"><span className="hash">#</span></span>;
 }
 
-const INITIAL_FILES: Record<string, string> = {
-  "surface.jl": `# surface.jl — a matrix, a selection, a chart
-n = 512
-X, Y = meshgrid(range(-3, 3, length=n))
-R = @. hypot(X, Y) + eps()
-A = @. sin(R * 3.4) / (R * 3.4)
-sel = A[A .> 0.42]
-
-surf(X, Y, A)
-colormap(:viridis)
-view(-37.5, 30)
-
-# state_space(A, B, C, D) → Paperboat
-`,
-  "lorenz.jl": `# lorenz.jl — the Lorenz attractor with a small RK4 loop
-σ, ρ, β = 10.0, 28.0, 8 / 3
-dt = 0.01
-t = 0:dt:20
-x = zeros(3, length(t))
-x[:, 1] = [1.0, 1.0, 1.0]
-f(s) = [σ * (s[2] - s[1]), s[1] * (ρ - s[3]) - s[2], s[1] * s[2] - β * s[3]]
-for k in 2:length(t)
-    s = x[:, k - 1]
-    k1 = f(s)
-    k2 = f(s + dt / 2 * k1)
-    k3 = f(s + dt / 2 * k2)
-    k4 = f(s + dt * k3)
-    x[:, k] = s + dt / 6 * (k1 + 2k2 + 2k3 + k4)
-end
-plot(t, x[1, :])
-`,
-  "plots/peaks.jl": `# peaks.jl — the demo surface
-A = peaks(512)
-surf(A)
-`,
-  "state_space.jl": `# state_space.jl — a second-order system as A, B, C, D
-A = [0.0 1.0; -2.0 -3.0]
-B = [0.0; 1.0]
-C = [1.0 0.0]
-D = [0.0]
-x0 = [1.0, 0.0]
-
-# Paperboat's state_space block integrates this with the run's solver.
-`,
-  "export.jl": `# export.jl — write the surface and the workspace
-savefig("surface.png")
-writematrix(A, "data/run-07.csv")
-save("data/run-07.mat")
-`,
-};
-
 export function App() {
   const [figures, setFigures] = useState<FigureEntry[]>([]);
   const [activeFigureId, setActiveFigureId] = useState<string | null>(null);
+  const [figureSel, setFigureSel] = useState<string[]>([]);
+  const [figureAnchor, setFigureAnchor] = useState<string | null>(null);
+  const [exportFormat, setExportFormat] = useState<FigureFormat>("png");
+  const [aboutOpen, setAboutOpen] = useState(false);
+  const [filesHidden, setFilesHidden] = useState(false);
+  const [rightHidden, setRightHidden] = useState(false);
   const [figureFocus, setFigureFocus] = useState<string | null>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
   const [rightTab, setRightTab] = useState<RightTab>("workspace");
-  const [files, setFiles] = useState<Record<string, string>>(INITIAL_FILES);
-  const [folders, setFolders] = useState<string[]>(["plots"]);
-  const [selectedFile, setSelectedFile] = useState("surface.jl");
-  const [selectedVar, setSelectedVar] = useState("A");
-  const [workspace, setWorkspace] = useState<WorkspaceVariable[]>(() => [...(demoWorkspaces["surface.jl"] ?? [])]);
-  const [workspaceRoot, setWorkspaceRoot] = useState("~/Documents/paperboat/squero-studio/mx");
+  const [files, setFiles] = useState<Record<string, string>>({});
+  const [folders, setFolders] = useState<string[]>([]);
+  const [selectedFile, setSelectedFile] = useState("");
+  const [selectedVar, setSelectedVar] = useState("");
+  const [workspace, setWorkspace] = useState<WorkspaceVariable[]>([]);
+  const [workspaceRoot, setWorkspaceRoot] = useState(DEFAULT_WORKSPACE);
   const [dir, setDir] = useState<FileSystemDirectoryHandle | null>(null);
+  const [serverRoot, setServerRoot] = useState<string | null>(null);
   const [saved, setSaved] = useState<FileSystemDirectoryHandle | null>(null);
   const [readOnly, setReadOnly] = useState(false);
   const [dirty, setDirty] = useState<Set<string>>(new Set());
@@ -130,6 +93,9 @@ export function App() {
     { level: "ok", text: "matrices and vectors travel to blocks, not project variables" },
   ]);
   const [input, setInput] = useState("");
+  const [scratch, setScratch] = useState("");
+  const [scratchOut, setScratchOut] = useState<{ text: string; type?: string; error?: boolean } | null>(null);
+  const [lastRun, setLastRun] = useState<{ time: number; ms: number; lines: number; mode: string } | null>(null);
   const [history, setHistory] = useState<string[]>([]);
   const [histAt, setHistAt] = useState(-1);
   const link = useRef<PaperboatLink | null>(null);
@@ -168,7 +134,7 @@ export function App() {
     window.addEventListener("pointerup", up);
   };
 
-  const storage = useMemo(() => (dir ? storageOf(dir) : undefined), [dir]);
+  const storage = useMemo(() => (dir ? storageOf(dir) : serverRoot ? serverStorage() : undefined), [dir, serverRoot]);
 
   const currentVars = workspace;
   const rows = useMemo(() => mergeShared(currentVars, paperboat), [currentVars, paperboat]);
@@ -316,6 +282,23 @@ export function App() {
 
   const typeLabel = (type: string) => (type.startsWith("Matrix") ? "matrix" : type.startsWith("Vector") ? "vector" : "float64");
 
+  const fmt = (n: number) => {
+    if (Number.isInteger(n)) return String(n);
+    if (Math.abs(n) >= 1e4 || (Math.abs(n) < 1e-3 && n !== 0)) return n.toExponential(1);
+    return String(Number(n.toFixed(3)));
+  };
+  /** The value as the card shows it: a scalar, or the first two entries of an array. */
+  const valueOf = (v: { value?: number | boolean | string | number[] | number[][]; preview?: number[] }): string => {
+    const raw = v.value;
+    if (typeof raw === "number") return fmt(raw);
+    if (typeof raw === "boolean") return String(raw);
+    if (typeof raw === "string") return raw;
+    const list = Array.isArray(raw) ? (Array.isArray(raw[0]) ? (raw as number[][]).flat() : (raw as number[])) : v.preview;
+    if (!list || list.length === 0) return "—";
+    const head = list.slice(0, 2).map(fmt).join(", ");
+    return `[${head}${list.length > 2 ? ", …" : ""}]`;
+  };
+
   const timeOf = (time: number) => new Date(time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
   const addFigure = (figure: Figure, source: string) => {
@@ -327,22 +310,97 @@ export function App() {
     };
     setFigures((prev) => [entry, ...prev]);
     setActiveFigureId(entry.id);
+    setFigureSel([entry.id]);
+    setFigureAnchor(entry.id);
     setFigureFocus(null);
     setChartHidden(false);
   };
 
   const removeFigure = (id: string) => {
-    setFigures((prev) => {
-      const next = prev.filter((f) => f.id !== id);
-      if (activeFigureId === id) setActiveFigureId(next[0]?.id ?? null);
-      return next;
-    });
+    const next = figures.filter((f) => f.id !== id);
+    setFigures(next);
+    setFigureSel((prev) => prev.filter((one) => one !== id));
+    if (activeFigureId === id) setActiveFigureId(next[0]?.id ?? null);
+    setFigureAnchor(null);
+  };
+
+  const removeSelectedFigures = () => {
+    if (figureSel.length === 0) return;
+    const gone = new Set(figureSel);
+    const next = figures.filter((f) => !gone.has(f.id));
+    setFigures(next);
+    setFigureSel([]);
+    setFigureAnchor(null);
+    if (activeFigureId && gone.has(activeFigureId)) setActiveFigureId(next[0]?.id ?? null);
+    say(`closed ${gone.size} figure${gone.size === 1 ? "" : "s"}`, "warn");
+  };
+
+  const selectFigure = (id: string, additive: boolean, range: boolean) => {
+    setChartHidden(false);
+    if (range) {
+      const from = figureAnchor ?? activeFigureId ?? id;
+      const a = figures.findIndex((f) => f.id === from);
+      const b = figures.findIndex((f) => f.id === id);
+      if (a >= 0 && b >= 0) {
+        const [lo, hi] = a < b ? [a, b] : [b, a];
+        setFigureSel(figures.slice(lo, hi + 1).map((f) => f.id));
+      } else {
+        setFigureSel([id]);
+      }
+      setActiveFigureId(id);
+      return;
+    }
+    if (additive) {
+      const has = figureSel.includes(id);
+      const next = has ? figureSel.filter((one) => one !== id) : [...figureSel, id];
+      setFigureSel(next);
+      if (has) {
+        if (activeFigureId === id) setActiveFigureId(next[0] ?? null);
+      } else {
+        setActiveFigureId(id);
+      }
+      setFigureAnchor(id);
+      return;
+    }
+    setFigureSel([id]);
+    setFigureAnchor(id);
+    setActiveFigureId(id);
+  };
+
+  const settle = () => new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 80)));
+  });
+
+  /** Export the selected figures; switching the stage lets each one render before capture. */
+  const exportFigures = async () => {
+    const ids = figureSel.length ? figureSel : activeFigureId ? [activeFigureId] : [];
+    if (ids.length === 0 || !stageRef.current) return;
+    const before = activeFigureId;
+    const files: { name: string; blob: Blob }[] = [];
+    for (const id of ids) {
+      const entry = figures.find((f) => f.id === id);
+      if (!entry) continue;
+      setActiveFigureId(id);
+      await settle();
+      const host = stageRef.current;
+      const canvas = host ? captureFigure(host) : null;
+      if (!canvas) continue;
+      const title = `${baseName(entry.source)} · ${entry.figure.rows}×${entry.figure.cols}`;
+      files.push({ name: `${figureFileBase(entry.source, files.length, ids.length)}.${exportFormat}`, blob: encodeFigure(canvas, exportFormat, title) });
+    }
+    setActiveFigureId(before);
+    if (files.length === 0) { say("nothing to export", "warn"); return; }
+    if (files.length === 1) downloadBlob(files[0].blob, files[0].name);
+    else downloadBlob(await zipFiles(files), "mx-figures.zip");
+    say(`exported ${files.length} figure${files.length === 1 ? "" : "s"} · ${exportFormat.toUpperCase()}`, "ok");
   };
 
   const focusLine = (line: string) => {
     const match = figures.find((f) => f.figure.tiles.some((t) => t.title === line));
     if (!match) { say("run the script to create this figure", "warn"); return; }
     setActiveFigureId(match.id);
+    setFigureSel([match.id]);
+    setFigureAnchor(match.id);
     setFigureFocus(line);
     setChartHidden(false);
     say(`chart → ${line}`, "ok");
@@ -359,7 +417,29 @@ export function App() {
     say(`clear ${name}`, "warn");
   };
 
+  /** The scratch line evaluates against the workspace; `name = expr` adds a variable. */
+  const evalScratch = () => {
+    const source = scratch.trim();
+    if (!source) return;
+    const assign = /^([A-Za-z_]\w*)\s*=\s*([\s\S]+)$/.exec(source);
+    const res = evaluate(assign ? assign[2] : source, varsOf(workspace));
+    if (!res.ok) {
+      setScratchOut({ text: res.error, error: true });
+      return;
+    }
+    if (assign) {
+      const next = variableFrom(assign[1], res.value);
+      setWorkspace((prev) => [...prev.filter((v) => v.name !== next.name), next]);
+      setSelectedVar(next.name);
+      setScratchOut({ text: `${next.name} = ${res.display}`, type: next.type });
+    } else {
+      setScratchOut({ text: res.display, type: variableFrom("ans", res.value).type });
+    }
+    setScratch("");
+  };
+
   const runCode = (code: string, mode: "cell" | "line" | "selection" | "file") => {
+    const startedAt = performance.now();
     const fig = parseFigure(code);
     if (fig) addFigure(fig, selectedFile);
     else setFigureFocus(null);
@@ -389,16 +469,31 @@ export function App() {
       }
     }
     if (changed) setWorkspace([...byName.values()]);
-    say(`run ${mode} · ${code.split("\n").length} lines`, "ok");
+    const lines = code.split("\n").filter((line) => line.trim()).length;
+    setLastRun({ time: Date.now(), ms: Math.max(1, Math.round(performance.now() - startedAt)), lines, mode });
+    say(`run ${mode} · ${lines} lines`, "ok");
   };
 
   const runScript = () => runCode(files[selectedFile] ?? "", "file");
 
+  const applyServerTree = (tree: ServerWorkspace, restored = true) => {
+    setDir(null);
+    setServerRoot(tree.root);
+    setReadOnly(false);
+    setWorkspaceRoot(tree.root);
+    setFiles(tree.files);
+    setFolders(tree.folders);
+    setSelectedFile(Object.keys(tree.files).sort()[0] ?? "");
+    setDirty(new Set());
+    say(`${restored ? "synced" : "opened"} ${tree.root} · ${Object.keys(tree.files).length} files`, "ok");
+  };
+
   const applyHandle = async (handle: FileSystemDirectoryHandle, restored = false) => {
     const tree = await readTree(handle);
     setDir(handle);
+    setServerRoot(null);
     setReadOnly(false);
-    setWorkspaceRoot(handle.name);
+    setWorkspaceRoot(handle.name === "mx" ? DEFAULT_WORKSPACE : handle.name);
     setFiles(tree.files);
     setFolders(tree.folders);
     setSelectedFile(Object.keys(tree.files).sort()[0] ?? "");
@@ -407,12 +502,18 @@ export function App() {
   };
 
   useEffect(() => {
-    void loadDirHandle().then(async (handle) => {
-      if (!handle) return;
-      setSaved(handle);
-      if (await canWrite(handle)) await applyHandle(handle, true);
-      else say("workspace folder remembered · click the folder key to reconnect", "info");
-    });
+    void (async () => {
+      // A folder the user picked wins while its permission lasts; otherwise the default folder
+      // on disk is opened through the local endpoint, with no prompt.
+      const handle = await loadDirHandle();
+      if (handle) {
+        setSaved(handle);
+        if (await canWrite(handle)) { await applyHandle(handle, true); return; }
+      }
+      const tree = await loadServerWorkspace();
+      if (tree) { applyServerTree(tree); return; }
+      if (handle) say("workspace folder remembered · click the folder key to reconnect", "info");
+    })();
   }, []);
 
   const openFolder = async () => {
@@ -424,6 +525,7 @@ export function App() {
         }
         const handle = await window.showDirectoryPicker({ mode: "readwrite", id: "mx-workspace", startIn: "documents" });
         setSaved(handle);
+        setServerRoot(null);
         await applyHandle(handle);
         try { await saveDirHandle(handle); } catch { /* private mode or a browser without handle storage */ }
       } catch (error) {
@@ -460,12 +562,12 @@ export function App() {
 
   const saveCurrent = async () => {
     if (!selectedFile) return;
-    if (!dir) {
-      say(readOnly ? "this folder is read-only; use Chrome or Edge to save" : "the workspace is in memory; open a folder to save", "warn");
+    if (!storage) {
+      say(readOnly ? "this folder is read-only; use Chrome or Edge to save" : "no folder is open; open the workspace in Documents to save", "warn");
       return;
     }
     try {
-      await writeFile(dir, selectedFile, files[selectedFile] ?? "");
+      await storage.write(selectedFile, files[selectedFile] ?? "");
       setDirty((prev) => { const next = new Set(prev); next.delete(selectedFile); return next; });
       say(`saved ${selectedFile}`, "ok");
     } catch (error) {
@@ -521,20 +623,24 @@ export function App() {
     { id: "clear-workspace", label: "Clear workspace", menu: "edit", group: "console", run: clearWorkspace },
     { id: "clear-console", label: "Clear console", menu: "edit", group: "console", run: () => setLines([]) },
     { id: "chart", label: "Chart", menu: "view", group: "panels", checked: !chartHidden, run: () => setChartHidden((v) => !v) },
-    { id: "workspace-tab", label: "Workspace panel", menu: "view", group: "panels", checked: rightTab === "workspace", run: () => setRightTab("workspace") },
+    { id: "files-panel", label: "Files panel", menu: "view", group: "panels", checked: !filesHidden, run: () => setFilesHidden((v) => !v) },
+    { id: "workspace-panel", label: "Workspace panel", menu: "view", group: "panels", checked: !rightHidden, run: () => setRightHidden((v) => !v) },
+    { id: "workspace-tab", label: "Workspace tab", menu: "view", group: "panels", checked: rightTab === "workspace", run: () => setRightTab("workspace") },
     { id: "figures-tab", label: "Figures", menu: "view", group: "panels", checked: rightTab === "figures", run: () => setRightTab("figures") },
     { id: "console", label: "Console", menu: "view", group: "panels", checked: !consoleHidden, run: () => setConsoleHidden((v) => !v) },
     { id: "shared-tab", label: "Shared variables", menu: "view", group: "panels", checked: rightTab === "shared", run: () => setRightTab("shared") },
     { id: "run", label: "Run script", menu: "run", group: "run", run: runScript },
+    { id: "about", label: "About Squero Studio", menu: "view", group: "about", run: () => setAboutOpen(true) },
   ];
 
   return (
-    <div className={`app split${chartHidden ? " chart-hidden" : ""}${consoleHidden ? " console-hidden" : ""}`} style={{ "--stage-w": `${stageW}px`, "--console-h": `${consoleH}px` } as CSSProperties}>
+    <div className={`app split${chartHidden ? " chart-hidden" : ""}${consoleHidden ? " console-hidden" : ""}${filesHidden ? " files-hidden" : ""}${rightHidden ? " right-hidden" : ""}`} style={{ "--stage-w": `${stageW}px`, "--console-h": `${consoleH}px` } as CSSProperties}>
       <header className="topbar">
         <span className="wordmark" aria-label="Squero Studio: MX">
-          <SqueroLogo product="MX" height={20} />
+          <SqueroLogo product="MX" height={20} running />
         </span>
         <MenuBar commands={commands} />
+        <button type="button" className="menu-title" aria-expanded={aboutOpen} title="About Squero Studio" onClick={() => setAboutOpen(true)}>About</button>
         <div className="proj" title="Double-click to rename">
           <span className="dot" />
           {renamingTitle ? (
@@ -579,7 +685,10 @@ export function App() {
         onOpen={setSelectedFile}
         onChange={({ files: nextFiles, folders: nextFolders }) => { setFiles(nextFiles); setFolders(nextFolders); }}
         onOpenFolder={() => void openFolder()}
-        rootBadge={dir ? "folder" : readOnly ? "read-only" : "in-memory"}
+        rootBadge={dir ? "folder" : serverRoot ? "synced" : readOnly ? "read-only" : "not open"}
+        offline={!dir && !serverRoot && !readOnly}
+        collapsed={filesHidden}
+        onToggle={() => setFilesHidden((v) => !v)}
         storage={storage}
         onSay={say}
       />
@@ -599,6 +708,7 @@ export function App() {
         variables={workspace.map((v) => ({ name: v.name, type: v.type, value: v.value ?? v.preview }))}
         onChart={(_kind, line) => focusLine(line)}
         onRunSelection={runCode}
+        lastRun={lastRun}
       />
 
       <div
@@ -622,7 +732,7 @@ export function App() {
           <span className="sp" />
           <button className="key small stage-hide" onClick={() => setChartHidden(true)} title="Hide chart">×</button>
         </div>
-        <div className="stage-body">
+        <div className="stage-body" ref={stageRef}>
           {activeFigure ? (
             <FigureView figure={activeFigure.figure} focus={figureFocus} />
           ) : (
@@ -638,11 +748,14 @@ export function App() {
         <div className="head">
           <div className="rtabs">
             <button className={rightTab === "workspace" ? "on" : ""} onClick={() => setRightTab("workspace")}>workspace</button>
-            <button className={rightTab === "shared" ? "on" : ""} onClick={() => setRightTab("shared")}>shared</button>
             <button className={rightTab === "figures" ? "on" : ""} onClick={() => setRightTab("figures")}>figures</button>
+            <button className={rightTab === "shared" ? "on" : ""} onClick={() => setRightTab("shared")}>shared</button>
           </div>
           <span className="sp" />
-          <span className="tag">{rightTab === "figures" ? `${figures.length} ${figures.length === 1 ? "figure" : "figures"}` : `${active} shared`}</span>
+          {rightTab !== "figures" && <span className="tag">{`${active} shared`}</span>}
+          <button type="button" className="panel-toggle" onClick={() => setRightHidden(true)} title="Hide workspace" aria-label="Hide workspace" aria-expanded={!rightHidden}>
+            <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M5 3l4 4-4 4" /></svg>
+          </button>
         </div>
 
         {rightTab === "workspace" ? (
@@ -668,6 +781,7 @@ export function App() {
                     <div className="nm">{v.name}</div>
                     <div className="sh">{typeLabel(v.type)} · {v.shape}</div>
                   </div>
+                  <span className={`vval${v.type === "Float64" ? " scalar" : ""}`} title={valueOf(v)}>{valueOf(v)}</span>
                   <span className={`tie ${v.shared ? "on" : ""}`} title={v.shared ? "Broadcast to Paperboat" : "Matrices travel to a block, not a variable"} />
                 </div>
               ))}
@@ -680,8 +794,32 @@ export function App() {
             </div>
             <div className="scratch">
               <div className="lbl">scratch</div>
-              <div className="box"><span className="prompt">julia&gt;</span><span>A[128, 64] / maximum(A)</span><span className="caret" /></div>
-              <div className="preview"><span className="val">0.871</span><span className="tag">Float64</span><span className="k">↵ show</span></div>
+              <div className="box">
+                <span className="prompt">julia&gt;</span>
+                <input
+                  value={scratch}
+                  onChange={(e) => setScratch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") { e.preventDefault(); evalScratch(); }
+                    else if (e.key === "Escape") { setScratch(""); setScratchOut(null); }
+                  }}
+                  placeholder="x * 2"
+                  aria-label="Evaluate an expression"
+                  spellCheck={false}
+                />
+                <button className="scratch-run" onClick={evalScratch} title="Evaluate (Enter)" aria-label="Evaluate">↵</button>
+              </div>
+              {scratchOut ? (
+                <div className={`preview${scratchOut.error ? " err" : ""}`}>
+                  <span className="val">{scratchOut.text}</span>
+                  {scratchOut.type && <span className="tag">{scratchOut.type}</span>}
+                </div>
+              ) : (
+                <div className="preview muted">
+                  <span className="val">assign with name = expr</span>
+                  <span className="tag">never saved</span>
+                </div>
+              )}
             </div>
           </div>
         ) : rightTab === "shared" ? (
@@ -712,17 +850,37 @@ export function App() {
             <p className="hint">Runs happen in Paperboat. MX shares the scalars Paperboat needs and reads the signals it produces.</p>
           </div>
         ) : (
-          <div className="tabbody figtab">
-            <div className="figlist">
+          <div
+            className="tabbody figtab"
+            onKeyDown={(e) => {
+              if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); removeSelectedFigures(); }
+              else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") { e.preventDefault(); setFigureSel(figures.map((f) => f.id)); }
+              else if (e.key === "Escape") { setFigureSel(activeFigureId ? [activeFigureId] : []); }
+            }}
+          >
+            <div className="figtools">
+              <div className="seg figfmt" role="group" aria-label="Export format">
+                {FIGURE_FORMATS.map((format) => (
+                  <button key={format} className={exportFormat === format ? "on" : ""} onClick={() => setExportFormat(format)} aria-pressed={exportFormat === format}>{format}</button>
+                ))}
+              </div>
+              <button className="key small" onClick={() => void exportFigures()} disabled={figureSel.length === 0 && !activeFigureId}>
+                Export
+              </button>
+              <span className="sp" />
+              <span className="tag">{figureSel.length ? `${figureSel.length} selected` : "no selection"}</span>
+            </div>
+            <div className="figlist" role="listbox" aria-multiselectable="true" aria-label="Figures">
               {figures.map((f) => (
                 <div
-                  className={`figrow${f.id === activeFigureId ? " on" : ""}`}
+                  className={`figrow${f.id === activeFigureId ? " on" : ""}${figureSel.includes(f.id) ? " sel" : ""}`}
                   key={f.id}
-                  role="button"
+                  role="option"
+                  aria-selected={figureSel.includes(f.id)}
                   tabIndex={0}
                   title={f.source}
-                  onClick={() => { setActiveFigureId(f.id); setChartHidden(false); }}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setActiveFigureId(f.id); setChartHidden(false); } }}
+                  onClick={(e) => selectFigure(f.id, e.metaKey || e.ctrlKey, e.shiftKey)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectFigure(f.id, e.metaKey || e.ctrlKey, e.shiftKey); } }}
                 >
                   <span className="figmark">{f.figure.rows === 1 && f.figure.cols === 1 ? "plot" : `${f.figure.rows}×${f.figure.cols}`}</span>
                   <div className="figmeta">
@@ -734,8 +892,13 @@ export function App() {
               ))}
               {figures.length === 0 && <p className="hint">Run a script with <span className="mono">plot</span> or <span className="mono">surf</span>; each run adds a figure here.</p>}
             </div>
+            {figures.length > 0 && <p className="hint">Ctrl/⌘ click adds · Shift selects a range · Delete closes · exports the selection, or the shown figure.</p>}
           </div>
         )}
+        <button type="button" className="panel-stand" onClick={() => setRightHidden(false)} title="Show workspace" aria-label="Show workspace">
+          <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M9 3 5 7l4 4" /></svg>
+          <span>{rightTab}</span>
+        </button>
       </aside>
 
       {!consoleHidden && (
@@ -772,6 +935,8 @@ export function App() {
           </form>
         )}
       </section>
+
+      {aboutOpen && <AboutModal status={status} onClose={() => setAboutOpen(false)} />}
     </div>
   );
 }

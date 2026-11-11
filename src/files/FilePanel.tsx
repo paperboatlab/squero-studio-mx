@@ -3,6 +3,7 @@
 import { forwardRef, useImperativeHandle, useMemo, useRef } from "react";
 import { FileTree, type FileEntry, type FileTreeHandle } from "@paperboat/shared/files";
 import type { Storage } from "./storage.ts";
+import { JuliaGlyph } from "./JuliaGlyph.tsx";
 
 export type FilePanelHandle = { newFile: () => void; newFolder: () => void; rename: (path: string, name: string) => void };
 
@@ -17,6 +18,10 @@ export type FilePanelProps = {
   onDeletePath?: (path: string) => void;
   onOpenFolder?: () => void;
   rootBadge?: string;
+  /** No folder is open yet: show the one action that opens the default workspace. */
+  offline?: boolean;
+  collapsed?: boolean;
+  onToggle?: () => void;
   storage?: Storage;
   onSay: (text: string, level?: "info" | "ok" | "warn") => void;
 };
@@ -54,7 +59,7 @@ export function entriesOf(files: Readonly<Record<string, string>>, folders: read
       out.push({
         path, name: nameOf(path), depth, kind: "file",
         icon: path.endsWith(".jl") ? "function" : "file",
-        badge: path.endsWith(".jl") ? "jl" : "",
+        glyph: path.endsWith(".jl") ? <JuliaGlyph /> : undefined,
       });
     }
   };
@@ -62,7 +67,7 @@ export function entriesOf(files: Readonly<Record<string, string>>, folders: read
   return out;
 }
 
-export const FilePanel = forwardRef<FilePanelHandle, FilePanelProps>(function FilePanel({ root, files, folders, active, onOpen, onChange, onPathChange, onDeletePath, onOpenFolder, rootBadge, storage, onSay }, ref) {
+export const FilePanel = forwardRef<FilePanelHandle, FilePanelProps>(function FilePanel({ root, files, folders, active, onOpen, onChange, onPathChange, onDeletePath, onOpenFolder, rootBadge, offline, collapsed, onToggle, storage, onSay }, ref) {
   const tree = useRef<FileTreeHandle>(null);
   const entries = useMemo(() => entriesOf(files, folders), [files, folders]);
   const exists = (path: string) => path in files || folders.includes(path);
@@ -208,6 +213,9 @@ export const FilePanel = forwardRef<FilePanelHandle, FilePanelProps>(function Fi
             tree.current?.openNewMenu(r.left, r.bottom + 4);
           }}
         >+</button>
+        <button type="button" className="panel-toggle" onClick={onToggle} title="Hide files" aria-label="Hide files" aria-expanded={!collapsed}>
+          <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M9 3 5 7l4 4" /></svg>
+        </button>
       </div>
       <div className="files-panel">
         <div className="files-head">
@@ -219,16 +227,28 @@ export const FilePanel = forwardRef<FilePanelHandle, FilePanelProps>(function Fi
           )}
           <span className="lbl">{rootBadge ?? "folder"}</span>
         </div>
-        <FileTree
-          ref={tree}
-          entries={entries}
-          active={active}
-          ariaLabel="MX workspace"
-          labels={{ newFile: "New script…", newFolder: "New folder…", empty: "No .jl files yet. Create one with +." }}
-          actions={{ onOpen: open, onNewFile: newFile, onNewFolder: newFolder, onRename: rename, onDuplicate: duplicate, onDelete: remove, onCopyPath: (e) => { void navigator.clipboard?.writeText(e.path); onSay(`copied ${e.path}`, "ok"); }, onMove: move }}
-        />
+        {offline ? (
+          <div className="files-offline">
+            <p>Workspace not open.</p>
+            <span>{root}</span>
+            <button type="button" className="key small" onClick={onOpenFolder}>Open folder</button>
+          </div>
+        ) : (
+          <FileTree
+            ref={tree}
+            entries={entries}
+            active={active}
+            ariaLabel="MX workspace"
+            labels={{ newFile: "New script…", newFolder: "New folder…", empty: "No .jl files yet. Create one with +." }}
+            actions={{ onOpen: open, onNewFile: newFile, onNewFolder: newFolder, onRename: rename, onDuplicate: duplicate, onDelete: remove, onCopyPath: (e) => { void navigator.clipboard?.writeText(e.path); onSay(`copied ${e.path}`, "ok"); }, onMove: move }}
+          />
+        )}
       </div>
-      <div className="foot">{entries.filter((e) => e.kind === "file").length} files · 1 open</div>
+      <div className="foot">{entries.filter((e) => e.kind === "file").length} files · {active ? "1 open" : "none open"}</div>
+      <button type="button" className="panel-stand" onClick={onToggle} title="Show files" aria-label="Show files">
+        <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M5 3l4 4-4 4" /></svg>
+        <span>files</span>
+      </button>
     </aside>
   );
 });

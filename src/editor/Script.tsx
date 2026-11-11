@@ -1,9 +1,10 @@
 // The script panel: document header, editable CodeMirror body, run strip and editor settings.
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { useDismiss, useFocusReturn } from "@paperboat/shared/components";
 import { CodeEditor, type EditorSettings } from "./CodeEditor.tsx";
 
 export function Script({
-  file, code, onChange, onRun, dirty, onSave, settings, onSettings, variables, onChart, onRunSelection,
+  file, code, onChange, onRun, dirty, onSave, settings, onSettings, variables, onChart, onRunSelection, lastRun,
 }: {
   file: string;
   code: string;
@@ -16,23 +17,31 @@ export function Script({
   variables: readonly { name: string; type: string }[];
   onChart?: (kind: "3d" | "2d", line: string) => void;
   onRunSelection?: (code: string, mode: "cell" | "line" | "selection") => void;
+  lastRun?: { time: number; ms: number; lines: number; mode: string } | null;
 }) {
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ line: 1, col: 1, selected: 0 });
+  const settingsRef = useRef<HTMLDivElement>(null);
+  const gear = useRef<HTMLButtonElement>(null);
+  // The same dismissal rule as the menus: a press outside or Escape closes; focus goes back.
+  useDismiss(settingsRef, () => setOpen(false), { enabled: open, triggerRef: gear });
+  useFocusReturn(open ? settingsRef : undefined);
   const set = <K extends keyof EditorSettings>(key: K, value: EditorSettings[K]) => onSettings({ ...settings, [key]: value });
+  const clock = (time: number) => new Date(time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+  const modeLabel = (mode: string) => (mode === "file" ? "script" : mode);
 
   return (
     <section className="panel editor">
       <div className="head">
         <b>{file}{dirty ? " •" : ""}</b>
-        <span className="tag">Ln 1, Col 1</span>
         <span className="sp" />
         <button className="key small" onClick={onSave} disabled={!dirty} title="Save (Ctrl+S)">Save</button>
         <button className="key small" onClick={onRun}>Run</button>
-        <button className={`key small settings-key ${open ? "on" : ""}`} onClick={() => setOpen((v) => !v)} title="Editor settings" aria-expanded={open}>⚙</button>
+        <button ref={gear} className={`key small settings-key ${open ? "on" : ""}`} onClick={() => setOpen((v) => !v)} title="Editor settings" aria-expanded={open}>⚙</button>
       </div>
 
       {open && (
-        <div className="editor-settings" role="dialog" aria-label="Editor settings">
+        <div ref={settingsRef} className="editor-settings" role="dialog" aria-label="Editor settings" data-own-keys>
           <div className="es-head"><b>editor</b><span className="sp" /><button className="plain tag" onClick={() => setOpen(false)}>close</button></div>
           <div className="es-row"><span>theme</span><span className="seg">
             <button className={settings.theme === "dark" ? "on" : ""} onClick={() => set("theme", "dark")}>dark</button>
@@ -68,14 +77,19 @@ export function Script({
       )}
 
       <div className="code">
-        <CodeEditor key={file} value={code} file={file} onChange={onChange} settings={settings} variables={variables} onChart={onChart} onRunSelection={onRunSelection} />
+        <CodeEditor key={file} value={code} file={file} onChange={onChange} settings={settings} variables={variables} onChart={onChart} onRunSelection={onRunSelection} onPos={setPos} />
       </div>
+      {!file && <div className="editor-empty">Open the workspace folder, or create a script with +.</div>}
       <div className="runstrip">
-        <span>run-07</span>
-        <span className="track"><span className="f" /><span className="k" /></span>
-        <span>2.40 s</span>
-        <span>step 120 / 500</span>
-        <span style={{ marginLeft: "auto" }} title="Ctrl/Cmd+Enter: run cell · Shift+Enter: run line">⌘↵ cell · ⇧↵ line</span>
+        <span className="pos">Ln {pos.line}, Col {pos.col}</span>
+        {pos.selected > 0 && <span className="sel">{pos.selected} selected</span>}
+        <span className="sp" />
+        <span className="runstat">
+          {lastRun
+            ? `run ${modeLabel(lastRun.mode)} · ${clock(lastRun.time)} · ${lastRun.lines} line${lastRun.lines === 1 ? "" : "s"} · ${lastRun.ms} ms`
+            : "not run yet"}
+        </span>
+        <span title="Ctrl/Cmd+Enter: run cell · Shift+Enter: run line">⌘↵ cell · ⇧↵ line</span>
       </div>
     </section>
   );

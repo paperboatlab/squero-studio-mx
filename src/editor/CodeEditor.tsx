@@ -263,7 +263,7 @@ const answerGutter = (getVars: () => Record<string, NumValue>, onChart?: OnChart
 });
 
 export function CodeEditor({
-  value, file, onChange, settings, variables, onChart, onRunSelection,
+  value, file, onChange, settings, variables, onChart, onRunSelection, onPos,
 }: {
   value: string;
   file: string;
@@ -272,6 +272,7 @@ export function CodeEditor({
   variables: readonly { name: string; type: string; value?: NumValue }[];
   onChart?: OnChart;
   onRunSelection?: (code: string, mode: "cell" | "line" | "selection") => void;
+  onPos?: (pos: { line: number; col: number; selected: number }) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
@@ -284,6 +285,8 @@ export function CodeEditor({
   chart.current = onChart;
   const runSelection = useRef(onRunSelection);
   runSelection.current = onRunSelection;
+  const pos = useRef(onPos);
+  pos.current = onPos;
 
   const compartments = useRef({
     theme: new Compartment(), font: new Compartment(), wrap: new Compartment(),
@@ -363,12 +366,22 @@ export function CodeEditor({
           compartments.lint.of(settings.lint ? lintExt() : []),
           compartments.answers.of(answerGutter(varMap, (kind, line) => chart.current?.(kind, line))),
           cellSections,
-          EditorView.updateListener.of((u) => { if (u.docChanged) change.current(u.state.doc.toString()); }),
+          EditorView.updateListener.of((u) => {
+            if (u.docChanged) change.current(u.state.doc.toString());
+            if (u.docChanged || u.selectionSet) {
+              const sel = u.state.selection.main;
+              const line = u.state.doc.lineAt(sel.head);
+              pos.current?.({ line: line.number, col: sel.head - line.from + 1, selected: sel.to - sel.from });
+            }
+          }),
         ],
       }),
       parent: host.current!,
     });
     view.current = instance;
+    const first = instance.state.selection.main;
+    const firstLine = instance.state.doc.lineAt(first.head);
+    pos.current?.({ line: firstLine.number, col: first.head - firstLine.from + 1, selected: first.to - first.from });
     return () => { instance.destroy(); view.current = null; };
     // `key={file}` in the parent remounts for another document.
   }, []);

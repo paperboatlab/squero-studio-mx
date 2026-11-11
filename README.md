@@ -107,20 +107,27 @@ there is no cell). `Shift+Enter` runs the selection, or the current line. Both a
 
 ### Figures and subplot
 
-`subplot(m, n, p)` followed by `plot`, `surf`, `mesh`, `imagesc` or `scatter` opens a **figure**
-tab with a grid of shared tiles: line tiles are the Scope, surface tiles the Station SceneView,
-heat/scatter small canvases. Clicking a `→ chart` token in the editor opens the figure and
-highlights the tile for that line. The repo's `examples/` folder is on disk: open it with the folder key next to `mx-workspace`
-(or `File ▸ Open workspace folder…`), then try `subplots.jl`, `subplot-scatter.jl`,
-`lines.jl` and `surfaces.jl`.
+`subplot(m, n, p)` followed by `plot`, `surf`, `mesh`, `imagesc` or `scatter` adds a **figure**
+to the Figures browser, with a grid of shared tiles: line tiles are the Scope, surface tiles the
+Station SceneView, heat/scatter small canvases. A run adds one figure, newest first, with its
+script, time and plot count; click a row to show it, `×` to close it. Clicking a `→ chart` token
+in the editor shows the matching figure and outlines its tile.
+
+The browser supports Ctrl/Cmd-click to add/remove a figure and Shift-click for a range; `Delete`
+closes the selected figures (Ctrl/Cmd+A selects all). Export the selection, or the shown figure,
+as **PNG, SVG, EPS or PDF**; several figures come as one `mx-figures.zip`. PNG is a 2× capture of
+the rendered page; the vector formats embed the same capture.
+
+The repo's `examples/` folder is on disk and is copied to the default workspace; try
+`subplots.jl`, `subplot-scatter.jl`, `lines.jl` and `surfaces.jl`.
 
 ### Workspace
 
 Like MATLAB's, the workspace is **the session**, not the open file: a run adds/overwrites its
 variables, other variables stay until `clear`, and switching scripts does not change it. `clear`
 empties it, `clear x` removes one binding and `clc` only clears the console. The filter searches
-name, shape and type; the chart pill on a card opens the right chart (`3d` for a matrix, `2d` for
-a vector, `table` for a scalar).
+name, shape and type. Each card shows the value on the right (a scalar, or an array's first
+entries); the dot is the automatic broadcast to Paperboat.
 
 `File ▸ Export workspace (.mat)…` writes a MAT v4 file (double matrices/vectors/scalars) that
 MATLAB and Octave load directly.
@@ -134,14 +141,26 @@ is no per-instance name.
 ### Files and menus
 
 The Files rail is `@paperboat/shared/files` — the same tree as Squero Studio OM. It supports
-folders, selection, new file/folder, rename, duplicate, delete, copy path and drag-to-move.
+folders, selection, new file/folder, rename, duplicate, delete, copy path and drag-to-move. `.jl`
+files carry the Julia dots instead of a generic glyph. Both side panels collapse to a standing
+tab with the chevron in their header, like Lookout's drawers; `View` has matching toggles.
 
-The default workspace is `~/Documents/paperboat/squero-studio/mx`, shown as `in-memory` until
-you pick it. The folder key (or `File ▸ Open workspace folder…`) opens the picker in Documents;
-the chosen folder is remembered in IndexedDB and restored on the next start when permission is
-still granted. `Save` / `Ctrl+S` writes the current file; an edited file shows `•`. Double-click
-the project title in the top bar to rename it in place. The topbar menus also expose find, clear,
-chart visibility and run.
+The workspace is the real folder `~/Documents/paperboat/squero-studio/mx`; there is no
+in-memory copy. The dev/preview server exposes it at `/__mx/workspace` (set `MX_WORKSPACE` to
+point elsewhere), so the app opens the files on start with no folder-permission prompt and
+create/rename/move/delete/save write straight through. `npm run build` served as static files
+has no endpoint; there the folder key (or `File ▸ Open workspace folder…`) uses the browser
+picker, which is also how another folder is opened. The chosen handle is remembered in
+IndexedDB and restored when its permission is still granted. `Save` / `Ctrl+S` writes the current
+file; an edited file shows `•`. Double-click the project title in the top bar to rename it in
+place. The topbar menus also expose find, clear, chart visibility and run.
+
+### About and dismissal
+
+`About` opens the same dialog as OM: the rippling wordmark, the frontend, Julia, kernel, Paperboat
+and license facts, and the credits. Floating surfaces follow one rule (shared `useDismiss`): a
+press outside or Escape closes them, the trigger does not immediately reopen them, and focus
+returns to where it was — menus, the About dialog and the editor settings all use it.
 
 ### Console
 

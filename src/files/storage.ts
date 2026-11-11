@@ -1,6 +1,7 @@
 // Real folders for the Files rail, through the File System Access API. The browser returns a
 // directory handle; we read .jl files, write the current file, and mirror create/delete/rename/
-// move/copy. The fallback is the in-memory workspace, labelled as such.
+// move/copy. The default workspace uses the local server endpoint (files/server.ts); this is
+// the picker path for another folder.
 export type FileTree = { files: Record<string, string>; folders: string[] };
 export type Storage = {
   write: (path: string, content: string) => Promise<void>;
@@ -104,7 +105,7 @@ export function storageOf(root: FileSystemDirectoryHandle): Storage {
 }
 
 // The chosen folder survives restarts: the handle is structured-cloneable, so IndexedDB keeps it.
-// Permission still needs a click after a restart; the picker then reuses the saved folder.
+// When its permission has lapsed, the default folder opens through the local endpoint instead.
 const DB_NAME = "mx-workspace";
 const STORE = "handles";
 
