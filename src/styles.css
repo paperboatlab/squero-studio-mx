@@ -123,14 +123,15 @@ h2, p { margin: 0; }
 .simrow b { color: var(--text); font-weight: 500; }
 .simrow .tag { margin-left: auto; }
 
-.console { grid-column: 1 / -1; grid-row: 3; display: flex; flex-direction: column; min-height: 0; background: var(--surface-screen); border: 1px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; }
-.chead { flex: none; height: 30px; display: flex; align-items: center; gap: 12px; padding: 0 12px; border-bottom: 1px solid var(--screen-line); background: #111; font: 400 11px var(--font-mono); color: var(--text-on-screen-muted); }
-.chead .on { color: var(--text-on-screen); font-weight: 500; }
+.console { grid-column: 1 / -1; grid-row: 3; display: flex; flex-direction: column; min-height: 0; background: var(--surface-panel); border: 1px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; }
+.chead { flex: none; height: 30px; display: flex; align-items: center; gap: 12px; padding: 0 12px; border-bottom: 1px solid var(--line); background: var(--surface-raised); font: 400 11px var(--font-mono); color: var(--text-muted); }
+.chead .on { color: var(--text); font-weight: 500; }
 .chead .on::before { content: "[ "; } .chead .on::after { content: " ]"; }
-.lines { flex: 1; min-height: 0; padding: 6px 12px; overflow: auto; font: 400 11px/1.6 var(--font-mono); color: #d6d6d0; }
-.lines .prompt { color: var(--signal); }
-.lines .ok { color: #8ad19a; }
-.lines .warn { color: var(--signal); }
+.lines { flex: 1; min-height: 0; padding: 6px 12px; overflow: auto; font: 400 11px/1.6 var(--font-mono); color: var(--text); }
+.lines .prompt { color: var(--signal-text); }
+.lines .ok { color: #2e7d32; }
+.lines .warn { color: var(--signal-text); }
+:root[data-theme="dark"] .lines .ok { color: #8ad19a; }
 
 /* The Scope is built for a dashboard cell; in the MX stage it must fill the panel. */
 .scope-wrap .instrument.scope { display: flex; flex-direction: column; }
@@ -175,11 +176,11 @@ h2, p { margin: 0; }
 .tabbody .scratch { margin-top: auto; border-top: 1px solid var(--line); padding: 9px 0 0; }
 
 .console .lines { overflow: auto; }
-.cin { flex: none; display: flex; align-items: center; gap: 8px; padding: 5px 12px 7px; border-top: 1px solid var(--screen-line); background: var(--surface-screen); }
-.cin .prompt { color: var(--signal); font: 500 11px var(--font-mono); }
-.cin input { flex: 1; min-width: 0; background: transparent; border: 0; box-shadow: none; outline: none; padding: 2px 0; color: #f2f2ee; font: 400 11.5px var(--font-mono); }
-.cin input::placeholder { color: var(--text-on-screen-muted); }
-.lines .cmdline { color: #f2f2ee; }
+.cin { flex: none; display: flex; align-items: center; gap: 8px; padding: 5px 12px 7px; border-top: 1px solid var(--line); background: var(--surface-raised); }
+.cin .prompt { color: var(--signal-text); font: 500 11px var(--font-mono); }
+.cin input { flex: 1; min-width: 0; background: transparent; border: 0; box-shadow: none; outline: none; padding: 2px 0; color: var(--text); font: 400 11.5px var(--font-mono); }
+.cin input::placeholder { color: var(--text-muted); }
+.lines .cmdline { color: var(--text); }
 
 /* Selection: file buttons and workspace cards are real choices. */
 .files .file { width: 100%; border: 0; border-radius: 0; background: none; padding: 0 12px; text-align: left; }
@@ -386,8 +387,8 @@ body.resizing .app.split { transition: none; }
 .app.split.console-hidden .chead { height: 28px; }
 .app.split.console-hidden .console-splitter { display: none; }
 .app.split.console-hidden .console { border-radius: var(--radius-lg); }
-.console-toggle { width: 20px; height: 20px; color: var(--text-on-screen-muted); }
-.console-toggle:hover { color: var(--text-on-screen); }
+.console-toggle { width: 20px; height: 20px; color: var(--text-muted); }
+.console-toggle:hover { color: var(--text); }
 .console-toggle svg { transform: rotate(0deg); }
 .console-toggle.open svg { transform: rotate(180deg); }
 
