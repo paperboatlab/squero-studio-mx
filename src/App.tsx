@@ -10,6 +10,7 @@ import { Script } from "./editor/Script.tsx";
 import { DEFAULT_EDITOR_SETTINGS, type EditorSettings } from "./editor/CodeEditor.tsx";
 import { SqueroLogo } from "./shell/SqueroLogo.tsx";
 import { AboutModal } from "./shell/AboutModal.tsx";
+import { FRONTEND_VERSION, JULIA_VERSION, KERNEL_PROTOCOL, KERNEL_VERSION, PAPERBOAT_PROTOCOL } from "./version.ts";
 import { FilePanel, type FilePanelHandle } from "./files/FilePanel.tsx";
 import { askWrite, canWrite, loadDirHandle, readTree, saveDirHandle, storageOf } from "./files/storage.ts";
 import { loadServerWorkspace, serverStorage, type ServerWorkspace } from "./files/server.ts";
@@ -89,7 +90,7 @@ export function App() {
   const lastSent = useRef("");
   const attachedOnce = useRef(false);
   const [lines, setLines] = useState<Line[]>([
-    { level: "info", text: "julia 1.11.5 · kernel 1.11.5-r3 · frontend 0.1.0 · squero-kernel/0 · paperboat/0" },
+    { level: "info", text: `julia ${JULIA_VERSION} · kernel ${KERNEL_VERSION} · frontend ${FRONTEND_VERSION} · ${KERNEL_PROTOCOL} · ${PAPERBOAT_PROTOCOL}` },
     { level: "info", text: "paperboat: every workspace variable broadcasts when a backend is up" },
     { level: "ok", text: "matrices and vectors travel to blocks, not project variables" },
   ]);
@@ -245,7 +246,7 @@ export function App() {
     if (head === "attach") { attach(); return; }
     if (head === "detach") { link.current?.close(); setStatus("idle"); say("paperboat: detached", "warn"); return; }
     if (head === "run") { runScript(); return; }
-    if (head === "version") { say("julia 1.11.5 · frontend 0.1.0 · kernel 1.11.5-r3 · squero-kernel/0 · paperboat/0"); return; }
+    if (head === "version") { say(`julia ${JULIA_VERSION} · frontend ${FRONTEND_VERSION} · kernel ${KERNEL_VERSION} · ${KERNEL_PROTOCOL} · ${PAPERBOAT_PROTOCOL}`); return; }
     const assign = /^([A-Za-z_]\w*)\s*=\s*([\s\S]+)$/.exec(cmd);
     if (assign) {
       const res = evaluate(assign[2], varsOf(workspace), functions);
@@ -943,7 +944,7 @@ export function App() {
       <section className="console">
         <div className="chead">
           <span className="on">console</span><span>messages</span><span className="sp" />
-          <span className="tag">julia 1.11.5 · frontend 0.1.0</span>
+          <span className="tag">julia {JULIA_VERSION} · frontend {FRONTEND_VERSION}</span>
           <button
             type="button"
             className={`panel-toggle console-toggle${consoleHidden ? "" : " open"}`}

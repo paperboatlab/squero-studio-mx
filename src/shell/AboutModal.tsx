@@ -35,7 +35,7 @@ export function AboutModal({ status, onClose }: { status: LinkStatus; onClose: (
               <dt>Julia</dt>
               <dd className="mono">{JULIA_VERSION}</dd>
               <dt>Kernel</dt>
-              <dd className="mono">{KERNEL_IMAGE} · {KERNEL_VERSION}</dd>
+              <dd className="mono">{KERNEL_IMAGE}:{KERNEL_VERSION}</dd>
               <dt>Protocol</dt>
               <dd className="mono">{KERNEL_PROTOCOL} · {PAPERBOAT_PROTOCOL}</dd>
               <dt>Paperboat</dt>
