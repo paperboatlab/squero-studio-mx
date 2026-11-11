@@ -7,7 +7,7 @@ import type { Entity, View } from "@paperboat/shared/protocol";
 export const chartView: View = {
   mode: "3d",
   grid: false,
-  camera: { eye: [4.4, 2.8, 4.4], target: [0, 0.55, 0], fov: 45 },
+  camera: { eye: [5.6, 3.2, 5.6], target: [0, 0.55, 0], fov: 45 },
 };
 
 /** `raw` is the height; returns a 0..1 field so the mesh's viridis colours are stable. */

@@ -107,8 +107,8 @@ h2, p { margin: 0; }
 .shared-row { display: grid; grid-template-columns: minmax(0, 1fr) 74px 34px 46px; gap: 6px; align-items: center; padding: 4px 6px; border: 1px solid var(--line); border-radius: 3px; background: var(--surface-raised); }
 .shared-row .nm { font: 500 11px var(--font-mono); }
 .shared-row .shape { font: 400 9.5px var(--font-mono); color: var(--text-muted); text-align: right; }
-.src { font: 400 9px var(--font-mono); text-align: center; padding: 1px 0; border-radius: 2px; border: 1px solid var(--line); color: var(--text-muted); }
-.src.mx { color: var(--signal-text); border-color: color-mix(in srgb, var(--signal) 40%, var(--line)); }
+.shared-row .src { font: 400 9px var(--font-mono); text-align: center; padding: 1px 0; border-radius: 2px; border: 1px solid var(--line); color: var(--text-muted); }
+.shared-row .src.mx { color: var(--signal-text); border-color: color-mix(in srgb, var(--signal) 40%, var(--line)); }
 .state { font: 400 9px var(--font-mono); color: var(--text-muted); text-align: right; }
 .state.on { color: var(--signal-text); }
 .simrow { display: flex; align-items: baseline; gap: 8px; font: 400 10.5px var(--font-mono); color: var(--text-muted); }
@@ -127,3 +127,48 @@ h2, p { margin: 0; }
 /* The Scope is built for a dashboard cell; in the MX stage it must fill the panel. */
 .scope-wrap .instrument.scope { display: flex; flex-direction: column; }
 .scope-wrap .instrument.scope .screen { flex: 1; min-height: 0; }
+
+/* ---- script-first layout (2): files | editor | stage | workspace/shared ---------------- */
+.app.split {
+  grid-template-columns: 220px minmax(360px, 0.85fr) minmax(0, 1.15fr) 320px;
+  grid-template-rows: 56px minmax(0, 1fr) 154px;
+}
+.app.split .files { grid-column: 1; grid-row: 2; }
+.app.split .editor { grid-column: 2; grid-row: 2; }
+.app.split .stage { grid-column: 3; grid-row: 2; }
+.app.split .rightpane { grid-column: 4; grid-row: 2; }
+.files .file { cursor: default; }
+.editor { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.editor .code { flex: 1; min-height: 0; overflow: auto; background: var(--surface-screen); padding: 8px 0; }
+.editor .ln { display: flex; align-items: center; gap: 10px; height: 22px; padding: 0 12px; font: 400 12px / 22px var(--font-mono); color: #d6d6d0; white-space: pre; }
+.editor .ln .no { width: 24px; flex: none; text-align: right; color: #4f4f4a; font-size: 10.5px; }
+.editor .ln .src { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.editor .ln.on { background: rgb(255 255 255 / .045); box-shadow: inset 2px 0 0 var(--signal); }
+.tok-c { color: #6b6b63; }
+.tok-k { color: #c792ea; }
+.tok-s { color: #98c379; }
+.tok-n { color: #e5c07b; }
+.tok-f { color: #61afef; }
+.tok-o { color: #abb2bf; }
+.tok-v { color: #e06c75; }
+.tok-p { color: #d19a66; }
+.runstrip { flex: none; display: flex; align-items: center; gap: 9px; padding: 6px 10px; border-top: 1px solid var(--line); background: var(--surface-raised); font: 400 10.5px var(--font-mono); color: var(--text-muted); }
+.runstrip .track { flex: 1; height: 4px; background: var(--line); border-radius: 2px; position: relative; }
+.runstrip .track .f { position: absolute; left: 0; top: 0; bottom: 0; width: 48%; background: var(--signal); border-radius: 2px; }
+.runstrip .track .k { position: absolute; left: 48%; top: -3px; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; background: var(--signal); }
+
+.rightpane { display: flex; flex-direction: column; min-height: 0; }
+.rtabs { display: flex; align-items: center; gap: 12px; font: 400 12px var(--font-mono); color: var(--text-muted); }
+.rtabs button { border: 0; background: none; padding: 0; color: inherit; font: inherit; }
+.rtabs button.on { color: var(--text); font-weight: 500; }
+.rtabs button.on::before { content: "[ "; } .rtabs button.on::after { content: " ]"; }
+.tabbody { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; padding: 9px 10px; overflow: auto; }
+.tabbody .vars { padding: 0; }
+.tabbody .scratch { margin-top: auto; border-top: 1px solid var(--line); padding: 9px 0 0; }
+
+.console .lines { overflow: auto; }
+.cin { flex: none; display: flex; align-items: center; gap: 8px; padding: 5px 12px 7px; border-top: 1px solid var(--screen-line); background: var(--surface-screen); }
+.cin .prompt { color: var(--signal); font: 500 11px var(--font-mono); }
+.cin input { flex: 1; min-width: 0; background: transparent; border: 0; box-shadow: none; outline: none; padding: 2px 0; color: #f2f2ee; font: 400 11.5px var(--font-mono); }
+.cin input::placeholder { color: var(--text-on-screen-muted); }
+.lines .cmdline { color: #f2f2ee; }

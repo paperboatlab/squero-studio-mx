@@ -80,6 +80,19 @@ npm run build
 `@paperboat/shared` is a sibling checkout (`file:../paperboat-shared`); install its dependencies
 first if needed.
 
+### Console
+
+The bottom console is a real command line, not a log. It accepts:
+
+```
+help · whos · clear/clc · attach · detach
+share <name> · unshare <name> · simulate/run · version
+```
+
+A bare variable name (`A`, `k`) inspects it. Anything else is queued for `squero-kernel/0` until
+the Julia kernel is attached; the console says so instead of pretending to evaluate it. Arrow Up /
+Arrow Down recall history.
+
 ## Status
 
 Scaffold: the shell, the shared Station renderer as a 3D chart, the shared Scope, and the
