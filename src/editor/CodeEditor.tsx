@@ -251,6 +251,7 @@ function answerFor(text: string, vars: Record<string, NumValue>, functions: Func
   if (/\b(surf|mesh|imagesc)\b/.test(t)) return new AnswerMarker("→ chart", "chart", () => onChart?.("3d", t));
   if (/\bplot\b/.test(t)) return new AnswerMarker("→ chart", "chart", () => onChart?.("2d", t));
   if (/\bsubplot\b/.test(t)) return new AnswerMarker("subplot", "type");
+  if (/\boptimize\s*\(/.test(t)) return new AnswerMarker("→ optimize", "run");
   if (/\bstate_space\b/.test(t)) return new AnswerMarker("→ run", "run");
   if (/\b(colormap|view|clim)\b/.test(t)) return new AnswerMarker("ok", "ok");
   if (/\bhypot\b/.test(t)) return new AnswerMarker(dims(vars), "spark");

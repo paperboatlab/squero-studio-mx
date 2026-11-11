@@ -2,7 +2,14 @@
 // `imagesc` or `scatter`. The kernel will own the real figure model; this is the scaffold's
 // parser so the examples open the right tiles now.
 export type FigureKind = "line" | "surface" | "heat" | "scatter";
-export type FigureTile = { row: number; col: number; kind: FigureKind; title: string };
+export type FigureTile = {
+  row: number;
+  col: number;
+  kind: FigureKind;
+  title: string;
+  /** A scatter's literal points, when the call wrote them out (a solution marker). */
+  points?: [number, number][];
+};
 export type Figure = { rows: number; cols: number; tiles: FigureTile[]; explicit: boolean };
 
 export function parseFigure(code: string): Figure | null {
@@ -30,7 +37,16 @@ export function parseFigure(code: string): Figure | null {
       current = { row: 1, col: tiles.length + 1 };
     }
     const kind: FigureKind = call[1] === "plot" ? "line" : call[1] === "scatter" ? "scatter" : call[1] === "imagesc" || call[1] === "heatmap" ? "heat" : "surface";
-    tiles.push({ ...current, kind, title: statement });
+    let points: [number, number][] | undefined;
+    if (call[1] === "scatter") {
+      const literal = /^scatter\s*\(\s*\[([^\]]*)\]\s*,\s*\[([^\]]*)\]\s*\)/.exec(statement);
+      if (literal) {
+        const xs = literal[1].split(",").map((v) => Number(v.trim())).filter(Number.isFinite);
+        const ys = literal[2].split(",").map((v) => Number(v.trim())).filter(Number.isFinite);
+        if (xs.length && xs.length === ys.length) points = xs.map((x, i) => [x, ys[i]]);
+      }
+    }
+    tiles.push({ ...current, kind, title: statement, points });
   }
   return tiles.length ? { rows, cols, tiles, explicit } : null;
 }

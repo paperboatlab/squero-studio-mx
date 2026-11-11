@@ -17,6 +17,11 @@ The folder is read/write in Chrome and Edge; Firefox and Safari use the read-onl
 | `surfaces.jl` | 1 × 2 surface and heat |
 | `lorenz.jl` | a Lorenz RK4 loop, then `plot` |
 | `state_space.jl` | A, B, C, D, x0 for Paperboat |
+| `optimization/lp.jl` | furniture workshop LP with `optimize` |
+| `optimization/qp.jl` | portfolio QP with `optimize` |
+| `optimization/nlp.jl` | sensor placement NLP with `optimize` |
+| `optimization/nlp-unconstrained.jl` | Rosenbrock, unconstrained |
+| `optimization/box-constrained.jl` | two pumps, bounds only |
 | `export.jl` | savefig, writematrix, save |
 | `surface.jl` | the peaks surface |
 | `peaks.jl` | a height field |

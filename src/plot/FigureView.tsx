@@ -35,7 +35,7 @@ function Tile({ tile, focus, headless }: { tile: FigureTile; focus?: string | nu
         )}
         {tile.kind === "surface" && entities && <SceneView entities={entities} view={chartView} grid axes />}
         {tile.kind === "heat" && <Heatmap values={HEAT} />}
-        {tile.kind === "scatter" && <Scatter points={SCATTER} color="#3e63dd" />}
+        {tile.kind === "scatter" && <Scatter points={tile.points ?? SCATTER} color="#3e63dd" />}
       </div>
     </div>
   );
