@@ -101,6 +101,10 @@ diagnostics and an LSP later. The same wrapper takes
 `@codemirror/legacy-modes/mode/modelica`, so Squero OM can reuse it once it moves to
 `@paperboat/editor`.
 
+`Ctrl/Cmd+Enter` runs the current cell (a `#%%` section, or the selection; the whole file when
+there is no cell). `Shift+Enter` runs the selection, or the current line. Both also parse a
+`subplot` figure from what ran.
+
 ### Figures and subplot
 
 `subplot(m, n, p)` followed by `plot`, `surf`, `mesh`, `imagesc` or `scatter` opens a **figure**

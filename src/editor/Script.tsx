@@ -3,7 +3,7 @@ import { useState } from "react";
 import { CodeEditor, type EditorSettings } from "./CodeEditor.tsx";
 
 export function Script({
-  file, code, onChange, onRun, dirty, onSave, settings, onSettings, variables, onChart,
+  file, code, onChange, onRun, dirty, onSave, settings, onSettings, variables, onChart, onRunSelection,
 }: {
   file: string;
   code: string;
@@ -15,6 +15,7 @@ export function Script({
   onSettings: (settings: EditorSettings) => void;
   variables: readonly { name: string; type: string }[];
   onChart?: (kind: "3d" | "2d", line: string) => void;
+  onRunSelection?: (code: string, mode: "cell" | "line" | "selection") => void;
 }) {
   const [open, setOpen] = useState(false);
   const set = <K extends keyof EditorSettings>(key: K, value: EditorSettings[K]) => onSettings({ ...settings, [key]: value });
@@ -68,14 +69,14 @@ export function Script({
       )}
 
       <div className="code">
-        <CodeEditor key={file} value={code} file={file} onChange={onChange} settings={settings} variables={variables} onChart={onChart} />
+        <CodeEditor key={file} value={code} file={file} onChange={onChange} settings={settings} variables={variables} onChart={onChart} onRunSelection={onRunSelection} />
       </div>
       <div className="runstrip">
         <span>run-07</span>
         <span className="track"><span className="f" /><span className="k" /></span>
         <span>2.40 s</span>
         <span>step 120 / 500</span>
-        <span style={{ marginLeft: "auto" }}>← → step</span>
+        <span style={{ marginLeft: "auto" }} title="Ctrl/Cmd+Enter: run cell · Shift+Enter: run line">⌘↵ cell · ⇧↵ line</span>
       </div>
     </section>
   );

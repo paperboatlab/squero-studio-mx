@@ -53,19 +53,40 @@ view(-37.5, 30)
 
 # state_space(A, B, C, D) → Paperboat
 `,
-  "lorenz.jl": `# lorenz.jl — scaffold
-# the kernel opens this file and its workspace
+  "lorenz.jl": `# lorenz.jl — the Lorenz attractor with a small RK4 loop
+σ, ρ, β = 10.0, 28.0, 8 / 3
+dt = 0.01
+t = 0:dt:20
+x = zeros(3, length(t))
+x[:, 1] = [1.0, 1.0, 1.0]
+f(s) = [σ * (s[2] - s[1]), s[1] * (ρ - s[3]) - s[2], s[1] * s[2] - β * s[3]]
+for k in 2:length(t)
+    s = x[:, k - 1]
+    k1 = f(s)
+    k2 = f(s + dt / 2 * k1)
+    k3 = f(s + dt / 2 * k2)
+    k4 = f(s + dt * k3)
+    x[:, k] = s + dt / 6 * (k1 + 2k2 + 2k3 + k4)
+end
+plot(t, x[1, :])
 `,
   "plots/peaks.jl": `# peaks.jl — the demo surface
 A = peaks(512)
 surf(A)
 `,
-  "state_space.jl": `# state_space.jl — A, B, C, D → Paperboat
-# A, B, C, D and x0 are handed to a state_space block.
+  "state_space.jl": `# state_space.jl — a second-order system as A, B, C, D
+A = [0.0 1.0; -2.0 -3.0]
+B = [0.0; 1.0]
+C = [1.0 0.0]
+D = [0.0]
+x0 = [1.0, 0.0]
+
+# Paperboat's state_space block integrates this with the run's solver.
 `,
-  "export.jl": `# export.jl — scaffold
+  "export.jl": `# export.jl — write the surface and the workspace
 savefig("surface.png")
 writematrix(A, "data/run-07.csv")
+save("data/run-07.mat")
 `,
   "examples/subplots.jl": `# subplots.jl — a 2 × 2 page
 x = 0:0.1:10
@@ -123,7 +144,7 @@ export function App() {
   const [lines, setLines] = useState<Line[]>([
     { level: "info", text: "julia 1.11.5 · kernel 1.11.5-r3 · frontend 0.1.0" },
     { level: "info", text: "paperboat: scalars broadcast automatically when a backend is up" },
-    { level: "ok", text: "3d: Station renderer · mesh A · 4 225 vertices" },
+    { level: "ok", text: "matrices and vectors travel to blocks, not project variables" },
   ]);
   const [input, setInput] = useState("");
   const [history, setHistory] = useState<string[]>([]);
@@ -337,6 +358,28 @@ export function App() {
     say(`clear ${name}`, "warn");
   };
 
+  const runCode = (code: string, mode: "cell" | "line" | "selection") => {
+    const fig = parseFigure(code);
+    setFigure(fig);
+    setFigureFocus(null);
+    if (fig) setTab("figure");
+    const byName = new Map(workspace.map((v) => [v.name, v]));
+    let changed = false;
+    for (const raw of code.split("\n")) {
+      const line = raw.trim();
+      if (!line || line.startsWith("#")) continue;
+      const assign = /^([A-Za-z_]\w*)\s*=\s*([\s\S]+)$/.exec(line);
+      if (!assign) continue;
+      const res = evaluate(assign[2], Object.fromEntries([...byName].map(([name, v]) => [name, v.value ?? v.preview ?? 0])));
+      if (res.ok) {
+        byName.set(assign[1], variableFrom(assign[1], res.value));
+        changed = true;
+      }
+    }
+    if (changed) setWorkspace([...byName.values()]);
+    say(`run ${mode} · ${code.split("\n").length} lines`, "ok");
+  };
+
   const runScript = () => {
     const vars = demoWorkspaces[selectedFile] ?? [];
     const fig = parseFigure(files[selectedFile] ?? "");
@@ -449,7 +492,15 @@ export function App() {
         <div className="proj"><span className="dot" />{selectedFile}</div>
         <div className={`status ${status}`}><span className="pip" />{status === "attached" ? "paperboat · attached" : "julia · ready"}</div>
         <div className="keys">
-          <button className="key small chartkey" onClick={() => setChartHidden((v) => !v)}>{chartHidden ? "show chart" : "hide chart"}</button>
+          <button
+            className={`key small chartkey${chartHidden ? " off" : ""}`}
+            onClick={() => setChartHidden((v) => !v)}
+            title={chartHidden ? "Show chart" : "Hide chart"}
+            aria-label={chartHidden ? "Show chart" : "Hide chart"}
+            aria-pressed={!chartHidden}
+          >
+            <svg viewBox="0 0 16 16" aria-hidden><rect x="2" y="3" width="12" height="10" rx="1" /><path d="M4 11l3-3 2 2 3-4" /></svg>
+          </button>
           <button className="key">Console <span className="tag">{lines.length}</span></button>
           <button className="key small" onClick={() => setAppTheme((t) => (t === "dark" ? "light" : "dark"))} title="Toggle theme">{appTheme === "dark" ? "☀" : "☾"}</button>
         </div>
@@ -464,6 +515,7 @@ export function App() {
         onOpen={setSelectedFile}
         onChange={({ files: nextFiles, folders: nextFolders }) => { setFiles(nextFiles); setFolders(nextFolders); }}
         onEditRoot={() => void openFolder()}
+        onOpenFolder={() => void openFolder()}
         rootBadge={dir ? "folder" : "in-memory"}
         storage={storage}
         onSay={say}
@@ -483,6 +535,7 @@ export function App() {
         onSettings={setEditor}
         variables={workspace.map((v) => ({ name: v.name, type: v.type }))}
         onChart={(kind, line) => { setFigureFocus(line); setTab(figure ? "figure" : kind); setChartHidden(false); say(`chart → ${figure ? line : kind}`, "ok"); }}
+        onRunSelection={runCode}
       />
 
       <div

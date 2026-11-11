@@ -2,7 +2,7 @@
 // the live workspace), bracket matching/closing, a lint gutter and clickable answer tokens.
 // The settings are the caller's; this file only maps them to extensions.
 import { useEffect, useRef } from "react";
-import { Compartment, EditorState } from "@codemirror/state";
+import { Compartment, EditorState, Prec } from "@codemirror/state";
 import {
   EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter,
   drawSelection, dropCursor, rectangularSelection, crosshairCursor, gutter, GutterMarker,
@@ -200,7 +200,7 @@ const answerGutter = (onChart?: OnChart) => gutter({
 });
 
 export function CodeEditor({
-  value, file, onChange, settings, variables, onChart,
+  value, file, onChange, settings, variables, onChart, onRunSelection,
 }: {
   value: string;
   file: string;
@@ -208,6 +208,7 @@ export function CodeEditor({
   settings: EditorSettings;
   variables: readonly { name: string; type: string }[];
   onChart?: OnChart;
+  onRunSelection?: (code: string, mode: "cell" | "line" | "selection") => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
@@ -217,11 +218,39 @@ export function CodeEditor({
   vars.current = variables;
   const chart = useRef(onChart);
   chart.current = onChart;
+  const runSelection = useRef(onRunSelection);
+  runSelection.current = onRunSelection;
 
   const compartments = useRef({
     theme: new Compartment(), font: new Compartment(), wrap: new Compartment(),
     tab: new Compartment(), auto: new Compartment(), brackets: new Compartment(), lint: new Compartment(),
   }).current;
+
+  const runAt = (mode: "cell" | "line"): boolean => {
+    const instance = view.current;
+    if (!instance || !runSelection.current) return false;
+    const sel = instance.state.selection.main;
+    if (!sel.empty) {
+      runSelection.current(instance.state.sliceDoc(sel.from, sel.to), "selection");
+      return true;
+    }
+    if (mode === "line") {
+      const line = instance.state.doc.lineAt(sel.head);
+      runSelection.current(line.text, "line");
+      return true;
+    }
+    const doc = instance.state.doc;
+    const here = doc.lineAt(sel.head).number;
+    let start = 1, end = doc.lines;
+    for (let i = here; i >= 1; i--) {
+      if (doc.line(i).text.trimStart().startsWith("#%%")) { start = i; break; }
+    }
+    for (let i = here + 1; i <= doc.lines; i++) {
+      if (doc.line(i).text.trimStart().startsWith("#%%")) { end = i - 1; break; }
+    }
+    runSelection.current(doc.sliceString(doc.line(start).from, doc.line(end).to), "cell");
+    return true;
+  };
 
   const source: CompletionSource = (context) => {
     const word = context.matchBefore(/[A-Za-z_]\w*/);
@@ -254,6 +283,10 @@ export function CodeEditor({
           rectangularSelection(),
           crosshairCursor(),
           indentOnInput(),
+          Prec.high(keymap.of([
+            { key: "Mod-Enter", run: () => runAt("cell") },
+            { key: "Shift-Enter", run: () => runAt("line") },
+          ])),
           keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab, ...closeBracketsKeymap, ...completionKeymap]),
           StreamLanguage.define(julia),
           compartments.theme.of(themeExt()),

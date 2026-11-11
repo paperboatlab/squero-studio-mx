@@ -16,6 +16,7 @@ export type FilePanelProps = {
   onPathChange?: (from: string, to: string) => void;
   onDeletePath?: (path: string) => void;
   onEditRoot?: () => void;
+  onOpenFolder?: () => void;
   rootBadge?: string;
   storage?: Storage;
   onSay: (text: string, level?: "info" | "ok" | "warn") => void;
@@ -62,7 +63,7 @@ export function entriesOf(files: Readonly<Record<string, string>>, folders: read
   return out;
 }
 
-export const FilePanel = forwardRef<FilePanelHandle, FilePanelProps>(function FilePanel({ root, files, folders, active, onOpen, onChange, onPathChange, onDeletePath, onEditRoot, rootBadge, storage, onSay }, ref) {
+export const FilePanel = forwardRef<FilePanelHandle, FilePanelProps>(function FilePanel({ root, files, folders, active, onOpen, onChange, onPathChange, onDeletePath, onEditRoot, onOpenFolder, rootBadge, storage, onSay }, ref) {
   const tree = useRef<FileTreeHandle>(null);
   const entries = useMemo(() => entriesOf(files, folders), [files, folders]);
   const exists = (path: string) => path in files || folders.includes(path);
@@ -193,6 +194,8 @@ export const FilePanel = forwardRef<FilePanelHandle, FilePanelProps>(function Fi
     <aside className="rail panel files" aria-label="Files">
       <div className="rail-tabs" role="tablist" aria-label="Files">
         <span className="rail-tab on" role="tab" aria-selected>files</span>
+        <span className="sp" />
+        <button type="button" className="key small rail-open" title="Open workspace folder" onClick={onOpenFolder}>folder</button>
         <button
           type="button"
           className="key small rail-add"
@@ -206,9 +209,15 @@ export const FilePanel = forwardRef<FilePanelHandle, FilePanelProps>(function Fi
       <div className="files-panel">
         <div className="files-head">
           <span className="nm" title={root}>{root}</span>
-          {onEditRoot && <button className="plain tag edit-root" title="Edit workspace folder" onClick={onEditRoot}>edit</button>}
+          {onEditRoot && <button className="plain tag edit-root" title="Open workspace folder" onClick={onEditRoot}>{rootBadge === "folder" ? "change" : "open"}</button>}
           <span className="lbl">{rootBadge ?? "folder"}</span>
         </div>
+        {rootBadge !== "folder" && onOpenFolder && (
+          <div className="files-open">
+            <button className="key small" onClick={onOpenFolder}>Open folder…</button>
+            <span className="tag">in-memory workspace</span>
+          </div>
+        )}
         <FileTree
           ref={tree}
           entries={entries}

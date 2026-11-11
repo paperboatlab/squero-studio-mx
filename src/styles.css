@@ -292,3 +292,15 @@ h2, p { margin: 0; }
 
 .figure-tile.focus { outline: 2px solid var(--signal); outline-offset: -2px; }
 .editor .head .key { white-space: nowrap; }
+
+/* The explicit folder picker in the Files rail. */
+.files .rail-open { margin-left: auto; height: 20px; padding: 0 6px; font-size: 10px; }
+.files .rail-add { margin-left: 4px; }
+.files-open { display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-bottom: 1px solid var(--line); }
+.files-open .tag { color: var(--text-muted); }
+
+/* Both chart toggles are the same square key. */
+.topbar .chartkey { width: 26px; height: 26px; padding: 0; display: inline-grid; place-items: center; }
+.topbar .chartkey svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linejoin: round; stroke-linecap: round; }
+.topbar .chartkey.off { color: var(--text-muted); }
+.stage-hide { width: 24px; height: 24px; }
