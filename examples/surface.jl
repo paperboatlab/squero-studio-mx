@@ -7,4 +7,3 @@ sel = A[A .> 0.42]
 
 surf(X, Y, A)
 colormap(:viridis)
-view(-37.5, 30)
