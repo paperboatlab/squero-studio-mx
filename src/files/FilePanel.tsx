@@ -2,6 +2,7 @@
 // mutations: new file/folder, rename, duplicate, delete, copy path, and drag-to-move.
 import { forwardRef, useImperativeHandle, useMemo, useRef } from "react";
 import { FileTree, type FileEntry, type FileTreeHandle } from "@paperboat/shared/files";
+import type { Storage } from "./storage.ts";
 
 export type FilePanelHandle = { newFile: () => void; newFolder: () => void };
 
@@ -15,6 +16,8 @@ export type FilePanelProps = {
   onPathChange?: (from: string, to: string) => void;
   onDeletePath?: (path: string) => void;
   onEditRoot?: () => void;
+  rootBadge?: string;
+  storage?: Storage;
   onSay: (text: string, level?: "info" | "ok" | "warn") => void;
 };
 
@@ -59,10 +62,14 @@ export function entriesOf(files: Readonly<Record<string, string>>, folders: read
   return out;
 }
 
-export const FilePanel = forwardRef<FilePanelHandle, FilePanelProps>(function FilePanel({ root, files, folders, active, onOpen, onChange, onPathChange, onDeletePath, onEditRoot, onSay }, ref) {
+export const FilePanel = forwardRef<FilePanelHandle, FilePanelProps>(function FilePanel({ root, files, folders, active, onOpen, onChange, onPathChange, onDeletePath, onEditRoot, rootBadge, storage, onSay }, ref) {
   const tree = useRef<FileTreeHandle>(null);
   const entries = useMemo(() => entriesOf(files, folders), [files, folders]);
   const exists = (path: string) => path in files || folders.includes(path);
+  const mirror = (work?: Promise<void>) => { void work?.catch((error: unknown) => onSay(`disk: ${error instanceof Error ? error.message : String(error)}`, "warn")); };
+  const copyThenRemove = (from: string, to: string, folder: boolean) => {
+    mirror(storage?.copy(from, to, folder).then(() => storage?.remove(from, folder)));
+  };
 
   const unique = (dir: string, base: string): string => {
     let name = base;
@@ -77,7 +84,9 @@ export const FilePanel = forwardRef<FilePanelHandle, FilePanelProps>(function Fi
 
   const newFile = (parent?: FileEntry) => {
     const path = unique(parent?.path ?? "", "untitled.jl");
-    onChange({ files: { ...files, [path]: `# ${nameOf(path)}\n` }, folders: [...folders] });
+    const code = `# ${nameOf(path)}\n`;
+    onChange({ files: { ...files, [path]: code }, folders: [...folders] });
+    mirror(storage?.write(path, code));
     onOpen(path);
     onSay(`new ${path}`, "ok");
   };
@@ -85,6 +94,7 @@ export const FilePanel = forwardRef<FilePanelHandle, FilePanelProps>(function Fi
   const newFolder = (parent?: FileEntry) => {
     const path = unique(parent?.path ?? "", "new-folder");
     onChange({ files: { ...files }, folders: [...folders, path] });
+    mirror(storage?.mkdir(path));
     onSay(`new ${path}/`, "ok");
   };
 
@@ -103,6 +113,7 @@ export const FilePanel = forwardRef<FilePanelHandle, FilePanelProps>(function Fi
       const next: Record<string, string> = {};
       for (const [path, code] of Object.entries(files)) next[path === entry.path ? to : path] = code;
       onChange({ files: next, folders: [...folders] });
+      copyThenRemove(entry.path, to, false);
       onPathChange?.(entry.path, to);
       if (active === entry.path) onOpen(to);
     } else {
@@ -110,6 +121,7 @@ export const FilePanel = forwardRef<FilePanelHandle, FilePanelProps>(function Fi
       for (const [path, code] of Object.entries(files)) nextFiles[reparent(path, entry.path, to)] = code;
       const nextFolders = folders.map((folder) => reparent(folder, entry.path, to));
       onChange({ files: nextFiles, folders: nextFolders });
+      copyThenRemove(entry.path, to, true);
       onPathChange?.(entry.path, to);
       if (under(active, entry.path)) onOpen(reparent(active, entry.path, to));
     }
@@ -123,6 +135,7 @@ export const FilePanel = forwardRef<FilePanelHandle, FilePanelProps>(function Fi
       const copied = dot > 0 ? `${base.slice(0, dot)}-copy${base.slice(dot)}` : `${base}-copy`;
       const to = unique(dirOf(entry.path), copied);
       onChange({ files: { ...files, [to]: files[entry.path] }, folders: [...folders] });
+      mirror(storage?.copy(entry.path, to, false));
       onOpen(to);
       onSay(`duplicated → ${to}`, "ok");
       return;
@@ -132,6 +145,7 @@ export const FilePanel = forwardRef<FilePanelHandle, FilePanelProps>(function Fi
     for (const [path, code] of Object.entries(files)) if (under(path, entry.path)) nextFiles[reparent(path, entry.path, to)] = code;
     const nextFolders = folders.filter((f) => under(f, entry.path)).map((f) => reparent(f, entry.path, to));
     onChange({ files: nextFiles, folders: [...folders, ...nextFolders] });
+    mirror(storage?.copy(entry.path, to, true));
     onSay(`duplicated ${entry.path} → ${to}`, "ok");
   };
 
@@ -141,6 +155,7 @@ export const FilePanel = forwardRef<FilePanelHandle, FilePanelProps>(function Fi
     for (const [path, code] of Object.entries(files)) if (!under(path, entry.path)) nextFiles[path] = code;
     const nextFolders = folders.filter((folder) => !under(folder, entry.path));
     onChange({ files: nextFiles, folders: nextFolders });
+    mirror(storage?.remove(entry.path, entry.kind === "folder"));
     onDeletePath?.(entry.path);
     if (under(active, entry.path)) {
       const first = Object.keys(nextFiles).sort()[0];
@@ -159,6 +174,7 @@ export const FilePanel = forwardRef<FilePanelHandle, FilePanelProps>(function Fi
       const next: Record<string, string> = {};
       for (const [path, code] of Object.entries(files)) next[path === source.path ? to : path] = code;
       onChange({ files: next, folders: [...folders] });
+      copyThenRemove(source.path, to, false);
       onPathChange?.(source.path, to);
       if (active === source.path) onOpen(to);
     } else {
@@ -166,6 +182,7 @@ export const FilePanel = forwardRef<FilePanelHandle, FilePanelProps>(function Fi
       for (const [path, code] of Object.entries(files)) nextFiles[reparent(path, source.path, to)] = code;
       const nextFolders = folders.map((folder) => reparent(folder, source.path, to));
       onChange({ files: nextFiles, folders: nextFolders });
+      copyThenRemove(source.path, to, true);
       onPathChange?.(source.path, to);
       if (under(active, source.path)) onOpen(reparent(active, source.path, to));
     }
@@ -190,7 +207,7 @@ export const FilePanel = forwardRef<FilePanelHandle, FilePanelProps>(function Fi
         <div className="files-head">
           <span className="nm" title={root}>{root}</span>
           {onEditRoot && <button className="plain tag edit-root" title="Edit workspace folder" onClick={onEditRoot}>edit</button>}
-          <span className="lbl">folder</span>
+          <span className="lbl">{rootBadge ?? "folder"}</span>
         </div>
         <FileTree
           ref={tree}

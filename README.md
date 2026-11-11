@@ -62,6 +62,7 @@ src/
   chart/samples.ts        demo workspaces and run samples
   editor/CodeEditor.tsx   CodeMirror 6, Julia mode, lint gutter, answer tokens
   files/FilePanel.tsx     the MX mutations around the shared FileTree
+  files/storage.ts        real folders through the File System Access API
   kernel/localEval.ts     the pre-kernel console evaluator
   kernel/protocol.ts      squero-kernel/0 types (hello, eval, whos, get/set, snapshot)
   paperboat/link.ts       a minimal paperboat/0 client
@@ -106,9 +107,13 @@ MATLAB and Octave load directly.
 ### Files and menus
 
 The Files rail is `@paperboat/shared/files` — the same tree as Squero Studio OM. It supports
-folders, selection, new file/folder, rename, duplicate, delete, copy path and drag-to-move; the
-root's `edit` key changes the workspace folder. The topbar menus expose the same actions plus
-find, clear, chart visibility, run and simulate.
+folders, selection, new file/folder, rename, duplicate, delete, copy path and drag-to-move.
+
+The default workspace is **in memory** (the head says `in-memory`); it does not pretend to be a
+disk path. `File ▸ Open workspace folder…` uses the File System Access API to open a real folder,
+read its `.jl` files, and mirror create/delete/rename/move/copy. `Save` / `Ctrl+S` writes the
+current file; an edited file shows `•`. The topbar menus also expose find, clear, chart
+visibility, run and simulate.
 
 ### Console
 

@@ -8,6 +8,7 @@ import { chartAxes, chartView, surfaceEntity } from "./chart/surface.ts";
 import { demoWorkspaces, sampled, sampled2, times, type WorkspaceVariable } from "./chart/samples.ts";
 import { Script } from "./editor/Script.tsx";
 import { FilePanel, type FilePanelHandle } from "./files/FilePanel.tsx";
+import { readTree, storageOf, writeFile } from "./files/storage.ts";
 import { downloadMat } from "./workspace/mat.ts";
 import { evaluate, variableFrom, varsOf } from "./kernel/localEval.ts";
 import { PaperboatLink, type LinkStatus } from "./paperboat/link.ts";
@@ -76,7 +77,9 @@ export function App() {
   const [selectedFile, setSelectedFile] = useState("surface.jl");
   const [selectedVar, setSelectedVar] = useState("A");
   const [workspace, setWorkspace] = useState<WorkspaceVariable[]>(() => [...(demoWorkspaces["surface.jl"] ?? [])]);
-  const [workspaceRoot, setWorkspaceRoot] = useState("~/lab/mx");
+  const [workspaceRoot, setWorkspaceRoot] = useState("mx-workspace");
+  const [dir, setDir] = useState<FileSystemDirectoryHandle | null>(null);
+  const [dirty, setDirty] = useState<Set<string>>(new Set());
   const [varQuery, setVarQuery] = useState("");
   const filePanel = useRef<FilePanelHandle>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -124,6 +127,8 @@ export function App() {
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
   };
+
+  const storage = useMemo(() => (dir ? storageOf(dir) : undefined), [dir]);
 
   const entities = useMemo(() => {
     const list = chartAxes();
@@ -277,11 +282,39 @@ export function App() {
     say(`run ${selectedFile} · +${vars.length} variables · ${workspace.length + vars.length} total`, "ok");
   };
 
-  const changeRoot = () => {
-    const next = window.prompt("Workspace folder", workspaceRoot);
-    if (next?.trim()) {
-      setWorkspaceRoot(next.trim());
-      say(`workspace folder → ${next.trim()}`, "ok");
+  const openFolder = async () => {
+    const picker = window.showDirectoryPicker;
+    if (!picker) {
+      say("this browser has no folder picker; the workspace stays in memory", "warn");
+      return;
+    }
+    try {
+      const handle = await picker({ mode: "readwrite" });
+      const tree = await readTree(handle);
+      setDir(handle);
+      setWorkspaceRoot(handle.name);
+      setFiles(tree.files);
+      setFolders(tree.folders);
+      setSelectedFile(Object.keys(tree.files).sort()[0] ?? "");
+      setDirty(new Set());
+      say(`opened ${handle.name} · ${Object.keys(tree.files).length} files`, "ok");
+    } catch (error) {
+      if ((error as DOMException).name !== "AbortError") say(`folder: ${error instanceof Error ? error.message : String(error)}`, "warn");
+    }
+  };
+
+  const saveCurrent = async () => {
+    if (!selectedFile) return;
+    if (!dir) {
+      say("the workspace is in memory; File ▸ Open workspace folder… to save", "warn");
+      return;
+    }
+    try {
+      await writeFile(dir, selectedFile, files[selectedFile] ?? "");
+      setDirty((prev) => { const next = new Set(prev); next.delete(selectedFile); return next; });
+      say(`saved ${selectedFile}`, "ok");
+    } catch (error) {
+      say(`save: ${error instanceof Error ? error.message : String(error)}`, "warn");
     }
   };
 
@@ -299,10 +332,19 @@ export function App() {
   const shownVars = rows.filter((r) => r.source === "mx" && `${r.name} ${r.shape} ${r.type}`.toLowerCase().includes(varQuery.toLowerCase()));
   const active = rows.filter((r) => r.shared).length;
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); void saveCurrent(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [dir, selectedFile, files]);
+
   const commands: Command[] = [
     { id: "new-script", label: "New script…", menu: "file", group: "new", run: () => filePanel.current?.newFile() },
     { id: "new-folder", label: "New folder…", menu: "file", group: "new", run: () => filePanel.current?.newFolder() },
-    { id: "root", label: "Change workspace folder…", menu: "file", group: "workspace", run: changeRoot },
+    { id: "open-folder", label: "Open workspace folder…", menu: "file", group: "workspace", run: () => void openFolder() },
+    { id: "save", label: "Save", menu: "file", group: "workspace", shortcut: "Ctrl+S", run: () => void saveCurrent(), enabled: dirty.has(selectedFile) && dir !== null, why: dir ? "no unsaved changes" : "open a folder first" },
     { id: "export", label: "Export workspace (.mat)…", menu: "file", group: "workspace", run: exportWorkspace, enabled: workspace.length > 0, why: "the workspace is empty" },
     { id: "attach", label: "Attach Paperboat…", menu: "file", group: "connect", run: () => setRightTab("shared") },
     { id: "find", label: "Find variables…", menu: "edit", group: "find", run: () => { setRightTab("workspace"); requestAnimationFrame(() => searchRef.current?.focus()); } },
@@ -338,15 +380,22 @@ export function App() {
         active={selectedFile}
         onOpen={setSelectedFile}
         onChange={({ files: nextFiles, folders: nextFolders }) => { setFiles(nextFiles); setFolders(nextFolders); }}
-        onEditRoot={changeRoot}
+        onEditRoot={() => void openFolder()}
+        rootBadge={dir ? "folder" : "in-memory"}
+        storage={storage}
         onSay={say}
       />
 
       <Script
         file={selectedFile}
         code={files[selectedFile] ?? ""}
-        onChange={(code) => setFiles((prev) => ({ ...prev, [selectedFile]: code }))}
+        onChange={(code) => {
+          setFiles((prev) => ({ ...prev, [selectedFile]: code }));
+          setDirty((prev) => new Set(prev).add(selectedFile));
+        }}
         onRun={runScript}
+        dirty={dirty.has(selectedFile)}
+        onSave={() => void saveCurrent()}
       />
 
       <div
