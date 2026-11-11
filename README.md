@@ -65,9 +65,11 @@ src/
   editor/CodeEditor.tsx   CodeMirror 6, Julia mode, completions, settings, answer tokens
   files/FilePanel.tsx     the MX mutations around the shared FileTree
   files/storage.ts        real folders through the File System Access API
-  plot/figure.ts          the subplot plan parsed from a script
+  plot/figure.ts          the figure model: tiles, series, surfaces
+  plot/spec.ts            chart/optimization specs → the figure model (no parser)
   plot/FigureView.tsx     a figure page: Scope, SceneView, heat and scatter tiles
-  kernel/localEval.ts     the pre-kernel console evaluator
+  kernel/client.ts        the squero-kernel/0 socket (one session, requests by id)
+  kernel/localEval.ts     the scratch-line evaluator before a kernel is attached
   kernel/protocol.ts      squero-kernel/0 types (hello, eval, whos, get/set, snapshot)
   paperboat/link.ts       a minimal paperboat/0 client
   paperboat/variables.ts  the shared-variable contract (scalars by name; matrices to blocks)
@@ -185,23 +187,24 @@ help · whos · clear [name] · clc · attach · detach
 share <name> · unshare <name> · simulate/run · version
 ```
 
-Assignments and simple expressions evaluate **locally** before the kernel is attached:
-`gg=3`, `x = 1:5`, `A = zeros(2,3)`, `gg + 4` → `ans`. Short-form functions work too:
-`f(x, y) = x + y` then `t = f(2, 3)` gives `t = 5` in the workspace. Numbers, vectors, matrices,
-ranges, common math functions and the MATLAB-style builders are supported. Functions persist
-across runs and console/scratch calls until `clear` (or `clear f`). Anything else is queued for
-`squero-kernel/0` with a clear message. Arrow Up/Arrow Down recall history.
+Scripts run in the kernel: `squero-kernel/0` evaluates them, SqueroBase records the chart
+and optimization specs, and the app renders those specs. A run has no local parser or solver.
+The scratch line still evaluates locally until a kernel is attached (then it uses the same
+session); short-form functions, numbers, vectors, matrices, ranges, common math functions and
+the MATLAB-style builders are supported there. Arrow Up/Arrow Down recall history.
+
+Optimization specs go to the launcher's `/__mx/optimize`, which runs
+`paperboat optimize <problem> --json --grid 41`: the same readers, OSQP/Ipopt solver and
+`options.display` trace the Paperboat blocks use. The app binds `x_opt`/`f_opt` and draws the
+optimum on the objective surface.
 
 ## Status
 
-Scaffold: the shell, the shared Station renderer as a 3D chart, the shared Scope, and the
-variable/solver contracts. Next:
+The kernel, the spec path and the optimization bridge are in place. Next:
 
-- `squero-julia-kernel` container + `squero-kernel/0` launcher; the local evaluator then hands
-  simple expressions to the same workspace.
-- The session module/`clear` contract in the kernel: a fresh `Module` per session, or
-  `Base.delete_binding` where available.
 - `state_space`/`rhs` toolkit blocks in Paperboat and the run dock.
 - `Plot3D`/`Axes3D`/`ColorBar`/`Plot2D` in `@paperboat/shared/plot` (pb#312).
+- The Julia backend host (`paperboat new --julia`, pb#323) is in the engine; MX itself reads
+  SqueroBase from the `squero-mx-base` checkout, mounted read-only into the kernel.
 - `StationPanel`/`StationGraph` into `@paperboat/shared/station`.
 - A `paperboat-client` package for the protocol/reducer.

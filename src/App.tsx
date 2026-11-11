@@ -3,7 +3,7 @@ import { MenuBar } from "@paperboat/shared/components";
 import type { Command } from "@paperboat/shared";
 import type { Variable } from "@paperboat/shared/protocol";
 import { FigureView } from "./plot/FigureView.tsx";
-import { parseFigure, type Figure } from "./plot/figure.ts";
+import type { Figure } from "./plot/figure.ts";
 import { captureFigure, downloadBlob, encodeFigure, figureFileBase, zipFiles, type FigureFormat, FIGURE_FORMATS } from "./plot/export.ts";
 import type { WorkspaceVariable } from "./chart/samples.ts";
 import { Script } from "./editor/Script.tsx";
@@ -11,6 +11,8 @@ import { DEFAULT_EDITOR_SETTINGS, type EditorSettings } from "./editor/CodeEdito
 import { SqueroLogo } from "./shell/SqueroLogo.tsx";
 import { AboutModal } from "./shell/AboutModal.tsx";
 import { probeKernel, type KernelInfo } from "./kernel/probe.ts";
+import { evalCode, whois } from "./kernel/client.ts";
+import { figureFromCharts, figureFromOptimization, type ChartSpec, type OptimizationResult } from "./plot/spec.ts";
 import { FRONTEND_VERSION, JULIA_VERSION, KERNEL_PROTOCOL, KERNEL_VERSION, PAPERBOAT_PROTOCOL } from "./version.ts";
 import { FilePanel, type FilePanelHandle } from "./files/FilePanel.tsx";
 import { askWrite, canWrite, loadDirHandle, readTree, saveDirHandle, storageOf } from "./files/storage.ts";
@@ -148,7 +150,7 @@ export function App() {
   useEffect(() => { localStorage.setItem("mx.editor", JSON.stringify(editor)); }, [editor]);
   useEffect(() => {
     let live = true;
-    void probeKernel().then((info) => { if (live) setKernelInfo(info); });
+    void probeKernel(60000).then((info) => { if (live) setKernelInfo(info); });
     return () => { live = false; };
   }, []);
 
@@ -471,46 +473,90 @@ export function App() {
     setScratch("");
   };
 
-  const runCode = (code: string, mode: "cell" | "line" | "selection" | "file") => {
+  /** One problem to the Paperboat solver, over the launcher's bridge. */
+  const solveProblem = async (problem: unknown): Promise<OptimizationResult> => {
+    try {
+      const response = await fetch("/__mx/optimize", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ problem, grid: 41 }),
+      });
+      return (await response.json()) as OptimizationResult;
+    } catch (error) {
+      return { ok: false, error: `optimize bridge: ${String((error as Error).message ?? error)}` };
+    }
+  };
+
+  /**
+   * The kernel path: Julia evaluates the script, SqueroBase records the specs, the app renders
+   * them, and Paperboat solves the problems. Nothing here parses the source or solves.
+   */
+  const runCodeViaKernel = async (code: string, mode: "cell" | "line" | "selection" | "file") => {
     const startedAt = performance.now();
-    const fig = parseFigure(code);
-    if (fig) addFigure(fig, selectedFile);
-    else setFigureFocus(null);
-    const byName = new Map(workspace.map((v) => [v.name, v]));
-    let fns = { ...functions };
-    let changed = false;
-    let fnsChanged = false;
-    for (const raw of code.split("\n")) {
-      const line = raw.trim();
-      if (!line || line.startsWith("#")) continue;
-      const control = /^(clear|clearvars|clc)\s*(?:\(\s*([^)]*)\s*\))?$/.exec(line);
-      if (control) {
-        if (control[1] === "clc") {
-          setLines([]);
-        } else {
-          const arg = (control[2] ?? "").replace(/^["']|["']$/g, "").trim();
-          if (arg && arg !== "all") { byName.delete(arg); delete fns[arg]; }
-          else { byName.clear(); fns = {}; }
-          changed = true;
-          fnsChanged = true;
-        }
-        continue;
-      }
-      const definition = defineFunction(line, fns);
-      if (definition) { fns = definition; fnsChanged = true; continue; }
-      const assign = /^([A-Za-z_]\w*)\s*=\s*([\s\S]+)$/.exec(line);
-      if (!assign) continue;
-      const res = evaluate(assign[2], Object.fromEntries([...byName].map(([name, v]) => [name, v.value ?? v.preview ?? 0])), fns);
-      if (res.ok) {
-        byName.set(assign[1], variableFrom(assign[1], res.value));
-        changed = true;
+    const count = code.split("\n").filter((line) => line.trim()).length;
+    say(`kernel · run ${mode} · ${count} lines`, "ok");
+    const reply = await evalCode(code);
+    for (const line of (reply.stdout ?? "").split("\n")) {
+      if (line.trim()) say(line);
+    }
+    for (const event of reply.events ?? []) {
+      if (event.type === "clc") setLines([]);
+      else if (event.type === "clear") {
+        if (event.names?.length) setWorkspace((prev) => prev.filter((one) => !event.names!.includes(one.name)));
+        else { setWorkspace([]); setFunctions({}); }
       }
     }
-    if (changed) setWorkspace([...byName.values()]);
-    if (fnsChanged) setFunctions(fns);
-    const lines = code.split("\n").filter((line) => line.trim()).length;
-    setLastRun({ time: Date.now(), ms: Math.max(1, Math.round(performance.now() - startedAt)), lines, mode });
-    say(`run ${mode} · ${lines} lines`, "ok");
+    if (!reply.ok) say(reply.error ?? "kernel error", "warn");
+
+    const charts = figureFromCharts(reply.charts as ChartSpec[]);
+    if (charts) addFigure(charts, selectedFile);
+
+    let results: WorkspaceVariable[] = [];
+    for (const problem of reply.problems ?? []) {
+      const solved = await solveProblem(problem);
+      for (const line of solved.trace ?? []) say(line);
+      if (!solved.ok) {
+        say(solved.error ?? "optimization failed", "warn");
+        continue;
+      }
+      const values = (solved.x ?? []).map((value) => value.toFixed(4)).join(", ");
+      const level = solved.status === "solved" ? "ok" : "warn";
+      say(`optimization: ${solved.kind} ${solved.status} · objective ${(solved.objective ?? 0).toFixed(6)} · x = [${values}]`, level);
+      if (solved.x?.length === 2) {
+        results = [variableFrom("x_opt", solved.x), variableFrom("f_opt", solved.objective ?? 0)];
+        const figure = figureFromOptimization(solved);
+        if (figure) addFigure(figure, selectedFile);
+      }
+    }
+
+    const after = await whois();
+    if (after.ok && Array.isArray(after.value)) {
+      const variables = (after.value as WorkspaceVariable[]).map((one) => ({
+        name: one.name, shape: one.shape, type: one.type, preview: one.preview,
+      }));
+      const solved = new Set(results.map((one) => one.name));
+      setWorkspace([...variables.filter((one) => !solved.has(one.name)), ...results]);
+    } else if (results.length) {
+      setWorkspace((prev) => [...prev.filter((one) => !results.some((next) => next.name === one.name)), ...results]);
+    }
+
+    setLastRun({ time: Date.now(), ms: Math.max(1, Math.round(performance.now() - startedAt)), lines: count, mode });
+  };
+
+  const runCode = (code: string, mode: "cell" | "line" | "selection" | "file") => {
+    if (kernelInfo) {
+      void runCodeViaKernel(code, mode);
+      return;
+    }
+    // The first probe may still be starting Julia; wait for it before giving up.
+    void probeKernel(60000).then((info) => {
+      if (!info) {
+        say("kernel not attached · start the Julia kernel to run scripts", "warn");
+        return;
+      }
+      setKernelInfo(info);
+      void runCodeViaKernel(code, mode);
+    });
   };
 
   const runScript = () => runCode(files[selectedFile] ?? "", "file");

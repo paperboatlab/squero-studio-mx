@@ -1,31 +1,23 @@
-// A one-shot squero-kernel/0 hello through the launcher bridge. It proves the container is there
-// and gives the UI the real Julia and image versions; eval routing uses the same socket.
+// A squero-kernel/0 hello over the shared client. It proves the kernel is there and gives the
+// UI the real Julia and image versions; eval uses the same socket, so the probe starts nothing
+// that a run would start again. Concurrent probes share one hello.
+import { kernel } from "./client.ts";
 import type { KernelHello } from "./protocol.ts";
 
 export type KernelInfo = KernelHello;
 
+let pending: Promise<KernelInfo | null> | null = null;
+
+async function hello(timeout: number): Promise<KernelInfo | null> {
+  const reply = await kernel.request({ op: "hello" }, timeout);
+  if (!reply.ok) return null;
+  const info = reply as unknown as KernelHello;
+  return info.op === "hello" ? info : null;
+}
+
 export function probeKernel(timeout = 15000): Promise<KernelInfo | null> {
-  return new Promise((resolve) => {
-    let settled = false;
-    const finish = (value: KernelInfo | null) => {
-      if (settled) return;
-      settled = true;
-      window.clearTimeout(timer);
-      try { socket.close(); } catch { /* already closed */ }
-      resolve(value);
-    };
-    const scheme = location.protocol === "https:" ? "wss" : "ws";
-    const socket = new WebSocket(`${scheme}://${location.host}/__mx/kernel`);
-    const timer = window.setTimeout(() => finish(null), timeout);
-    socket.onopen = () => socket.send(JSON.stringify({ op: "hello" }));
-    socket.onmessage = (event) => {
-      if (typeof event.data !== "string") return;
-      try {
-        const message = JSON.parse(event.data) as KernelHello;
-        if (message.op === "hello") finish(message);
-      } catch { /* not a hello */ }
-    };
-    socket.onerror = () => finish(null);
-    socket.onclose = () => finish(null);
-  });
+  if (!pending) {
+    pending = hello(timeout).finally(() => { pending = null; });
+  }
+  return pending;
 }

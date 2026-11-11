@@ -2,6 +2,7 @@ import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { DEFAULT_WORKSPACE, workspaceMiddleware } from "./server/workspace.mjs";
 import { attachKernel } from "./server/kernel.mjs";
+import { optimizeMiddleware } from "./server/optimize.mjs";
 
 // Dev server only for now. The MX launcher (bin/squero-mx) serves dist/ with the same workspace
 // API and kernel bridge. dedupe: @paperboat/shared is a linked sibling with its own
@@ -12,10 +13,12 @@ function mxServer(): Plugin {
     name: "mx-server",
     configureServer(server) {
       server.middlewares.use("/__mx/workspace", workspaceMiddleware(DEFAULT_WORKSPACE));
+      server.middlewares.use(optimizeMiddleware());
       if (server.httpServer) attachKernel(server.httpServer, { workspace: DEFAULT_WORKSPACE });
     },
     configurePreviewServer(server) {
       server.middlewares.use("/__mx/workspace", workspaceMiddleware(DEFAULT_WORKSPACE));
+      server.middlewares.use(optimizeMiddleware());
       if (server.httpServer) attachKernel(server.httpServer, { workspace: DEFAULT_WORKSPACE });
     },
   };

@@ -2,11 +2,18 @@
 // stdio. The kernel normally runs in the pinned container with --network=none; SQUERO_JULIA=native
 // runs a local checkout instead. Shared by the Vite dev server and bin/squero-mx.
 import { spawn, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
 
 export const KERNEL_IMAGE = process.env.SQUERO_KERNEL_IMAGE ?? "squero-julia-kernel:1.11.6-r1";
 export const KERNEL_PROTOCOL = 0;
+
+// SqueroBase is the verbs' only definition; the kernel loads this checkout. It is mounted read
+// only into the container, or passed as SQUERO_BASE to a native julia.
+export const SQUERO_BASE =
+  process.env.SQUERO_BASE ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../squero-mx-base");
 
 const has = (cmd) => {
   const probe = spawnSync(cmd, ["--version"], { stdio: "ignore" });
@@ -28,6 +35,7 @@ export function kernelCommand({ workspace, image = KERNEL_IMAGE, runtime = kerne
     return {
       cmd: "julia",
       args: ["--startup-file=no", `--project=${repo}`, path.join(repo, "src", "kernel.jl")],
+      env: { SQUERO_BASE },
       runtime,
     };
   }
@@ -35,6 +43,11 @@ export function kernelCommand({ workspace, image = KERNEL_IMAGE, runtime = kerne
     const args = ["run", "--rm", "-i", "--network=none"];
     if (runtime === "podman") args.push("--userns=keep-id");
     if (workspace) args.push("-v", `${workspace}:/workspace:rw`, "-w", "/workspace");
+    if (existsSync(SQUERO_BASE)) {
+      // `:z` relabels the read-only mount for SELinux hosts; docker ignores the extra option.
+      const mount = runtime === "podman" ? `${SQUERO_BASE}:/opt/squero-mx-base:ro,z` : `${SQUERO_BASE}:/opt/squero-mx-base:ro`;
+      args.push("-v", mount, "-e", "SQUERO_BASE=/opt/squero-mx-base");
+    }
     args.push(image);
     return { cmd: runtime, args, runtime };
   }
@@ -50,7 +63,10 @@ function bridge(socket, options) {
     socket.close(1011, "no kernel runtime");
     return;
   }
-  const child = spawn(command.cmd, command.args, { stdio: ["pipe", "pipe", "pipe"] });
+  const child = spawn(command.cmd, command.args, {
+    stdio: ["pipe", "pipe", "pipe"],
+    env: { ...process.env, ...(command.env ?? {}) },
+  });
   let buffer = Buffer.alloc(0);
   let mode = "line";
   let need = 0;

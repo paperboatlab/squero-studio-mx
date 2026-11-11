@@ -20,7 +20,11 @@ export type KernelHello = {
   image: string;
   protocol: number;
   packages: string[];
+  /** The SqueroBase checkout the session loaded, or "" when the kernel runs plain Julia. */
+  squero_base?: string;
 };
+
+export type KernelEvent = { type: "clear" | "clc"; names?: string[] };
 
 export type KernelReply = {
   id?: string;
@@ -28,6 +32,12 @@ export type KernelReply = {
   error?: string;
   stdout?: string;
   value?: unknown;
+  /** Chart specs from the Julia verbs (`plot`, `surf`, …), see schema/chart.schema.json. */
+  charts?: unknown[];
+  /** Optimization problem specs, for the Paperboat solver. */
+  problems?: unknown[];
+  /** Session events the app applies after the statement (`clear`, `clc`). */
+  events?: KernelEvent[];
   /** A matrix's header comes before its binary frame; vectors use rows = 1. */
   array?: { rows: number; cols: number; dtype: "f64"; order: "col"; bytes: number };
 };
