@@ -78,22 +78,37 @@ export function pointsEntity(points: readonly [number, number, number][], id = "
   }));
 }
 
-/** Three axes and their ticks, drawn by the same SceneView as the surface. */
+/** Coordinate axes at (0,0,0), drawn through the surface by the shared SceneView. */
 export function chartAxes(): Entity[] {
   const out: Entity[] = [];
   const add = (id: string, from: [number, number, number], to: [number, number, number], color: string) =>
-    out.push({ id, shape: "line", pos: from, to, color });
-  // Engineering axes: x red, y green, z blue — the same colours and positive directions as the
-  // triad. All three grow from the far corner (-x, -z), never backwards along -z.
+    out.push({ id, shape: "line", pos: from, to, color, overlay: true });
   const red = "#e5484d", green = "#30a46c", blue = "#3e63dd";
-  const x0 = -2.2, z0 = -2.2;
-  add("axis.x", [x0, 0.002, z0], [2.2, 0.002, z0], red);
-  add("axis.z", [x0, 0.002, z0], [x0, 0.002, 2.2], blue);
-  add("axis.y", [x0, 0.002, z0], [x0, 1.35, z0], green);
+  const half = 2.2, up = 1.35, head = 0.12, tick = 0.07;
+
+  add("axis.x", [-half, 0.002, 0], [half, 0.002, 0], red);
+  add("axis.z", [0, 0.002, -half], [0, 0.002, half], blue);
+  add("axis.y", [0, 0.002, 0], [0, up, 0], green);
+
   for (const t of [-2, -1, 0, 1, 2]) {
-    add(`axis.x.${t}`, [t, 0.002, z0], [t, 0.002, z0 + 0.15], red);
-    add(`axis.z.${t}`, [x0, 0.002, t], [x0 + 0.15, 0.002, t], blue);
+    add(`axis.x.${t}`, [t, 0.002, -tick], [t, 0.002, tick], red);
+    add(`axis.z.${t}`, [-tick, 0.002, t], [tick, 0.002, t], blue);
   }
-  for (const h of [0.5, 1]) add(`axis.y.${h}`, [x0, h, z0], [x0 + 0.15, h, z0], green);
+  for (const h of [0.5, 1]) add(`axis.y.${h}`, [-tick, h, 0], [tick, h, 0], green);
+
+  // Arrowheads at the positive ends.
+  add("axis.x.a1", [half, 0.002, 0], [half - head, 0.002 + tick, 0], red);
+  add("axis.x.a2", [half, 0.002, 0], [half - head, 0.002 - tick, 0], red);
+  add("axis.x.a3", [half, 0.002, 0], [half - head, 0.002, tick], red);
+  add("axis.x.a4", [half, 0.002, 0], [half - head, 0.002, -tick], red);
+  add("axis.z.a1", [0, 0.002, half], [tick, 0.002, half - head], blue);
+  add("axis.z.a2", [0, 0.002, half], [-tick, 0.002, half - head], blue);
+  add("axis.z.a3", [0, 0.002, half], [0, 0.002 + tick, half - head], blue);
+  add("axis.z.a4", [0, 0.002, half], [0, 0.002 - tick, half - head], blue);
+  add("axis.y.a1", [0, up, 0], [tick, up - head, 0], green);
+  add("axis.y.a2", [0, up, 0], [-tick, up - head, 0], green);
+  add("axis.y.a3", [0, up, 0], [0, up - head, tick], green);
+  add("axis.y.a4", [0, up, 0], [0, up - head, -tick], green);
   return out;
 }
+
