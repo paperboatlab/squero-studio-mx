@@ -89,7 +89,7 @@ export function App() {
   const lastSent = useRef("");
   const attachedOnce = useRef(false);
   const [lines, setLines] = useState<Line[]>([
-    { level: "info", text: "julia 1.11.5 · kernel 1.11.5-r3 · frontend 0.1.0" },
+    { level: "info", text: "julia 1.11.5 · kernel 1.11.5-r3 · frontend 0.1.0 · squero-kernel/0 · paperboat/0" },
     { level: "info", text: "paperboat: every workspace variable broadcasts when a backend is up" },
     { level: "ok", text: "matrices and vectors travel to blocks, not project variables" },
   ]);
@@ -108,7 +108,7 @@ export function App() {
     if (name && name !== baseName(selectedFile)) filePanel.current?.rename(selectedFile, name);
     setRenamingTitle(false);
   };
-  useEffect(() => { consoleEnd.current?.scrollIntoView({ block: "nearest" }); }, [lines]);
+  useEffect(() => { consoleEnd.current?.scrollIntoView({ block: "nearest" }); }, [lines, consoleHidden]);
   useEffect(() => {
     if (!(selectedFile in files)) {
       const first = Object.keys(files).sort()[0];
@@ -129,8 +129,10 @@ export function App() {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
       document.body.style.cursor = "";
+      document.body.classList.remove("resizing");
     };
     document.body.style.cursor = "col-resize";
+    document.body.classList.add("resizing");
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
   };
@@ -243,7 +245,7 @@ export function App() {
     if (head === "attach") { attach(); return; }
     if (head === "detach") { link.current?.close(); setStatus("idle"); say("paperboat: detached", "warn"); return; }
     if (head === "run") { runScript(); return; }
-    if (head === "version") { say("julia 1.11.5 · frontend 0.1.0 · kernel 1.11.5-r3"); return; }
+    if (head === "version") { say("julia 1.11.5 · frontend 0.1.0 · kernel 1.11.5-r3 · squero-kernel/0 · paperboat/0"); return; }
     const assign = /^([A-Za-z_]\w*)\s*=\s*([\s\S]+)$/.exec(cmd);
     if (assign) {
       const res = evaluate(assign[2], varsOf(workspace), functions);
@@ -626,8 +628,10 @@ export function App() {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
       document.body.style.cursor = "";
+      document.body.classList.remove("resizing");
     };
     document.body.style.cursor = "row-resize";
+    document.body.classList.add("resizing");
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
   };
@@ -938,31 +942,41 @@ export function App() {
         <div className="chead">
           <span className="on">console</span><span>messages</span><span className="sp" />
           <span className="tag">julia 1.11.5 · frontend 0.1.0</span>
-          <button className="key small console-toggle" onClick={() => setConsoleHidden((v) => !v)} title={consoleHidden ? "Show console" : "Hide console"}>{consoleHidden ? "show" : "hide"}</button>
+          <button
+            type="button"
+            className={`panel-toggle console-toggle${consoleHidden ? "" : " open"}`}
+            onClick={() => setConsoleHidden((v) => {
+              if (!v) (document.activeElement as HTMLElement | null)?.blur();
+              return !v;
+            })}
+            title={consoleHidden ? "Show console" : "Hide console"}
+            aria-label={consoleHidden ? "Show console" : "Hide console"}
+            aria-expanded={!consoleHidden}
+          >
+            <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M3 9l4-4 4 4" /></svg>
+          </button>
         </div>
-        {!consoleHidden && <div className="lines">
+        <div className="lines" aria-hidden={consoleHidden}>
           {lines.map((l, i) => (
             <div key={i} className={l.level}>{l.cmd ? <span className="prompt">julia&gt; </span> : null}{l.text}</div>
           ))}
           <div ref={consoleEnd} />
-        </div>}
-        {!consoleHidden && (
-          <form className="cin" onSubmit={(e) => { e.preventDefault(); submit(); }}>
-            <span className="prompt">julia&gt;</span>
-            <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "ArrowUp") { e.preventDefault(); recall(-1); }
-                else if (e.key === "ArrowDown") { e.preventDefault(); recall(1); }
-              }}
-              placeholder="type help"
-              autoComplete="off"
-              spellCheck={false}
-              aria-label="console command"
-            />
-          </form>
-        )}
+        </div>
+        <form className="cin" onSubmit={(e) => { e.preventDefault(); submit(); }} aria-hidden={consoleHidden}>
+          <span className="prompt">julia&gt;</span>
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowUp") { e.preventDefault(); recall(-1); }
+              else if (e.key === "ArrowDown") { e.preventDefault(); recall(1); }
+            }}
+            placeholder="type help"
+            autoComplete="off"
+            spellCheck={false}
+            aria-label="console command"
+          />
+        </form>
       </section>
 
       {aboutOpen && <AboutModal status={status} onClose={() => setAboutOpen(false)} />}

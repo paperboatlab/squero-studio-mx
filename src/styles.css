@@ -209,32 +209,56 @@ h2, p { margin: 0; }
 .cm-answer.k-run { color: var(--signal); border-color: color-mix(in srgb, var(--signal) 45%, transparent); }
 
 /* Resizable, hideable chart panel. */
-/* The side panels collapse to a standing tab, like Lookout's drawers. */
-.app.split { --files-w: 220px; --right-w: 320px; grid-template-columns: var(--files-w) minmax(320px, 1fr) 6px var(--stage-w, 540px) var(--right-w); }
+/* The side panels collapse to a standing tab, sliding like Lookout's drawers. */
+.app.split { --files-w: 220px; --right-w: 320px; grid-template-columns: var(--files-w) minmax(320px, 1fr) 6px var(--stage-w, 540px) var(--right-w); transition: grid-template-columns var(--slide), grid-template-rows var(--slide); }
+body.resizing .app.split { transition: none; }
+.app.split .files, .app.split .rightpane { position: relative; }
 .app.split.files-hidden { --files-w: 30px; }
 .app.split.right-hidden { --right-w: 30px; }
 .app.split.files-hidden .files,
 .app.split.right-hidden .rightpane { padding: 4px; }
+
+/* The inside fades against the slide; the standing tab fades in over it. */
+.files .rail-tabs, .files .files-panel, .files .foot,
+.rightpane .head, .rightpane .tabbody { transition: opacity var(--motion); }
 .app.split.files-hidden .files .rail-tabs,
 .app.split.files-hidden .files .files-panel,
 .app.split.files-hidden .files .foot,
 .app.split.right-hidden .rightpane .head,
-.app.split.right-hidden .rightpane .tabbody { display: none; }
-.app.split.files-hidden .files .panel-stand,
-.app.split.right-hidden .rightpane .panel-stand { display: flex; }
+.app.split.right-hidden .rightpane .tabbody {
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transition: opacity var(--motion), visibility 0s linear 150ms;
+}
 .panel-toggle { flex: none; width: 18px; height: 18px; padding: 0; border: 0; background: none; color: var(--text-muted); display: inline-grid; place-items: center; cursor: pointer; }
 .panel-toggle:hover { color: var(--text); }
+.panel-toggle svg { transition: transform var(--motion); }
 .panel-toggle svg, .panel-stand svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
-.panel-stand { display: none; flex: 1; flex-direction: column; align-items: center; gap: 7px; padding: 7px 0; border: 0; border-radius: var(--radius-md); background: var(--surface-raised); color: var(--text-muted); cursor: pointer; font: inherit; }
+.panel-stand {
+  position: absolute; inset: 4px; z-index: 2;
+  display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 7px 0;
+  border: 0; border-radius: var(--radius-md); background: var(--surface-raised);
+  color: var(--text-muted); cursor: pointer; font: inherit;
+  opacity: 0; visibility: hidden;
+  transition: opacity var(--motion), visibility 0s linear 150ms;
+}
 .panel-stand:hover { color: var(--text); }
 .panel-stand span { writing-mode: vertical-rl; font: 400 10.5px var(--font-mono); letter-spacing: .04em; text-transform: lowercase; }
+.app.split.files-hidden .files .panel-stand,
+.app.split.right-hidden .rightpane .panel-stand {
+  opacity: 1; visibility: visible; pointer-events: auto;
+  transition: opacity var(--motion), visibility 0s;
+}
 .files .rail-tabs .panel-toggle { margin-left: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .app.split, .files .rail-tabs, .files .files-panel, .files .foot,
+  .rightpane .head, .rightpane .tabbody, .console .lines, .console .cin, .panel-stand, .panel-toggle svg { transition: none !important; }
+}
 .app.split .splitter { grid-column: 3; grid-row: 2; position: relative; cursor: col-resize; background: transparent; touch-action: none; }
 .app.split .splitter::after { content: ""; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: var(--line); }
 .app.split .splitter:hover::after { width: 2px; left: calc(50% - .5px); background: var(--line-strong); }
 .app.split .stage { grid-column: 4; }
 .app.split .rightpane { grid-column: 5; }
-.app.split.chart-hidden { grid-template-columns: 220px minmax(320px, 1fr) 0 0 320px; }
+.app.split.chart-hidden { grid-template-columns: var(--files-w) minmax(320px, 1fr) 0 0 var(--right-w); }
 .app.split.chart-hidden .splitter, .app.split.chart-hidden .stage { display: none; }
 
 /* The Files panel around the shared FileTree (styles from @paperboat/shared/files.css). */
@@ -352,9 +376,19 @@ h2, p { margin: 0; }
 
 /* Console hide/show: collapsed to its 28px head, restored from the head or View ▸ Console. */
 .app.split.console-hidden { grid-template-rows: 56px minmax(0, 1fr) 0 28px; }
+.console .lines, .console .cin { transition: opacity var(--motion); }
+.app.split.console-hidden .console .lines,
+.app.split.console-hidden .console .cin {
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transition: opacity var(--motion), visibility 0s linear 150ms;
+}
+.app.split.console-hidden .chead { height: 28px; }
 .app.split.console-hidden .console-splitter { display: none; }
 .app.split.console-hidden .console { border-radius: var(--radius-lg); }
-.console-toggle { height: 20px; padding: 0 6px; font-size: 9.5px; }
+.console-toggle { width: 20px; height: 20px; color: var(--text-on-screen-muted); }
+.console-toggle:hover { color: var(--text-on-screen); }
+.console-toggle svg { transform: rotate(0deg); }
+.console-toggle.open svg { transform: rotate(180deg); }
 
 /* The Squero Studio logo, shared with OM; only the product badge differs. */
 .wordmark { display: inline-flex; align-items: center; }
