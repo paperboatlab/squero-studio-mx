@@ -6,6 +6,7 @@ import { Compartment, EditorState, Prec } from "@codemirror/state";
 import {
   EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter,
   drawSelection, dropCursor, rectangularSelection, crosshairCursor, gutter, GutterMarker,
+  Decoration, ViewPlugin, type DecorationSet, type ViewUpdate,
 } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import {
@@ -98,6 +99,35 @@ const geometry = (s: EditorSettings) => EditorView.theme({
   ".cm-content": { padding: "8px 0" },
   ".cm-lineNumbers .cm-gutterElement": { padding: "0 10px 0 12px" },
 });
+
+/** `#%%` sections: a rule above the header and the header itself in the signal colour. */
+const cellRule = Decoration.line({ class: "cm-cell-line" });
+const cellTag = Decoration.mark({ class: "cm-cell-tag" });
+
+function cellDecorations(view: EditorView): DecorationSet {
+  const marks: ReturnType<typeof cellRule.range>[] = [];
+  for (const range of view.visibleRanges) {
+    let pos = range.from;
+    while (pos <= range.to) {
+      const line = view.state.doc.lineAt(pos);
+      const match = /^\s*#%%/.exec(line.text);
+      if (match) {
+        marks.push(cellRule.range(line.from));
+        marks.push(cellTag.range(line.from + match[0].indexOf("#%%"), line.from + match[0].length));
+      }
+      pos = line.to + 1;
+    }
+  }
+  return Decoration.set(marks, true);
+}
+
+const cellSections = ViewPlugin.fromClass(class {
+  decorations: DecorationSet;
+  constructor(view: EditorView) { this.decorations = cellDecorations(view); }
+  update(update: ViewUpdate) {
+    if (update.docChanged || update.viewportChanged) this.decorations = cellDecorations(update.view);
+  }
+}, { decorations: (v) => v.decorations });
 
 const KEYWORDS = [
   "function", "end", "if", "elseif", "else", "for", "while", "begin", "let", "struct", "mutable",
@@ -332,6 +362,7 @@ export function CodeEditor({
           compartments.brackets.of(settings.brackets ? bracketExt() : []),
           compartments.lint.of(settings.lint ? lintExt() : []),
           compartments.answers.of(answerGutter(varMap, (kind, line) => chart.current?.(kind, line))),
+          cellSections,
           EditorView.updateListener.of((u) => { if (u.docChanged) change.current(u.state.doc.toString()); }),
         ],
       }),

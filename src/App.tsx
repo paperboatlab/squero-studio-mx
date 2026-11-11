@@ -360,6 +360,18 @@ export function App() {
     for (const raw of code.split("\n")) {
       const line = raw.trim();
       if (!line || line.startsWith("#")) continue;
+      const control = /^(clear|clearvars|clc)\s*(?:\(\s*([^)]*)\s*\))?$/.exec(line);
+      if (control) {
+        if (control[1] === "clc") {
+          setLines([]);
+        } else {
+          const arg = (control[2] ?? "").replace(/^["']|["']$/g, "").trim();
+          if (arg && arg !== "all") byName.delete(arg);
+          else byName.clear();
+          changed = true;
+        }
+        continue;
+      }
       const assign = /^([A-Za-z_]\w*)\s*=\s*([\s\S]+)$/.exec(line);
       if (!assign) continue;
       const res = evaluate(assign[2], Object.fromEntries([...byName].map(([name, v]) => [name, v.value ?? v.preview ?? 0])));
@@ -404,8 +416,8 @@ export function App() {
         }
         const handle = await window.showDirectoryPicker({ mode: "readwrite", id: "mx-workspace", startIn: "documents" });
         setSaved(handle);
-        await saveDirHandle(handle);
         await applyHandle(handle);
+        try { await saveDirHandle(handle); } catch { /* private mode or a browser without handle storage */ }
       } catch (error) {
         if ((error as DOMException).name !== "AbortError") say(`folder: ${error instanceof Error ? error.message : String(error)}`, "warn");
       }

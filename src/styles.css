@@ -352,3 +352,7 @@ h2, p { margin: 0; }
 /* A single plot fills the stage: no 1,1 subplot header, no grid gutter. */
 .figure-grid.single { grid-template-columns: 1fr; grid-template-rows: 1fr; padding: 0; gap: 0; }
 .figure-grid.single .figure-tile { border: 0; border-radius: 0; }
+
+/* #%% sections read as cells: a rule above the header, the header in the signal colour. */
+.cm-line.cm-cell-line { background: color-mix(in srgb, var(--signal) 6%, transparent); border-top: 1px solid var(--line-strong); }
+.cm-cell-tag { color: var(--signal-text); font-weight: 600; }
