@@ -83,15 +83,17 @@ export function chartAxes(): Entity[] {
   const out: Entity[] = [];
   const add = (id: string, from: [number, number, number], to: [number, number, number], color: string) =>
     out.push({ id, shape: "line", pos: from, to, color });
-  // Engineering axes: x red, y green, z blue — the same colours as the triad.
+  // Engineering axes: x red, y green, z blue — the same colours and positive directions as the
+  // triad. All three grow from the far corner (-x, -z), never backwards along -z.
   const red = "#e5484d", green = "#30a46c", blue = "#3e63dd";
-  add("axis.x", [-2.2, 0.002, 2.2], [2.2, 0.002, 2.2], red);
-  add("axis.z", [-2.2, 0.002, 2.2], [-2.2, 0.002, -2.2], blue);
-  add("axis.y", [-2.2, 0.002, 2.2], [-2.2, 1.35, 2.2], green);
+  const x0 = -2.2, z0 = -2.2;
+  add("axis.x", [x0, 0.002, z0], [2.2, 0.002, z0], red);
+  add("axis.z", [x0, 0.002, z0], [x0, 0.002, 2.2], blue);
+  add("axis.y", [x0, 0.002, z0], [x0, 1.35, z0], green);
   for (const t of [-2, -1, 0, 1, 2]) {
-    add(`axis.x.${t}`, [t, 0.002, 2.2], [t, 0.002, 2.05], red);
-    add(`axis.z.${t}`, [-2.2, 0.002, t], [-2.05, 0.002, t], blue);
+    add(`axis.x.${t}`, [t, 0.002, z0], [t, 0.002, z0 + 0.15], red);
+    add(`axis.z.${t}`, [x0, 0.002, t], [x0 + 0.15, 0.002, t], blue);
   }
-  for (const h of [0.5, 1]) add(`axis.y.${h}`, [-2.2, h, 2.2], [-2.05, h, 2.2], green);
+  for (const h of [0.5, 1]) add(`axis.y.${h}`, [x0, h, z0], [x0 + 0.15, h, z0], green);
   return out;
 }
