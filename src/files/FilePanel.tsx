@@ -4,7 +4,7 @@ import { forwardRef, useImperativeHandle, useMemo, useRef } from "react";
 import { FileTree, type FileEntry, type FileTreeHandle } from "@paperboat/shared/files";
 import type { Storage } from "./storage.ts";
 
-export type FilePanelHandle = { newFile: () => void; newFolder: () => void };
+export type FilePanelHandle = { newFile: () => void; newFolder: () => void; rename: (path: string, name: string) => void };
 
 export type FilePanelProps = {
   root: string;
@@ -98,15 +98,16 @@ export const FilePanel = forwardRef<FilePanelHandle, FilePanelProps>(function Fi
     onSay(`new ${path}/`, "ok");
   };
 
-  useImperativeHandle(ref, () => ({ newFile: () => newFile(), newFolder: () => newFolder() }));
+  useImperativeHandle(ref, () => ({ newFile: () => newFile(), newFolder: () => newFolder(), rename: (path, name) => { const entry = entries.find((e) => e.path === path); if (entry) renameTo(entry, name); } }));
 
   const open = (entry: FileEntry) => {
     if (entry.kind === "file") onOpen(entry.path);
   };
 
-  const rename = (entry: FileEntry) => {
-    const name = window.prompt("New name", entry.name);
-    if (!name || name === entry.name || name.includes("/")) return;
+  const renameTo = (entry: FileEntry, raw: string) => {
+    const trimmed = raw.trim();
+    if (!trimmed || trimmed === entry.name || trimmed.includes("/")) return;
+    const name = entry.kind === "file" && !trimmed.includes(".") ? `${trimmed}.jl` : trimmed;
     const to = join(dirOf(entry.path), name);
     if (exists(to)) { onSay(`${to} already exists`, "warn"); return; }
     if (entry.kind === "file") {
@@ -126,6 +127,11 @@ export const FilePanel = forwardRef<FilePanelHandle, FilePanelProps>(function Fi
       if (under(active, entry.path)) onOpen(reparent(active, entry.path, to));
     }
     onSay(`renamed ${entry.path} → ${to}`, "ok");
+  };
+
+  const rename = (entry: FileEntry) => {
+    const name = window.prompt("New name", entry.name);
+    if (name !== null) renameTo(entry, name);
   };
 
   const duplicate = (entry: FileEntry) => {

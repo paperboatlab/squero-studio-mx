@@ -12,7 +12,7 @@ import { Script } from "./editor/Script.tsx";
 import { DEFAULT_EDITOR_SETTINGS, type EditorSettings } from "./editor/CodeEditor.tsx";
 import { SqueroLogo } from "./shell/SqueroLogo.tsx";
 import { FilePanel, type FilePanelHandle } from "./files/FilePanel.tsx";
-import { readTree, storageOf, writeFile } from "./files/storage.ts";
+import { askWrite, canWrite, loadDirHandle, readTree, saveDirHandle, storageOf, writeFile } from "./files/storage.ts";
 import { downloadMat } from "./workspace/mat.ts";
 import { evaluate, variableFrom, varsOf } from "./kernel/localEval.ts";
 import { PaperboatLink, type LinkStatus } from "./paperboat/link.ts";
@@ -101,11 +101,14 @@ export function App() {
   const [selectedFile, setSelectedFile] = useState("surface.jl");
   const [selectedVar, setSelectedVar] = useState("A");
   const [workspace, setWorkspace] = useState<WorkspaceVariable[]>(() => [...(demoWorkspaces["surface.jl"] ?? [])]);
-  const [workspaceRoot, setWorkspaceRoot] = useState("mx-workspace");
+  const [workspaceRoot, setWorkspaceRoot] = useState("~/Documents/paperboat/squero-studio/mx");
   const [dir, setDir] = useState<FileSystemDirectoryHandle | null>(null);
+  const [saved, setSaved] = useState<FileSystemDirectoryHandle | null>(null);
   const [readOnly, setReadOnly] = useState(false);
   const [dirty, setDirty] = useState<Set<string>>(new Set());
   const [varQuery, setVarQuery] = useState("");
+  const [renamingTitle, setRenamingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
   const filePanel = useRef<FilePanelHandle>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const [stageW, setStageW] = useState(540);
@@ -135,6 +138,12 @@ export function App() {
   const link = useRef<PaperboatLink | null>(null);
   const consoleEnd = useRef<HTMLDivElement>(null);
   const say = (text: string, level: Line["level"] = "info", cmd = false) => setLines((l) => [...l, { level, text, cmd }]);
+  const baseName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
+  const commitTitle = () => {
+    const name = titleDraft.trim();
+    if (name && name !== baseName(selectedFile)) filePanel.current?.rename(selectedFile, name);
+    setRenamingTitle(false);
+  };
   useEffect(() => { consoleEnd.current?.scrollIntoView({ block: "nearest" }); }, [lines]);
   useEffect(() => {
     if (!(selectedFile in files)) {
@@ -341,7 +350,7 @@ export function App() {
     say(`clear ${name}`, "warn");
   };
 
-  const runCode = (code: string, mode: "cell" | "line" | "selection") => {
+  const runCode = (code: string, mode: "cell" | "line" | "selection" | "file") => {
     const fig = parseFigure(code);
     setFigure(fig);
     setFigureFocus(null);
@@ -363,34 +372,40 @@ export function App() {
     say(`run ${mode} · ${code.split("\n").length} lines`, "ok");
   };
 
-  const runScript = () => {
-    const vars = demoWorkspaces[selectedFile] ?? [];
-    const fig = parseFigure(files[selectedFile] ?? "");
-    setFigure(fig);
-    setFigureFocus(null);
-    if (fig) setTab("figure");
-    setWorkspace((prev) => {
-      const by = new Map(prev.map((v) => [v.name, v]));
-      for (const v of vars) by.set(v.name, v);
-      return [...by.values()];
-    });
-    if (vars[0]) setSelectedVar(vars[0].name);
-    say(`run ${selectedFile} · +${vars.length} variables · ${workspace.length + vars.length} total`, "ok");
+  const runScript = () => runCode(files[selectedFile] ?? "", "file");
+
+  const applyHandle = async (handle: FileSystemDirectoryHandle, restored = false) => {
+    const tree = await readTree(handle);
+    setDir(handle);
+    setReadOnly(false);
+    setWorkspaceRoot(handle.name);
+    setFiles(tree.files);
+    setFolders(tree.folders);
+    setSelectedFile(Object.keys(tree.files).sort()[0] ?? "");
+    setDirty(new Set());
+    say(`${restored ? "restored" : "opened"} ${handle.name} · ${Object.keys(tree.files).length} files`, "ok");
   };
+
+  useEffect(() => {
+    void loadDirHandle().then(async (handle) => {
+      if (!handle) return;
+      setSaved(handle);
+      if (await canWrite(handle)) await applyHandle(handle, true);
+      else say("workspace folder remembered · click the folder key to reconnect", "info");
+    });
+  }, []);
 
   const openFolder = async () => {
     if (typeof window.showDirectoryPicker === "function") {
       try {
-        const handle = await window.showDirectoryPicker({ mode: "readwrite" });
-        const tree = await readTree(handle);
-        setDir(handle);
-        setReadOnly(false);
-        setWorkspaceRoot(handle.name);
-        setFiles(tree.files);
-        setFolders(tree.folders);
-        setSelectedFile(Object.keys(tree.files).sort()[0] ?? "");
-        setDirty(new Set());
-        say(`opened ${handle.name} · ${Object.keys(tree.files).length} files`, "ok");
+        if (saved && (await askWrite(saved))) {
+          await applyHandle(saved, true);
+          return;
+        }
+        const handle = await window.showDirectoryPicker({ mode: "readwrite", id: "mx-workspace", startIn: "documents" });
+        setSaved(handle);
+        await saveDirHandle(handle);
+        await applyHandle(handle);
       } catch (error) {
         if ((error as DOMException).name !== "AbortError") say(`folder: ${error instanceof Error ? error.message : String(error)}`, "warn");
       }
@@ -499,7 +514,26 @@ export function App() {
           <SqueroLogo product="MX" height={20} />
         </span>
         <MenuBar commands={commands} />
-        <div className="proj"><span className="dot" />{selectedFile}</div>
+        <div className="proj" title="Double-click to rename">
+          <span className="dot" />
+          {renamingTitle ? (
+            <input
+              className="proj-input"
+              autoFocus
+              value={titleDraft}
+              onChange={(e) => setTitleDraft(e.target.value)}
+              onFocus={(e) => e.currentTarget.select()}
+              onBlur={commitTitle}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") { e.preventDefault(); commitTitle(); }
+                else if (e.key === "Escape") { e.preventDefault(); setRenamingTitle(false); }
+              }}
+              aria-label="File name"
+            />
+          ) : (
+            <span className="proj-name" onDoubleClick={() => { setTitleDraft(baseName(selectedFile)); setRenamingTitle(true); }}>{selectedFile}</span>
+          )}
+        </div>
         <div className={`status ${status}`}><span className="pip" />{status === "attached" ? "paperboat · attached" : "julia · ready"}</div>
         <div className="keys">
           <button
@@ -541,7 +575,7 @@ export function App() {
         onSave={() => void saveCurrent()}
         settings={editor}
         onSettings={setEditor}
-        variables={workspace.map((v) => ({ name: v.name, type: v.type }))}
+        variables={workspace.map((v) => ({ name: v.name, type: v.type, value: v.value ?? v.preview }))}
         onChart={(kind, line) => { setFigureFocus(line); setTab(figure ? "figure" : kind); setChartHidden(false); say(`chart → ${figure ? line : kind}`, "ok"); }}
         onRunSelection={runCode}
       />

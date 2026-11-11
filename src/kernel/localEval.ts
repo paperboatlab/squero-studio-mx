@@ -232,14 +232,21 @@ class Parser {
       this.i++;
       const rows: number[][] = [];
       let row: number[] = [];
+      let commas = false;
+      let semicolons = false;
       if (this.eat("]")) return rows;
       for (;;) {
         const v = this.range();
         if (!num(v)) throw new Error("matrix cells must be numbers");
         row.push(v);
-        if (this.eat(",")) continue;
-        if (this.eat(";")) { rows.push(row); row = []; continue; }
-        if (this.eat("]")) { rows.push(row); break; }
+        if (this.eat(",")) { commas = true; continue; }
+        if (this.eat(";")) { rows.push(row); row = []; semicolons = true; commas = false; continue; }
+        if (this.eat("]")) {
+          rows.push(row);
+          // [1, 2, 3] is a vector; [1 2 3] is a 1×3 matrix, as in Julia.
+          if (rows.length === 1 && commas && !semicolons) return row;
+          break;
+        }
         const next = this.peek();
         if (next?.space) continue;
         throw new Error("expected , ; or ] in a matrix");

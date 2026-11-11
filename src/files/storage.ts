@@ -11,7 +11,11 @@ export type Storage = {
 
 declare global {
   interface Window {
-    showDirectoryPicker?: (options?: { mode?: "read" | "readwrite" }) => Promise<FileSystemDirectoryHandle>;
+    showDirectoryPicker?: (options?: {
+      mode?: "read" | "readwrite";
+      id?: string;
+      startIn?: string | FileSystemHandle;
+    }) => Promise<FileSystemDirectoryHandle>;
   }
 }
 
@@ -97,4 +101,57 @@ export function storageOf(root: FileSystemDirectoryHandle): Storage {
     remove: (path, folder) => removePath(root, path, folder),
     copy: (from, to, folder) => copyPath(root, from, to, folder),
   };
+}
+
+// The chosen folder survives restarts: the handle is structured-cloneable, so IndexedDB keeps it.
+// Permission still needs a click after a restart; the picker then reuses the saved folder.
+const DB_NAME = "mx-workspace";
+const STORE = "handles";
+
+function db(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, 1);
+    request.onupgradeneeded = () => request.result.createObjectStore(STORE);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+export async function saveDirHandle(handle: FileSystemDirectoryHandle): Promise<void> {
+  const database = await db();
+  await new Promise<void>((resolve, reject) => {
+    const tx = database.transaction(STORE, "readwrite");
+    tx.objectStore(STORE).put(handle, "dir");
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+  database.close();
+}
+
+export async function loadDirHandle(): Promise<FileSystemDirectoryHandle | null> {
+  const database = await db();
+  const handle = await new Promise<FileSystemDirectoryHandle | null>((resolve, reject) => {
+    const tx = database.transaction(STORE, "readonly");
+    const request = tx.objectStore(STORE).get("dir");
+    request.onsuccess = () => resolve((request.result as FileSystemDirectoryHandle | undefined) ?? null);
+    request.onerror = () => reject(request.error);
+  });
+  database.close();
+  return handle;
+}
+
+type PermissionHandle = FileSystemDirectoryHandle & {
+  queryPermission?: (o: { mode: "readwrite" }) => Promise<PermissionState>;
+  requestPermission?: (o: { mode: "readwrite" }) => Promise<PermissionState>;
+};
+
+export async function canWrite(handle: FileSystemDirectoryHandle): Promise<boolean> {
+  const h = handle as PermissionHandle;
+  return !h.queryPermission || (await h.queryPermission({ mode: "readwrite" })) === "granted";
+}
+
+export async function askWrite(handle: FileSystemDirectoryHandle): Promise<boolean> {
+  const h = handle as PermissionHandle;
+  if (!h.requestPermission) return true;
+  return (await h.requestPermission({ mode: "readwrite" })) === "granted";
 }

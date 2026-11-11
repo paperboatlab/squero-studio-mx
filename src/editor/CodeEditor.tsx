@@ -18,6 +18,7 @@ import {
   snippetCompletion, type Completion, type CompletionSource,
 } from "@codemirror/autocomplete";
 import { tags } from "@lezer/highlight";
+import { evaluate, variableFrom, type NumValue } from "../kernel/localEval.ts";
 
 export type EditorSettings = {
   theme: "dark" | "light";
@@ -179,24 +180,55 @@ type ChartKind = "3d" | "2d";
 
 type OnChart = (kind: ChartKind, line: string) => void;
 
-function answerFor(text: string, onChart?: OnChart): AnswerMarker | null {
+const dims = (vars: Record<string, NumValue>) => {
+  const n = vars["n"];
+  return typeof n === "number" && Number.isFinite(n) ? `${n} × ${n}` : "grid";
+};
+
+/** Values in scope at a line: the workspace plus every simple assignment above it. */
+function valuesAt(view: EditorView, from: number, base: Record<string, NumValue>): Record<string, NumValue> {
+  const vars = { ...base };
+  const here = view.state.doc.lineAt(from).number;
+  for (let i = 1; i <= here; i++) {
+    const text = view.state.doc.line(i).text.trim();
+    const assign = /^([A-Za-z_]\w*)\s*=\s*([\s\S]+)$/.exec(text);
+    if (!assign) continue;
+    const res = evaluate(assign[2], vars);
+    if (res.ok) vars[assign[1]] = res.value;
+  }
+  return vars;
+}
+
+function answerFor(text: string, vars: Record<string, NumValue>, onChart?: OnChart): AnswerMarker | null {
   const t = text.trim();
   if (!t || t.startsWith("#")) return null;
-  if (/^sel\s*=/.test(t)) return new AnswerMarker("1 284", "dots");
+  const assign = /^([A-Za-z_]\w*)\s*=\s*([\s\S]+)$/.exec(t);
+  if (assign) {
+    const res = evaluate(assign[2], vars);
+    if (res.ok) {
+      const v = variableFrom(assign[1], res.value);
+      if (v.type === "Float64") return new AnswerMarker(Number.isInteger(v.value) ? "Int64" : "Float64", "type");
+      return new AnswerMarker(v.shape, v.type.startsWith("Matrix") ? "heat" : "spark");
+    }
+  }
+  if (/^sel\s*=/.test(t)) return new AnswerMarker("selection", "dots");
+  const peak = /^A\s*=\s*peaks\s*\(\s*(\d+)\s*\)/.exec(t);
+  if (peak) return new AnswerMarker(`${peak[1]} × ${peak[1]}`, "heat");
   if (/\b(surf|mesh|imagesc)\b/.test(t)) return new AnswerMarker("→ chart", "chart", () => onChart?.("3d", t));
   if (/\bplot\b/.test(t)) return new AnswerMarker("→ chart", "chart", () => onChart?.("2d", t));
+  if (/\bsubplot\b/.test(t)) return new AnswerMarker("subplot", "type");
   if (/\bstate_space\b/.test(t)) return new AnswerMarker("→ run", "run");
   if (/\b(colormap|view|clim)\b/.test(t)) return new AnswerMarker("ok", "ok");
-  if (/^n\s*=/.test(t)) return new AnswerMarker("Int64", "type");
-  if (/\bhypot\b/.test(t)) return new AnswerMarker("512 × 512", "spark");
-  if (/\b(meshgrid|A\s*=)/.test(t)) return new AnswerMarker("512 × 512", "heat");
+  if (/\bhypot\b/.test(t)) return new AnswerMarker(dims(vars), "spark");
+  if (/\bmeshgrid\b/.test(t)) return new AnswerMarker(dims(vars), "heat");
+  if (/^A\s*=/.test(t)) return new AnswerMarker(dims(vars), "heat");
   return null;
 }
 
-const answerGutter = (onChart?: OnChart) => gutter({
+const answerGutter = (getVars: () => Record<string, NumValue>, onChart?: OnChart) => gutter({
   class: "cm-answer-gutter",
   side: "after",
-  lineMarker(view, line) { return answerFor(view.state.doc.lineAt(line.from).text, onChart); },
+  lineMarker(view, line) { return answerFor(view.state.doc.lineAt(line.from).text, valuesAt(view, line.from, getVars()), onChart); },
   initialSpacer: () => new AnswerMarker("512 × 512", "heat"),
 });
 
@@ -207,7 +239,7 @@ export function CodeEditor({
   file: string;
   onChange: (value: string) => void;
   settings: EditorSettings;
-  variables: readonly { name: string; type: string }[];
+  variables: readonly { name: string; type: string; value?: NumValue }[];
   onChart?: OnChart;
   onRunSelection?: (code: string, mode: "cell" | "line" | "selection") => void;
 }) {
@@ -217,6 +249,7 @@ export function CodeEditor({
   change.current = onChange;
   const vars = useRef(variables);
   vars.current = variables;
+  const varMap = () => Object.fromEntries(vars.current.map((v) => [v.name, v.value ?? 0]));
   const chart = useRef(onChart);
   chart.current = onChart;
   const runSelection = useRef(onRunSelection);
@@ -225,6 +258,7 @@ export function CodeEditor({
   const compartments = useRef({
     theme: new Compartment(), font: new Compartment(), wrap: new Compartment(),
     tab: new Compartment(), auto: new Compartment(), brackets: new Compartment(), lint: new Compartment(),
+    answers: new Compartment(),
   }).current;
 
   const runAt = (mode: "cell" | "line"): boolean => {
@@ -297,7 +331,7 @@ export function CodeEditor({
           compartments.auto.of(settings.autocomplete ? autocompleteExt() : []),
           compartments.brackets.of(settings.brackets ? bracketExt() : []),
           compartments.lint.of(settings.lint ? lintExt() : []),
-          answerGutter((kind, line) => chart.current?.(kind, line)),
+          compartments.answers.of(answerGutter(varMap, (kind, line) => chart.current?.(kind, line))),
           EditorView.updateListener.of((u) => { if (u.docChanged) change.current(u.state.doc.toString()); }),
         ],
       }),
@@ -321,6 +355,12 @@ export function CodeEditor({
       ],
     });
   }, [settings]);
+
+  useEffect(() => {
+    view.current?.dispatch({
+      effects: compartments.answers.reconfigure(answerGutter(varMap, (kind, line) => chart.current?.(kind, line))),
+    });
+  }, [variables]);
 
   return <div className="cm-host" ref={host} aria-label={`${file} editor`} />;
 }

@@ -136,11 +136,12 @@ is no per-instance name.
 The Files rail is `@paperboat/shared/files` — the same tree as Squero Studio OM. It supports
 folders, selection, new file/folder, rename, duplicate, delete, copy path and drag-to-move.
 
-The default workspace is **in memory** (the head says `in-memory`); it does not pretend to be a
-disk path. `File ▸ Open workspace folder…` uses the File System Access API to open a real folder,
-read its `.jl` files, and mirror create/delete/rename/move/copy. `Save` / `Ctrl+S` writes the
-current file; an edited file shows `•`. The topbar menus also expose find, clear, chart
-visibility, run and simulate.
+The default workspace is `~/Documents/paperboat/squero-studio/mx`, shown as `in-memory` until
+you pick it. The folder key (or `File ▸ Open workspace folder…`) opens the picker in Documents;
+the chosen folder is remembered in IndexedDB and restored on the next start when permission is
+still granted. `Save` / `Ctrl+S` writes the current file; an edited file shows `•`. Double-click
+the project title in the top bar to rename it in place. The topbar menus also expose find, clear,
+chart visibility and run.
 
 ### Console
 
