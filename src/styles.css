@@ -304,3 +304,43 @@ h2, p { margin: 0; }
 .topbar .chartkey svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linejoin: round; stroke-linecap: round; }
 .topbar .chartkey.off { color: var(--text-muted); }
 .stage-hide { width: 24px; height: 24px; }
+
+/* One folder picker, in the head next to the workspace name. */
+.files-head .folder-key { width: 18px; height: 18px; padding: 0; border: 0; background: none; color: var(--text-muted); display: inline-grid; place-items: center; cursor: pointer; }
+.files-head .folder-key svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linejoin: round; }
+.files-head .folder-key:hover { color: var(--text); }
+
+/* The stage is a panel like Files and the workspace rail: same 36px head, one frame. */
+.app.split .stage { gap: 0; background: var(--surface-panel); border: 1px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; }
+.app.split .stage .tabs { flex: none; height: 36px; min-height: 36px; padding: 0 12px; background: var(--surface-raised); border-bottom: 1px solid var(--line); }
+.app.split .stage .stage-body { border: 0; border-radius: 0; }
+
+/* A figure page is part of the app, not a black canvas. */
+.figure-grid { background: var(--surface-ground); }
+.figure-tile { background: var(--surface-panel); border-color: var(--line); }
+.figure-tile.empty { color: var(--text-muted); }
+.figure-body { background: var(--surface-screen); }
+
+/* Console hide/show: collapsed to its 28px head, restored from the head or View ▸ Console. */
+.app.split.console-hidden { grid-template-rows: 56px minmax(0, 1fr) 0 28px; }
+.app.split.console-hidden .console-splitter { display: none; }
+.app.split.console-hidden .console { border-radius: var(--radius-lg); }
+.console-toggle { height: 20px; padding: 0 6px; font-size: 9.5px; }
+
+/* The Squero Studio logo, shared with OM; only the product badge differs. */
+.wordmark { display: inline-flex; align-items: center; }
+.squero-logo { display: block; overflow: visible; }
+.squero-logo-ink { fill: var(--text); }
+.squero-logo-muted { fill: var(--text-muted); }
+.squero-logo-water { fill: var(--signal); }
+.squero-logo-tile { fill: var(--text); }
+.squero-logo-code { fill: var(--surface-panel); }
+.squero-logo .w { transform-box: fill-box; transform-origin: center; }
+.squero-logo.logo-idle .squero-logo-water .w { animation: squero-ripple-idle 5s var(--ease) infinite; }
+.squero-logo.logo-idle .squero-logo-water .w1 { animation-delay: 0s; }
+.squero-logo.logo-idle .squero-logo-water .w2 { animation-delay: 0.2s; }
+.squero-logo.logo-idle .squero-logo-water .w3 { animation-delay: 0.4s; }
+.squero-logo.logo-idle .squero-logo-water .w4 { animation-delay: 0.6s; }
+.squero-logo.logo-idle .squero-logo-water .w5 { animation-delay: 0.8s; }
+@keyframes squero-ripple-idle { 0%, 25%, 100% { transform: translateY(0); } 12.5% { transform: translateY(calc(var(--lr, 19.5px) * -0.67)); } }
+@media (prefers-reduced-motion: reduce) { .squero-logo .w { animation: none !important; } }

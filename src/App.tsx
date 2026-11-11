@@ -10,6 +10,7 @@ import { parseFigure, type Figure } from "./plot/figure.ts";
 import { demoWorkspaces, sampled, sampled2, times, type WorkspaceVariable } from "./chart/samples.ts";
 import { Script } from "./editor/Script.tsx";
 import { DEFAULT_EDITOR_SETTINGS, type EditorSettings } from "./editor/CodeEditor.tsx";
+import { SqueroLogo } from "./shell/SqueroLogo.tsx";
 import { FilePanel, type FilePanelHandle } from "./files/FilePanel.tsx";
 import { readTree, storageOf, writeFile } from "./files/storage.ts";
 import { downloadMat } from "./workspace/mat.ts";
@@ -88,26 +89,6 @@ savefig("surface.png")
 writematrix(A, "data/run-07.csv")
 save("data/run-07.mat")
 `,
-  "examples/subplots.jl": `# subplots.jl — a 2 × 2 page
-x = 0:0.1:10
-subplot(2, 2, 1)
-plot(x, sin.(x))
-subplot(2, 2, 2)
-plot(x, cos.(x))
-subplot(2, 2, 3)
-surf(peaks(64))
-subplot(2, 2, 4)
-imagesc(peaks(64))
-`,
-  "examples/lines.jl": `# lines.jl — two panels
-x = 0:0.1:10
-subplot(1, 2, 1); plot(x, sin.(x))
-subplot(1, 2, 2); plot(x, cos.(x))
-`,
-  "examples/surfaces.jl": `# surfaces.jl — surface and heat
-subplot(1, 2, 1); surf(peaks(64))
-subplot(1, 2, 2); imagesc(peaks(64))
-`,
 };
 
 export function App() {
@@ -116,18 +97,20 @@ export function App() {
   const [figureFocus, setFigureFocus] = useState<string | null>(null);
   const [rightTab, setRightTab] = useState<RightTab>("workspace");
   const [files, setFiles] = useState<Record<string, string>>(INITIAL_FILES);
-  const [folders, setFolders] = useState<string[]>(["plots", "examples"]);
+  const [folders, setFolders] = useState<string[]>(["plots"]);
   const [selectedFile, setSelectedFile] = useState("surface.jl");
   const [selectedVar, setSelectedVar] = useState("A");
   const [workspace, setWorkspace] = useState<WorkspaceVariable[]>(() => [...(demoWorkspaces["surface.jl"] ?? [])]);
   const [workspaceRoot, setWorkspaceRoot] = useState("mx-workspace");
   const [dir, setDir] = useState<FileSystemDirectoryHandle | null>(null);
+  const [readOnly, setReadOnly] = useState(false);
   const [dirty, setDirty] = useState<Set<string>>(new Set());
   const [varQuery, setVarQuery] = useState("");
   const filePanel = useRef<FilePanelHandle>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const [stageW, setStageW] = useState(540);
   const [consoleH, setConsoleH] = useState(154);
+  const [consoleHidden, setConsoleHidden] = useState(false);
   const [chartHidden, setChartHidden] = useState(false);
   const drag = useRef<{ x: number; w: number } | null>(null);
   const [status, setStatus] = useState<LinkStatus>("idle");
@@ -143,7 +126,7 @@ export function App() {
   const attachedOnce = useRef(false);
   const [lines, setLines] = useState<Line[]>([
     { level: "info", text: "julia 1.11.5 · kernel 1.11.5-r3 · frontend 0.1.0" },
-    { level: "info", text: "paperboat: scalars broadcast automatically when a backend is up" },
+    { level: "info", text: "paperboat: every workspace variable broadcasts when a backend is up" },
     { level: "ok", text: "matrices and vectors travel to blocks, not project variables" },
   ]);
   const [input, setInput] = useState("");
@@ -396,30 +379,54 @@ export function App() {
   };
 
   const openFolder = async () => {
-    const picker = window.showDirectoryPicker;
-    if (!picker) {
-      say("this browser has no folder picker; the workspace stays in memory", "warn");
+    if (typeof window.showDirectoryPicker === "function") {
+      try {
+        const handle = await window.showDirectoryPicker({ mode: "readwrite" });
+        const tree = await readTree(handle);
+        setDir(handle);
+        setReadOnly(false);
+        setWorkspaceRoot(handle.name);
+        setFiles(tree.files);
+        setFolders(tree.folders);
+        setSelectedFile(Object.keys(tree.files).sort()[0] ?? "");
+        setDirty(new Set());
+        say(`opened ${handle.name} · ${Object.keys(tree.files).length} files`, "ok");
+      } catch (error) {
+        if ((error as DOMException).name !== "AbortError") say(`folder: ${error instanceof Error ? error.message : String(error)}`, "warn");
+      }
       return;
     }
-    try {
-      const handle = await picker({ mode: "readwrite" });
-      const tree = await readTree(handle);
-      setDir(handle);
-      setWorkspaceRoot(handle.name);
-      setFiles(tree.files);
-      setFolders(tree.folders);
-      setSelectedFile(Object.keys(tree.files).sort()[0] ?? "");
+    // Firefox and Safari: a read-only folder picker through a directory input.
+    const input = document.createElement("input");
+    input.type = "file";
+    input.multiple = true;
+    input.setAttribute("webkitdirectory", "");
+    input.onchange = async () => {
+      const picked = [...(input.files ?? [])].filter((file) => file.name.endsWith(".jl"));
+      const treeFiles: Record<string, string> = {};
+      const treeFolders = new Set<string>();
+      for (const file of picked) {
+        const path = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
+        const parts = path.split("/").slice(1);
+        for (let i = 1; i < parts.length; i++) treeFolders.add(parts.slice(0, i).join("/"));
+        if (file.size <= 2 * 1024 * 1024) treeFiles[parts.join("/")] = await file.text();
+      }
+      setDir(null);
+      setReadOnly(true);
+      setWorkspaceRoot(picked[0] ? ((picked[0] as File & { webkitRelativePath?: string }).webkitRelativePath ?? "").split("/")[0] : "workspace");
+      setFiles(treeFiles);
+      setFolders([...treeFolders]);
+      setSelectedFile(Object.keys(treeFiles).sort()[0] ?? "");
       setDirty(new Set());
-      say(`opened ${handle.name} · ${Object.keys(tree.files).length} files`, "ok");
-    } catch (error) {
-      if ((error as DOMException).name !== "AbortError") say(`folder: ${error instanceof Error ? error.message : String(error)}`, "warn");
-    }
+      say(`opened ${picked.length} .jl files (read-only)`, "ok");
+    };
+    input.click();
   };
 
   const saveCurrent = async () => {
     if (!selectedFile) return;
     if (!dir) {
-      say("the workspace is in memory; File ▸ Open workspace folder… to save", "warn");
+      say(readOnly ? "this folder is read-only; use Chrome or Edge to save" : "the workspace is in memory; open a folder to save", "warn");
       return;
     }
     try {
@@ -480,14 +487,17 @@ export function App() {
     { id: "clear-console", label: "Clear console", menu: "edit", group: "console", run: () => setLines([]) },
     { id: "chart", label: "Chart", menu: "view", group: "panels", checked: !chartHidden, run: () => setChartHidden((v) => !v) },
     { id: "workspace-tab", label: "Workspace panel", menu: "view", group: "panels", checked: rightTab === "workspace", run: () => setRightTab("workspace") },
+    { id: "console", label: "Console", menu: "view", group: "panels", checked: !consoleHidden, run: () => setConsoleHidden((v) => !v) },
     { id: "shared-tab", label: "Shared variables", menu: "view", group: "panels", checked: rightTab === "shared", run: () => setRightTab("shared") },
     { id: "run", label: "Run script", menu: "run", group: "run", run: runScript },
   ];
 
   return (
-    <div className={`app split${chartHidden ? " chart-hidden" : ""}`} style={{ "--stage-w": `${stageW}px`, "--console-h": `${consoleH}px` } as CSSProperties}>
+    <div className={`app split${chartHidden ? " chart-hidden" : ""}${consoleHidden ? " console-hidden" : ""}`} style={{ "--stage-w": `${stageW}px`, "--console-h": `${consoleH}px` } as CSSProperties}>
       <header className="topbar">
-        <div className="brand">squero <span className="studio">studio</span><span className="wave"><i /><i /><i /><i /><i /></span><span className="badge">MX</span></div>
+        <span className="wordmark" aria-label="Squero Studio: MX">
+          <SqueroLogo product="MX" height={20} />
+        </span>
         <MenuBar commands={commands} />
         <div className="proj"><span className="dot" />{selectedFile}</div>
         <div className={`status ${status}`}><span className="pip" />{status === "attached" ? "paperboat · attached" : "julia · ready"}</div>
@@ -501,7 +511,6 @@ export function App() {
           >
             <svg viewBox="0 0 16 16" aria-hidden><rect x="2" y="3" width="12" height="10" rx="1" /><path d="M4 11l3-3 2 2 3-4" /></svg>
           </button>
-          <button className="key">Console <span className="tag">{lines.length}</span></button>
           <button className="key small" onClick={() => setAppTheme((t) => (t === "dark" ? "light" : "dark"))} title="Toggle theme">{appTheme === "dark" ? "☀" : "☾"}</button>
         </div>
       </header>
@@ -514,9 +523,8 @@ export function App() {
         active={selectedFile}
         onOpen={setSelectedFile}
         onChange={({ files: nextFiles, folders: nextFolders }) => { setFiles(nextFiles); setFolders(nextFolders); }}
-        onEditRoot={() => void openFolder()}
         onOpenFolder={() => void openFolder()}
-        rootBadge={dir ? "folder" : "in-memory"}
+        rootBadge={dir ? "folder" : readOnly ? "read-only" : "in-memory"}
         storage={storage}
         onSay={say}
       />
@@ -671,7 +679,7 @@ export function App() {
                 </div>
               ))}
             </div>
-            <p className="hint">Every scalar is broadcast by name automatically once the backend is up (<span className="mono">k</span> → Paperboat <span className="mono">k</span>). Matrices and vectors are not project variables: they go to <span className="mono">state_space</span>/matrix blocks. A single MX instance is enough.</p>
+            <p className="hint">Every MX variable is broadcast automatically once the backend is up: scalars as numbers, arrays as text (JSON when small, a typed descriptor otherwise). Array data still travels to <span className="mono">state_space</span>/matrix blocks. A single MX instance is enough.</p>
 
             <div className="rule" />
             <div className="lbl">runs</div>
@@ -680,31 +688,39 @@ export function App() {
         )}
       </aside>
 
-      <div className="console-splitter" role="separator" aria-orientation="horizontal" aria-label="Resize the console" onPointerDown={startConsoleResize} onDoubleClick={() => setConsoleH(154)} />
+      {!consoleHidden && (
+        <div className="console-splitter" role="separator" aria-orientation="horizontal" aria-label="Resize the console" onPointerDown={startConsoleResize} onDoubleClick={() => setConsoleH(154)} />
+      )}
 
       <section className="console">
-        <div className="chead"><span className="on">console</span><span>messages</span><span className="sp" /><span className="tag">julia 1.11.5 · frontend 0.1.0</span></div>
-        <div className="lines">
+        <div className="chead">
+          <span className="on">console</span><span>messages</span><span className="sp" />
+          <span className="tag">julia 1.11.5 · frontend 0.1.0</span>
+          <button className="key small console-toggle" onClick={() => setConsoleHidden((v) => !v)} title={consoleHidden ? "Show console" : "Hide console"}>{consoleHidden ? "show" : "hide"}</button>
+        </div>
+        {!consoleHidden && <div className="lines">
           {lines.map((l, i) => (
             <div key={i} className={l.level}>{l.cmd ? <span className="prompt">julia&gt; </span> : null}{l.text}</div>
           ))}
           <div ref={consoleEnd} />
-        </div>
-        <form className="cin" onSubmit={(e) => { e.preventDefault(); submit(); }}>
-          <span className="prompt">julia&gt;</span>
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "ArrowUp") { e.preventDefault(); recall(-1); }
-              else if (e.key === "ArrowDown") { e.preventDefault(); recall(1); }
-            }}
-            placeholder="type help"
-            autoComplete="off"
-            spellCheck={false}
-            aria-label="console command"
-          />
-        </form>
+        </div>}
+        {!consoleHidden && (
+          <form className="cin" onSubmit={(e) => { e.preventDefault(); submit(); }}>
+            <span className="prompt">julia&gt;</span>
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowUp") { e.preventDefault(); recall(-1); }
+                else if (e.key === "ArrowDown") { e.preventDefault(); recall(1); }
+              }}
+              placeholder="type help"
+              autoComplete="off"
+              spellCheck={false}
+              aria-label="console command"
+            />
+          </form>
+        )}
       </section>
     </div>
   );

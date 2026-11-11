@@ -121,6 +121,7 @@ const habitLint = linter((view): Diagnostic[] => {
   const out: Diagnostic[] = [];
   for (let i = 1; i <= view.state.doc.lines; i++) {
     const line = view.state.doc.line(i);
+    if (line.text.trimStart().startsWith("#")) continue; // comments, including #%% cells
     const at = line.text.indexOf("%");
     if (at >= 0) out.push({ from: line.from + at, to: line.from + at + 1, severity: "warning", message: "Julia comments start with #, not %." });
   }

@@ -18,11 +18,23 @@ export type SharedVariable = {
   value?: number | boolean | string;
   /** A small preview for the workspace card. */
   preview?: number[];
-  /** Broadcast to Paperboat: every scalar, automatically. */
+  /** Broadcast to Paperboat: every variable, automatically. */
   shared: boolean;
 };
 
-const scalar = (v: WorkspaceVariable) => v.type === "Float64" && typeof v.value !== "object";
+const scalar = (v: WorkspaceVariable) => typeof v.value === "number";
+
+/** Scalars keep their number; arrays become text (JSON when small, a typed descriptor otherwise). */
+function broadcastValue(v: WorkspaceVariable): number | string {
+  if (typeof v.value === "number") return v.value;
+  const data = v.value ?? v.preview;
+  if (data) {
+    const text = JSON.stringify(data);
+    if (text.length <= 4096) return text;
+  }
+  const preview = v.preview?.length ? ` · [${v.preview.join(", ")}]` : "";
+  return `${v.type} ${v.shape}${preview}`;
+}
 
 export function fromPaperboat(v: Variable): SharedVariable {
   return {
@@ -48,10 +60,10 @@ export function mergeShared(
       shape: v.shape,
       type: v.type,
       source: "mx" as const,
-      shareable: scalar(v),
+      shareable: true,
       value: scalar(v) ? (v.value as number) : undefined,
       preview: v.preview,
-      shared: scalar(v),
+      shared: true,
     })),
     ...pb.filter((v) => !names.has(v.name)),
   ];
@@ -65,8 +77,8 @@ export function mergeShared(
 export function toPaperboat(mx: readonly WorkspaceVariable[], paperboat: readonly Variable[]): Variables {
   const byName = new Map(paperboat.map((v) => [v.name, v]));
   for (const v of mx) {
-    if (!scalar(v)) continue;
-    byName.set(v.name, { name: v.name, type: "number", value: Number(v.value) });
+    if (scalar(v)) byName.set(v.name, { name: v.name, type: "number", value: Number(v.value) });
+    else byName.set(v.name, { name: v.name, type: "text", value: broadcastValue(v), note: "MX workspace — array data travels to blocks" });
   }
   return [...byName.values()];
 }

@@ -110,8 +110,9 @@ there is no cell). `Shift+Enter` runs the selection, or the current line. Both a
 `subplot(m, n, p)` followed by `plot`, `surf`, `mesh`, `imagesc` or `scatter` opens a **figure**
 tab with a grid of shared tiles: line tiles are the Scope, surface tiles the Station SceneView,
 heat/scatter small canvases. Clicking a `→ chart` token in the editor opens the figure and
-highlights the tile for that line. Try `examples/subplots.jl`, `examples/lines.jl` and
-`examples/surfaces.jl`.
+highlights the tile for that line. The repo's `examples/` folder is on disk: open it with the folder key next to `mx-workspace`
+(or `File ▸ Open workspace folder…`), then try `subplots.jl`, `subplot-scatter.jl`,
+`lines.jl` and `surfaces.jl`.
 
 ### Workspace
 
@@ -124,10 +125,11 @@ a vector, `table` for a scalar).
 `File ▸ Export workspace (.mat)…` writes a MAT v4 file (double matrices/vectors/scalars) that
 MATLAB and Octave load directly.
 
-Every scalar is **broadcast by default**: MX connects to `ws://localhost:8780` automatically,
-loads Paperboat's variables and sends its scalars back with `variables.set` when they change.
-Matrices and vectors are not project variables, so they travel to blocks. One MX instance is
-enough; there is no per-instance name.
+Every variable is **broadcast by default**: MX connects to `ws://localhost:8780` automatically,
+loads Paperboat's variables and sends its whole workspace back with `variables.set` when it
+changes. Scalars are numbers; arrays are text (JSON when small, a typed descriptor otherwise),
+while their data still travels to `state_space`/matrix blocks. One MX instance is enough; there
+is no per-instance name.
 
 ### Files and menus
 

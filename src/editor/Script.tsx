@@ -28,7 +28,6 @@ export function Script({
         <span className="sp" />
         <button className="key small" onClick={onSave} disabled={!dirty} title="Save (Ctrl+S)">Save</button>
         <button className="key small" onClick={onRun}>Run</button>
-        <button className="key small" onClick={onRun} title="Run">▶</button>
         <button className={`key small settings-key ${open ? "on" : ""}`} onClick={() => setOpen((v) => !v)} title="Editor settings" aria-expanded={open}>⚙</button>
       </div>
 
