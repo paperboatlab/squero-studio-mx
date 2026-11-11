@@ -1,52 +1,24 @@
-// A tiny figure plan from the script: `subplot(m, n, p)` followed by `plot`, `surf`, `mesh`,
-// `imagesc` or `scatter`. The kernel will own the real figure model; this is the scaffold's
-// parser so the examples open the right tiles now.
+// The figure model: what a script drew, as tiles. The kernel's SqueroBase verbs describe it
+// (`schema/chart.schema.json`); the app renders the spec and never parses the source.
 export type FigureKind = "line" | "surface" | "heat" | "scatter";
+export type FigureSeries = {
+  x?: number[];
+  y?: number[];
+  label?: string;
+  color?: string;
+};
 export type FigureTile = {
   row: number;
   col: number;
   kind: FigureKind;
   title: string;
-  /** A scatter's literal points, when the call wrote them out (a solution marker). */
+  /** A line tile's series, from `plot(x, y)`. */
+  series?: FigureSeries[];
+  /** A scatter's points, from `scatter(x, y)`. */
   points?: [number, number][];
+  /** A heat tile's field, rows of values. */
+  heat?: number[][];
+  /** A surface: `x`, `y`, `z` rows, and the optimum marker `[x, value, y]`. */
+  surface?: { x: number[]; y: number[]; z: number[][]; point?: [number, number, number] };
 };
 export type Figure = { rows: number; cols: number; tiles: FigureTile[]; explicit: boolean };
-
-export function parseFigure(code: string): Figure | null {
-  const statements = code
-    .split(/[\n;]/)
-    .map((line) => line.replace(/#.*$/, "").trim())
-    .filter(Boolean);
-  let rows = 1, cols = 1;
-  let current = { row: 1, col: 1 };
-  let explicit = false;
-  const tiles: FigureTile[] = [];
-  for (const statement of statements) {
-    const sp = /^subplot\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/.exec(statement);
-    if (sp) {
-      rows = Number(sp[1]); cols = Number(sp[2]);
-      const p = Number(sp[3]);
-      current = { row: Math.floor((p - 1) / cols) + 1, col: ((p - 1) % cols) + 1 };
-      explicit = true;
-      continue;
-    }
-    const call = /^(plot|surf|mesh|imagesc|heatmap|scatter)\s*\(/.exec(statement);
-    if (!call) continue;
-    if (!explicit) {
-      cols = Math.max(cols, tiles.length + 1);
-      current = { row: 1, col: tiles.length + 1 };
-    }
-    const kind: FigureKind = call[1] === "plot" ? "line" : call[1] === "scatter" ? "scatter" : call[1] === "imagesc" || call[1] === "heatmap" ? "heat" : "surface";
-    let points: [number, number][] | undefined;
-    if (call[1] === "scatter") {
-      const literal = /^scatter\s*\(\s*\[([^\]]*)\]\s*,\s*\[([^\]]*)\]\s*\)/.exec(statement);
-      if (literal) {
-        const xs = literal[1].split(",").map((v) => Number(v.trim())).filter(Number.isFinite);
-        const ys = literal[2].split(",").map((v) => Number(v.trim())).filter(Number.isFinite);
-        if (xs.length && xs.length === ys.length) points = xs.map((x, i) => [x, ys[i]]);
-      }
-    }
-    tiles.push({ ...current, kind, title: statement, points });
-  }
-  return tiles.length ? { rows, cols, tiles, explicit } : null;
-}

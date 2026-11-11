@@ -12,13 +12,13 @@ b = [8.0, 8.0, 5.0]
 
 lb = [0.0, 0.0]          # you cannot build a negative number of chairs
 x0 = [0.0, 0.0]
-options = (display = "iter", tol = 1e-8, max_iter = 500)
+options = (display = "iter", tol = 1e-8, max_iter = 5000)
 problem = (f = f, A = A, b = b, lb = lb, x0 = x0, options = options)
 
 # Answer: 3 chairs and 2 tables, for a profit of 13.
 # `display = "iter"` prints the solver's steps; "final" prints one line; "off" is silent.
-x_opt = optimize(problem)   # [3, 2]
-f_opt = f' * x_opt          # -13 (profit 13)
+# Paperboat solves it and the app binds x_opt and f_opt when the answer comes back.
+x_opt = optimize(problem)
 
 # The profit over the feasible box, and the plan on it.
 xg = range(0, 4, length=60)

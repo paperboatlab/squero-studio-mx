@@ -6,19 +6,19 @@ Sigma = [0.040 0.006; 0.006 0.090]   # covariance of the two assets
 mu = [0.10, 0.15]                   # expected returns
 H = Sigma
 f = [0.0, 0.0]
-A = [-mu[1] -mu[2]]                 # -return <= -0.12  ->  return >= 12%
+A = [-0.10 -0.15]                    # -return <= -0.12  ->  return >= 12%
 b = [-0.12]
 Aeq = [1.0 1.0]
 beq = [1.0]
 lb = [0.0, 0.0]
 ub = [1.0, 1.0]
 x0 = [0.5, 0.5]
-options = (display = "iter", tol = 1e-8, max_iter = 500)
+options = (display = "iter", tol = 1e-8, max_iter = 5000)
 problem = (H = H, f = f, A = A, b = b, Aeq = Aeq, beq = beq, lb = lb, ub = ub, x0 = x0, options = options)
 
 # Answer: 60% in the first asset, 40% in the second; risk 0.01584 (1.58%).
-x_opt = optimize(problem)   # [0.60, 0.40]
-f_opt = 0.5 * x_opt' * H * x_opt
+# Paperboat solves it and the app binds x_opt and f_opt when the answer comes back.
+x_opt = optimize(problem)
 
 # The risk surface and the chosen portfolio.
 xg = range(0, 1, length=60)

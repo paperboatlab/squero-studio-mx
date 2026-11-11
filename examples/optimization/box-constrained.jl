@@ -7,7 +7,7 @@ f = [-2.0, -3.0]
 lb = [0.0, 0.0]
 ub = [1.0, 1.0]
 x0 = [0.5, 0.5]
-options = (display = "iter", tol = 1e-8, max_iter = 500)
+options = (display = "iter", tol = 1e-8, max_iter = 5000)
 problem = (H = H, f = f, lb = lb, ub = ub, x0 = x0, options = options)
 
 # Answer: both pumps at their limit, x = [1, 1].
