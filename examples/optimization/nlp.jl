@@ -1,6 +1,6 @@
-# nlp.jl — a nonlinear program, solved automatically by `optimize`.
+# nlp.jl — a constrained nonlinear program, solved automatically by `optimize`.
 #
-# `fun` and `nonlcon` make it nonlinear, so the same call goes to the
+# `fun` plus `nonlcon` makes it a constrained NLP, so the same call goes to the
 # optimization/nlp block (Ipopt): min fun(x), c(x) <= 0, ceq(x) = 0.
 fun = x -> (x[1] - 1)^2 + (x[2] - 2)^2
 x0 = [0.5, 1.5]

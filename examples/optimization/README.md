@@ -1,13 +1,16 @@
 # Optimization examples
 
-One `optimize(problem)` call handles all three kinds; it picks the solver from the fields:
+One `optimize(problem)` call handles every kind; the fields pick the solver.
 
-| File | Type | Fields that pick it | Result |
-| --- | --- | --- | --- |
-| `lp.jl` | LP | `f`, `A`, `b`, `lb` | `[3, 2]`, profit 13 |
-| `qp.jl` | QP | `H` (plus `f`) | `[0.75, 0.25]` |
-| `nlp.jl` | NLP | `fun`, `nonlcon` | `[1, 1]` |
+| File | Solver picked | What makes it that case |
+| --- | --- | --- |
+| `lp.jl` | **LP** | linear `f`, inequality `A`/`b`, bounds |
+| `qp.jl` | **QP** | quadratic `H`, equality `Aeq`/`beq`, bounds |
+| `box-constrained.jl` | **QP, bounds only** | `H`/`f` and `lb`/`ub`, no rows |
+| `nlp.jl` | **NLP, constrained** | nonlinear `fun` plus `nonlcon` |
+| `nlp-unconstrained.jl` | **NLP, unconstrained** | only `fun` and `x0` |
 
-There is no separate `linprog`/`quadprog`/`fmincon`: `optimize` dispatches to Paperboat's
-`optimization/lp`, `optimization/qp` or `optimization/nlp` block. Each script also plots its
-objective (`surf`) and solution (`scatter`) in the Figures tab.
+That is the whole matrix: linear vs quadratic, with or without constraint rows, and nonlinear
+with or without constraints. `optimize` routes each to Paperboat's `optimization/lp`,
+`optimization/qp` or `optimization/nlp` block — no separate `linprog`, `quadprog` or `fmincon`
+call. Each script also plots its objective (`surf`) and solution (`scatter`) in the Figures tab.
