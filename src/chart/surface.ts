@@ -83,14 +83,15 @@ export function chartAxes(): Entity[] {
   const out: Entity[] = [];
   const add = (id: string, from: [number, number, number], to: [number, number, number], color: string) =>
     out.push({ id, shape: "line", pos: from, to, color });
-  const ink = "#55554f";
-  add("axis.x", [-2.2, 0.002, 2.2], [2.2, 0.002, 2.2], ink);
-  add("axis.z", [-2.2, 0.002, 2.2], [-2.2, 0.002, -2.2], ink);
-  add("axis.y", [-2.2, 0.002, 2.2], [-2.2, 1.35, 2.2], "#ff5a1f");
+  // Engineering axes: x red, y green, z blue — the same colours as the triad.
+  const red = "#e5484d", green = "#30a46c", blue = "#3e63dd";
+  add("axis.x", [-2.2, 0.002, 2.2], [2.2, 0.002, 2.2], red);
+  add("axis.z", [-2.2, 0.002, 2.2], [-2.2, 0.002, -2.2], blue);
+  add("axis.y", [-2.2, 0.002, 2.2], [-2.2, 1.35, 2.2], green);
   for (const t of [-2, -1, 0, 1, 2]) {
-    add(`axis.x.${t}`, [t, 0.002, 2.2], [t, 0.002, 2.05], ink);
-    add(`axis.z.${t}`, [-2.2, 0.002, t], [-2.05, 0.002, t], ink);
+    add(`axis.x.${t}`, [t, 0.002, 2.2], [t, 0.002, 2.05], red);
+    add(`axis.z.${t}`, [-2.2, 0.002, t], [-2.05, 0.002, t], blue);
   }
-  for (const h of [0.5, 1]) add(`axis.y.${h}`, [-2.2, h, 2.2], [-2.05, h, 2.2], "#ff5a1f");
+  for (const h of [0.5, 1]) add(`axis.y.${h}`, [-2.2, h, 2.2], [-2.05, h, 2.2], green);
   return out;
 }

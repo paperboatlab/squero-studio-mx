@@ -10,6 +10,8 @@ import { Script } from "./editor/Script.tsx";
 import { DEFAULT_EDITOR_SETTINGS, type EditorSettings } from "./editor/CodeEditor.tsx";
 import { SqueroLogo } from "./shell/SqueroLogo.tsx";
 import { AboutModal } from "./shell/AboutModal.tsx";
+import { probeKernel, type KernelInfo } from "./kernel/probe.ts";
+import { FRONTEND_VERSION, JULIA_VERSION, KERNEL_PROTOCOL, KERNEL_VERSION, PAPERBOAT_PROTOCOL } from "./version.ts";
 import { FilePanel, type FilePanelHandle } from "./files/FilePanel.tsx";
 import { askWrite, canWrite, loadDirHandle, readTree, saveDirHandle, storageOf } from "./files/storage.ts";
 import { loadServerWorkspace, serverStorage, type ServerWorkspace } from "./files/server.ts";
@@ -50,6 +52,7 @@ export function App() {
   const [figureAnchor, setFigureAnchor] = useState<string | null>(null);
   const [exportFormat, setExportFormat] = useState<FigureFormat>("png");
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [kernelInfo, setKernelInfo] = useState<KernelInfo | null>(null);
   const [filesHidden, setFilesHidden] = useState(false);
   const [rightHidden, setRightHidden] = useState(false);
   const [figureFocus, setFigureFocus] = useState<string | null>(null);
@@ -89,7 +92,7 @@ export function App() {
   const lastSent = useRef("");
   const attachedOnce = useRef(false);
   const [lines, setLines] = useState<Line[]>([
-    { level: "info", text: "julia 1.11.5 · kernel 1.11.5-r3 · frontend 0.1.0 · squero-kernel/0 · paperboat/0" },
+    { level: "info", text: `julia ${JULIA_VERSION} · kernel ${KERNEL_VERSION} · frontend ${FRONTEND_VERSION} · ${KERNEL_PROTOCOL} · ${PAPERBOAT_PROTOCOL}` },
     { level: "info", text: "paperboat: every workspace variable broadcasts when a backend is up" },
     { level: "ok", text: "matrices and vectors travel to blocks, not project variables" },
   ]);
@@ -143,6 +146,12 @@ export function App() {
   const rows = useMemo(() => mergeShared(currentVars, paperboat), [currentVars, paperboat]);
 
   useEffect(() => { localStorage.setItem("mx.editor", JSON.stringify(editor)); }, [editor]);
+  useEffect(() => {
+    let live = true;
+    void probeKernel().then((info) => { if (live) setKernelInfo(info); });
+    return () => { live = false; };
+  }, []);
+
   useEffect(() => {
     document.documentElement.dataset.theme = appTheme;
     localStorage.setItem("mx.theme", appTheme);
@@ -245,7 +254,7 @@ export function App() {
     if (head === "attach") { attach(); return; }
     if (head === "detach") { link.current?.close(); setStatus("idle"); say("paperboat: detached", "warn"); return; }
     if (head === "run") { runScript(); return; }
-    if (head === "version") { say("julia 1.11.5 · frontend 0.1.0 · kernel 1.11.5-r3 · squero-kernel/0 · paperboat/0"); return; }
+    if (head === "version") { say(`julia ${JULIA_VERSION} · frontend ${FRONTEND_VERSION} · kernel ${KERNEL_VERSION} · ${KERNEL_PROTOCOL} · ${PAPERBOAT_PROTOCOL}`); return; }
     const assign = /^([A-Za-z_]\w*)\s*=\s*([\s\S]+)$/.exec(cmd);
     if (assign) {
       const res = evaluate(assign[2], varsOf(workspace), functions);
@@ -693,7 +702,7 @@ export function App() {
             <span className="proj-name" onDoubleClick={() => { setTitleDraft(baseName(selectedFile)); setRenamingTitle(true); }}>{selectedFile}</span>
           )}
         </div>
-        <div className={`status ${status}`}><span className="pip" />{status === "attached" ? "paperboat · attached" : "julia · ready"}</div>
+        <div className={`status ${status}`}><span className="pip" />{status === "attached" ? "paperboat · attached" : kernelInfo ? `julia ${kernelInfo.julia} · kernel` : "julia · ready"}</div>
         <div className="keys">
           <button
             className={`key small chartkey${chartHidden ? " off" : ""}`}
@@ -765,7 +774,7 @@ export function App() {
           <span className="sp" />
           <button className="key small stage-hide" onClick={() => setChartHidden(true)} title="Hide chart">×</button>
         </div>
-        <div className="stage-body" ref={stageRef}>
+        <div className={`stage-body${activeFigure ? "" : " empty"}`} ref={stageRef}>
           {activeFigure ? (
             <FigureView figure={activeFigure.figure} focus={figureFocus} />
           ) : (
@@ -825,35 +834,37 @@ export function App() {
                 </div>
               )}
             </div>
-            <div className="scratch">
-              <div className="lbl">scratch</div>
-              <div className="box">
-                <span className="prompt">julia&gt;</span>
-                <input
-                  value={scratch}
-                  onChange={(e) => setScratch(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") { e.preventDefault(); evalScratch(); }
-                    else if (e.key === "Escape") { setScratch(""); setScratchOut(null); }
-                  }}
-                  placeholder="x * 2"
-                  aria-label="Evaluate an expression"
-                  spellCheck={false}
-                />
-                <button className="scratch-run" onClick={evalScratch} title="Evaluate (Enter)" aria-label="Evaluate">↵</button>
+            {consoleHidden && (
+              <div className="scratch">
+                <div className="lbl">scratch</div>
+                <div className="box">
+                  <span className="prompt">julia&gt;</span>
+                  <input
+                    value={scratch}
+                    onChange={(e) => setScratch(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") { e.preventDefault(); evalScratch(); }
+                      else if (e.key === "Escape") { setScratch(""); setScratchOut(null); }
+                    }}
+                    placeholder="x * 2"
+                    aria-label="Evaluate an expression"
+                    spellCheck={false}
+                  />
+                  <button className="scratch-run" onClick={evalScratch} title="Evaluate (Enter)" aria-label="Evaluate">↵</button>
+                </div>
+                {scratchOut ? (
+                  <div className={`preview${scratchOut.error ? " err" : ""}`}>
+                    <span className="val">{scratchOut.text}</span>
+                    {scratchOut.type && <span className="tag">{scratchOut.type}</span>}
+                  </div>
+                ) : (
+                  <div className="preview muted">
+                    <span className="val">assign with name = expr</span>
+                    <span className="tag">never saved</span>
+                  </div>
+                )}
               </div>
-              {scratchOut ? (
-                <div className={`preview${scratchOut.error ? " err" : ""}`}>
-                  <span className="val">{scratchOut.text}</span>
-                  {scratchOut.type && <span className="tag">{scratchOut.type}</span>}
-                </div>
-              ) : (
-                <div className="preview muted">
-                  <span className="val">assign with name = expr</span>
-                  <span className="tag">never saved</span>
-                </div>
-              )}
-            </div>
+            )}
           </div>
         ) : rightTab === "shared" ? (
           <div className="tabbody">
@@ -941,7 +952,7 @@ export function App() {
       <section className="console">
         <div className="chead">
           <span className="on">console</span><span>messages</span><span className="sp" />
-          <span className="tag">julia 1.11.5 · frontend 0.1.0</span>
+          <span className="tag">julia {JULIA_VERSION} · frontend {FRONTEND_VERSION}</span>
           <button
             type="button"
             className={`panel-toggle console-toggle${consoleHidden ? "" : " open"}`}

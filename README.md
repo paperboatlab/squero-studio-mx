@@ -52,7 +52,7 @@ Squero Studio OM. It ships a sysimage with LinearAlgebra, SparseArrays, Statisti
 ControlSystems and JSON3 — **no plotting and no simulation libraries**. Plotting and simulation
 stay in-house.
 
-Versioning follows Julia for the product (`1.11.5`) and tracks the frontend separately
+Versioning follows Julia for the product (`1.11.6`) and tracks the frontend separately
 (`0.1.0`), shown together in About and the console.
 
 ## Layout
@@ -161,6 +161,20 @@ place. The topbar menus also expose find, clear, chart visibility and run.
 and license facts, and the credits. Floating surfaces follow one rule (shared `useDismiss`): a
 press outside or Escape closes them, the trigger does not immediately reopen them, and focus
 returns to where it was — menus, the About dialog and the editor settings all use it.
+
+### Launcher, kernel and the app manifest
+
+`npm start` (or `bin/squero-mx`) serves `dist/` with the same default workspace and kernel bridge
+the dev server uses. `paperboat pkg install squero-studio-mx` installs it from `apps.toml`,
+`paperboat start squero-studio-mx` runs it on port 59301, and `paperboat stop squero-studio-mx`
+stops it — the same flow as Squero Studio OM. The manifest also installs
+`squero-julia-kernel`, which builds the pinned image.
+
+The kernel is `squero-julia-kernel:1.11.6-r1`, a Julia container with `--network=none` that speaks
+`squero-kernel/0` on stdio; the launcher bridges it to `/__mx/kernel` (one process per WebSocket).
+`SQUERO_JULIA=native` runs a sibling `squero-julia-kernel` checkout instead. `bin/doctor` in that
+repo reports native/container, Julia, the image and a `hello`. Plotting and solving stay out of the
+kernel: charts are shared Paperboat components and solvers live in Paperboat.
 
 ### Console
 
