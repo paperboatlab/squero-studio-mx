@@ -182,7 +182,7 @@ export function App() {
                 <span className="nm">{v.name}</span>
                 <span className="shape">{v.shape}</span>
                 <span className={`src ${v.source}`}>{v.source === "mx" ? "MX" : "PB"}</span>
-                <span className={`state ${v.shared ? "on" : ""}`}>{v.shared ? "shared" : v.shareable ? "off" : "block"}</span>
+                <span className={`state ${v.shared ? "on" : ""}`}>{v.shared ? "shared" : v.source === "paperboat" ? "project" : v.shareable ? "off" : "block"}</span>
               </div>
             ))}
           </div>
