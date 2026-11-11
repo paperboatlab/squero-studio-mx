@@ -1,7 +1,7 @@
 // A figure page: a subplot grid of the shared components. A line tile is the Scope; a surface
 // tile is the Station SceneView; heat and scatter are small canvases.
 import { useMemo } from "react";
-import { Heatmap, Scope } from "@paperboat/shared/plot";
+import { Heatmap, Scatter, Scope } from "@paperboat/shared/plot";
 import { SceneView } from "@paperboat/shared/station";
 import { chartAxes, chartView, surfaceEntity } from "../chart/surface.ts";
 import { heatSamples, sampled, sampled2, scatterPoints, times } from "../chart/samples.ts";
@@ -9,8 +9,6 @@ import type { Figure, FigureTile } from "./figure.ts";
 
 const HEAT = heatSamples();
 const SCATTER = scatterPoints();
-const SCATTER_X = Float64Array.from(SCATTER, ([x]) => x);
-const SCATTER_Y = Float64Array.from(SCATTER, ([, y]) => y);
 
 function Tile({ tile, focus, headless }: { tile: FigureTile; focus?: string | null; headless?: boolean }) {
   const entities = useMemo(() => {
@@ -37,19 +35,7 @@ function Tile({ tile, focus, headless }: { tile: FigureTile; focus?: string | nu
         )}
         {tile.kind === "surface" && entities && <SceneView entities={entities} view={chartView} grid axes />}
         {tile.kind === "heat" && <Heatmap values={HEAT} />}
-        {tile.kind === "scatter" && (
-          <Scope
-            name={tile.title}
-            channels={[
-              { id: "x", label: "x", unit: "–", buf: { times: SCATTER_X, values: SCATTER_X } },
-              { id: "y", label: "y", unit: "–", buf: { times: SCATTER_X, values: SCATTER_Y } },
-            ]}
-            version={1}
-            live={false}
-            settings={{ mode: "xy", draw: "points", grid: true, window: 5 }}
-            small
-          />
-        )}
+        {tile.kind === "scatter" && <Scatter points={SCATTER} color="#3e63dd" />}
       </div>
     </div>
   );
