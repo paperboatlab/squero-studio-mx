@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { evaluate, variableFrom } from "../src/kernel/localEval.ts";
+import { defineFunction, evaluate, variableFrom } from "../src/kernel/localEval.ts";
 
 test("a number and an assignment value", () => {
   const r = evaluate("3", {});
@@ -35,4 +35,21 @@ test("matrix builders", () => {
 test("anything else says so", () => {
   const r = evaluate("plot(x)", {});
   assert.equal(r.ok, false);
+});
+
+test("short-form functions and calls", () => {
+  const fns = defineFunction("f(x, y) = x + y");
+  assert.ok(fns);
+  const r = evaluate("f(2, 3)", {}, fns);
+  assert.ok(r.ok);
+  assert.equal(r.value, 5);
+
+  const nested = defineFunction("g(x) = f(x, 10)", fns)!;
+  const s = evaluate("g(5)", {}, nested);
+  assert.ok(s.ok);
+  assert.equal(s.value, 15);
+
+  const bad = evaluate("f(2)", {}, fns);
+  assert.equal(bad.ok, false);
+  assert.match(bad.ok ? "" : bad.error, /expects 2 arguments/);
 });

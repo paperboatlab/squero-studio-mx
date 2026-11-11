@@ -4,6 +4,21 @@
 import type { WorkspaceVariable } from "../chart/samples.ts";
 
 export type NumValue = number | number[] | number[][];
+
+/** A short-form Julia function: `f(x, y) = x + y`. */
+export type UserFunction = { params: string[]; body: string };
+export type FunctionTable = Record<string, UserFunction>;
+
+const DEFINITION = /^([A-Za-z_]\w*)\s*\(([^)]*)\)\s*=\s*([\s\S]+)$/;
+
+/** Read `name(params) = body`; returns a new table, or null when the line is not a definition. */
+export function defineFunction(source: string, functions: FunctionTable = {}): FunctionTable | null {
+  const match = DEFINITION.exec(source.trim());
+  if (!match) return null;
+  const params = match[2].split(",").map((param) => param.trim()).filter(Boolean);
+  if (params.some((param) => !/^[A-Za-z_]\w*$/.test(param))) return null;
+  return { ...functions, [match[1]]: { params, body: match[3].trim() } };
+}
 export type EvalResult = { ok: true; value: NumValue; display: string } | { ok: false; error: string };
 
 type Tok = { kind: "num" | "id" | "op" | "punc"; text: string; space: boolean };
@@ -151,9 +166,26 @@ class Parser {
   private i = 0;
   private readonly tokens: Tok[];
   private readonly vars: Record<string, NumValue>;
-  constructor(tokens: Tok[], vars: Record<string, NumValue>) {
+  private readonly functions: FunctionTable;
+  private readonly depth: number;
+  constructor(tokens: Tok[], vars: Record<string, NumValue>, functions: FunctionTable = {}, depth = 0) {
     this.tokens = tokens;
     this.vars = vars;
+    this.functions = functions;
+    this.depth = depth;
+  }
+
+  /** A call is a user function first (its body runs with the parameters bound), then a builtin. */
+  private invoke(name: string, args: NumValue[]): NumValue {
+    const fn = this.functions[name];
+    if (!fn) return call(name, args);
+    if (fn.params.length !== args.length) {
+      throw new Error(`${name} expects ${fn.params.length} argument${fn.params.length === 1 ? "" : "s"}`);
+    }
+    if (this.depth > 32) throw new Error("too much recursion");
+    const vars = { ...this.vars };
+    fn.params.forEach((param, i) => { vars[param] = args[i]; });
+    return new Parser(tokenize(fn.body), vars, this.functions, this.depth + 1).parse();
   }
 
   private peek(): Tok | undefined { return this.tokens[this.i]; }
@@ -222,7 +254,7 @@ class Parser {
           do { args.push(this.range()); } while (this.eat(","));
           this.expect(")");
         }
-        return call(t.text, args);
+        return this.invoke(t.text, args);
       }
       if (t.text in this.vars) return this.vars[t.text];
       throw new Error(`"${t.text}" is not defined`);
@@ -263,9 +295,9 @@ function display(v: NumValue): string {
   return `${v.length} × ${v[0]?.length ?? 0} matrix`;
 }
 
-export function evaluate(source: string, vars: Record<string, NumValue>): EvalResult {
+export function evaluate(source: string, vars: Record<string, NumValue>, functions: FunctionTable = {}): EvalResult {
   try {
-    const value = new Parser(tokenize(source), vars).parse();
+    const value = new Parser(tokenize(source), vars, functions).parse();
     return { ok: true, value, display: display(value) };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };

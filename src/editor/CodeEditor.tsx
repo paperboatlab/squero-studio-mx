@@ -19,7 +19,7 @@ import {
   snippetCompletion, type Completion, type CompletionSource,
 } from "@codemirror/autocomplete";
 import { tags } from "@lezer/highlight";
-import { evaluate, variableFrom, type NumValue } from "../kernel/localEval.ts";
+import { defineFunction, evaluate, variableFrom, type FunctionTable, type NumValue } from "../kernel/localEval.ts";
 
 export type EditorSettings = {
   theme: "dark" | "light";
@@ -215,26 +215,30 @@ const dims = (vars: Record<string, NumValue>) => {
   return typeof n === "number" && Number.isFinite(n) ? `${n} × ${n}` : "grid";
 };
 
-/** Values in scope at a line: the workspace plus every simple assignment above it. */
-function valuesAt(view: EditorView, from: number, base: Record<string, NumValue>): Record<string, NumValue> {
+/** Values and functions in scope at a line: the session plus everything above it. */
+function scopeAt(view: EditorView, from: number, base: Record<string, NumValue>, baseFunctions: FunctionTable) {
   const vars = { ...base };
+  let functions = { ...baseFunctions };
   const here = view.state.doc.lineAt(from).number;
   for (let i = 1; i <= here; i++) {
     const text = view.state.doc.line(i).text.trim();
+    const definition = defineFunction(text, functions);
+    if (definition) { functions = definition; continue; }
     const assign = /^([A-Za-z_]\w*)\s*=\s*([\s\S]+)$/.exec(text);
     if (!assign) continue;
-    const res = evaluate(assign[2], vars);
+    const res = evaluate(assign[2], vars, functions);
     if (res.ok) vars[assign[1]] = res.value;
   }
-  return vars;
+  return { vars, functions };
 }
 
-function answerFor(text: string, vars: Record<string, NumValue>, onChart?: OnChart): AnswerMarker | null {
+function answerFor(text: string, vars: Record<string, NumValue>, functions: FunctionTable, onChart?: OnChart): AnswerMarker | null {
   const t = text.trim();
   if (!t || t.startsWith("#")) return null;
+  if (defineFunction(t)) return new AnswerMarker("function", "type");
   const assign = /^([A-Za-z_]\w*)\s*=\s*([\s\S]+)$/.exec(t);
   if (assign) {
-    const res = evaluate(assign[2], vars);
+    const res = evaluate(assign[2], vars, functions);
     if (res.ok) {
       const v = variableFrom(assign[1], res.value);
       if (v.type === "Float64") return new AnswerMarker(Number.isInteger(v.value) ? "Int64" : "Float64", "type");
@@ -255,21 +259,25 @@ function answerFor(text: string, vars: Record<string, NumValue>, onChart?: OnCha
   return null;
 }
 
-const answerGutter = (getVars: () => Record<string, NumValue>, onChart?: OnChart) => gutter({
+const answerGutter = (getVars: () => Record<string, NumValue>, getFunctions: () => FunctionTable, onChart?: OnChart) => gutter({
   class: "cm-answer-gutter",
   side: "after",
-  lineMarker(view, line) { return answerFor(view.state.doc.lineAt(line.from).text, valuesAt(view, line.from, getVars()), onChart); },
+  lineMarker(view, line) {
+    const scope = scopeAt(view, line.from, getVars(), getFunctions());
+    return answerFor(view.state.doc.lineAt(line.from).text, scope.vars, scope.functions, onChart);
+  },
   initialSpacer: () => new AnswerMarker("512 × 512", "heat"),
 });
 
 export function CodeEditor({
-  value, file, onChange, settings, variables, onChart, onRunSelection, onPos,
+  value, file, onChange, settings, variables, functions, onChart, onRunSelection, onPos,
 }: {
   value: string;
   file: string;
   onChange: (value: string) => void;
   settings: EditorSettings;
   variables: readonly { name: string; type: string; value?: NumValue }[];
+  functions?: FunctionTable;
   onChart?: OnChart;
   onRunSelection?: (code: string, mode: "cell" | "line" | "selection") => void;
   onPos?: (pos: { line: number; col: number; selected: number }) => void;
@@ -280,7 +288,10 @@ export function CodeEditor({
   change.current = onChange;
   const vars = useRef(variables);
   vars.current = variables;
+  const fns = useRef(functions ?? {});
+  fns.current = functions ?? {};
   const varMap = () => Object.fromEntries(vars.current.map((v) => [v.name, v.value ?? 0]));
+  const fnMap = () => fns.current;
   const chart = useRef(onChart);
   chart.current = onChart;
   const runSelection = useRef(onRunSelection);
@@ -328,6 +339,7 @@ export function CodeEditor({
       ...BUILTINS.map((label) => ({ label, type: "function" })),
       ...SNIPPETS,
       ...vars.current.map((v) => ({ label: v.name, type: "variable", detail: v.type, boost: 6 })),
+      ...Object.entries(fns.current).map(([name, fn]) => ({ label: name, type: "function", detail: `(${fn.params.join(", ")})`, boost: 7 })),
     ];
     return { from: word.from, options };
   };
@@ -364,7 +376,7 @@ export function CodeEditor({
           compartments.auto.of(settings.autocomplete ? autocompleteExt() : []),
           compartments.brackets.of(settings.brackets ? bracketExt() : []),
           compartments.lint.of(settings.lint ? lintExt() : []),
-          compartments.answers.of(answerGutter(varMap, (kind, line) => chart.current?.(kind, line))),
+          compartments.answers.of(answerGutter(varMap, fnMap, (kind, line) => chart.current?.(kind, line))),
           cellSections,
           EditorView.updateListener.of((u) => {
             if (u.docChanged) change.current(u.state.doc.toString());
@@ -402,9 +414,9 @@ export function CodeEditor({
 
   useEffect(() => {
     view.current?.dispatch({
-      effects: compartments.answers.reconfigure(answerGutter(varMap, (kind, line) => chart.current?.(kind, line))),
+      effects: compartments.answers.reconfigure(answerGutter(varMap, fnMap, (kind, line) => chart.current?.(kind, line))),
     });
-  }, [variables]);
+  }, [variables, functions]);
 
   return <div className="cm-host" ref={host} aria-label={`${file} editor`} />;
 }

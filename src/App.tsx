@@ -14,7 +14,7 @@ import { FilePanel, type FilePanelHandle } from "./files/FilePanel.tsx";
 import { askWrite, canWrite, loadDirHandle, readTree, saveDirHandle, storageOf } from "./files/storage.ts";
 import { loadServerWorkspace, serverStorage, type ServerWorkspace } from "./files/server.ts";
 import { downloadMat } from "./workspace/mat.ts";
-import { evaluate, variableFrom, varsOf } from "./kernel/localEval.ts";
+import { defineFunction, evaluate, variableFrom, varsOf, type FunctionTable } from "./kernel/localEval.ts";
 import { PaperboatLink, type LinkStatus } from "./paperboat/link.ts";
 import { mergeShared, setMessage } from "./paperboat/variables.ts";
 
@@ -60,6 +60,7 @@ export function App() {
   const [selectedFile, setSelectedFile] = useState("");
   const [selectedVar, setSelectedVar] = useState("");
   const [workspace, setWorkspace] = useState<WorkspaceVariable[]>([]);
+  const [functions, setFunctions] = useState<FunctionTable>({});
   const [workspaceRoot, setWorkspaceRoot] = useState(DEFAULT_WORKSPACE);
   const [dir, setDir] = useState<FileSystemDirectoryHandle | null>(null);
   const [serverRoot, setServerRoot] = useState<string | null>(null);
@@ -230,6 +231,13 @@ export function App() {
     }
     if (head === "whos") {
       for (const r of currentVars) say(`${r.name.padEnd(6)} ${r.shape.padEnd(10)} ${r.type}`);
+      for (const [name, fn] of Object.entries(functions)) say(`${name}(${fn.params.join(", ")})  function`);
+      return;
+    }
+    const definition = defineFunction(cmd, functions);
+    if (definition) {
+      setFunctions(definition);
+      say(`${cmd.slice(0, cmd.indexOf("(")).trim()} defined`, "ok");
       return;
     }
     if (head === "attach") { attach(); return; }
@@ -238,7 +246,7 @@ export function App() {
     if (head === "version") { say("julia 1.11.5 · frontend 0.1.0 · kernel 1.11.5-r3"); return; }
     const assign = /^([A-Za-z_]\w*)\s*=\s*([\s\S]+)$/.exec(cmd);
     if (assign) {
-      const res = evaluate(assign[2], varsOf(workspace));
+      const res = evaluate(assign[2], varsOf(workspace), functions);
       if (res.ok) {
         const next = variableFrom(assign[1], res.value);
         setWorkspace((prev) => [...prev.filter((one) => one.name !== next.name), next]);
@@ -253,7 +261,7 @@ export function App() {
       const v = rows.find((r) => r.name === cmd);
       if (v) { say(`${v.name} = ${v.shape} ${v.type}`); return; }
     }
-    const res = evaluate(cmd, varsOf(workspace));
+    const res = evaluate(cmd, varsOf(workspace), functions);
     if (res.ok) {
       const next = variableFrom("ans", res.value);
       setWorkspace((prev) => [...prev.filter((one) => one.name !== "ans"), next]);
@@ -408,12 +416,19 @@ export function App() {
 
   const clearWorkspace = () => {
     setWorkspace([]);
+    setFunctions({});
     setSelectedVar("");
     say("workspace cleared", "warn");
   };
 
   const clearVar = (name: string) => {
     setWorkspace((prev) => prev.filter((v) => v.name !== name));
+    setFunctions((prev) => {
+      if (!(name in prev)) return prev;
+      const next = { ...prev };
+      delete next[name];
+      return next;
+    });
     say(`clear ${name}`, "warn");
   };
 
@@ -421,8 +436,15 @@ export function App() {
   const evalScratch = () => {
     const source = scratch.trim();
     if (!source) return;
+    const definition = defineFunction(source, functions);
+    if (definition) {
+      setFunctions(definition);
+      setScratchOut({ text: `${source.slice(0, source.indexOf("(")).trim()} defined`, type: "function" });
+      setScratch("");
+      return;
+    }
     const assign = /^([A-Za-z_]\w*)\s*=\s*([\s\S]+)$/.exec(source);
-    const res = evaluate(assign ? assign[2] : source, varsOf(workspace));
+    const res = evaluate(assign ? assign[2] : source, varsOf(workspace), functions);
     if (!res.ok) {
       setScratchOut({ text: res.error, error: true });
       return;
@@ -444,7 +466,9 @@ export function App() {
     if (fig) addFigure(fig, selectedFile);
     else setFigureFocus(null);
     const byName = new Map(workspace.map((v) => [v.name, v]));
+    let fns = { ...functions };
     let changed = false;
+    let fnsChanged = false;
     for (const raw of code.split("\n")) {
       const line = raw.trim();
       if (!line || line.startsWith("#")) continue;
@@ -454,21 +478,25 @@ export function App() {
           setLines([]);
         } else {
           const arg = (control[2] ?? "").replace(/^["']|["']$/g, "").trim();
-          if (arg && arg !== "all") byName.delete(arg);
-          else byName.clear();
+          if (arg && arg !== "all") { byName.delete(arg); delete fns[arg]; }
+          else { byName.clear(); fns = {}; }
           changed = true;
+          fnsChanged = true;
         }
         continue;
       }
+      const definition = defineFunction(line, fns);
+      if (definition) { fns = definition; fnsChanged = true; continue; }
       const assign = /^([A-Za-z_]\w*)\s*=\s*([\s\S]+)$/.exec(line);
       if (!assign) continue;
-      const res = evaluate(assign[2], Object.fromEntries([...byName].map(([name, v]) => [name, v.value ?? v.preview ?? 0])));
+      const res = evaluate(assign[2], Object.fromEntries([...byName].map(([name, v]) => [name, v.value ?? v.preview ?? 0])), fns);
       if (res.ok) {
         byName.set(assign[1], variableFrom(assign[1], res.value));
         changed = true;
       }
     }
     if (changed) setWorkspace([...byName.values()]);
+    if (fnsChanged) setFunctions(fns);
     const lines = code.split("\n").filter((line) => line.trim()).length;
     setLastRun({ time: Date.now(), ms: Math.max(1, Math.round(performance.now() - startedAt)), lines, mode });
     say(`run ${mode} · ${lines} lines`, "ok");
@@ -706,6 +734,7 @@ export function App() {
         settings={editor}
         onSettings={setEditor}
         variables={workspace.map((v) => ({ name: v.name, type: v.type, value: v.value ?? v.preview }))}
+        functions={functions}
         onChart={(_kind, line) => focusLine(line)}
         onRunSelection={runCode}
         lastRun={lastRun}

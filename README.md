@@ -172,8 +172,10 @@ share <name> · unshare <name> · simulate/run · version
 ```
 
 Assignments and simple expressions evaluate **locally** before the kernel is attached:
-`gg=3`, `x = 1:5`, `A = zeros(2,3)`, `gg + 4` → `ans`. Numbers, vectors, matrices, ranges,
-common math functions and the MATLAB-style builders are supported. Anything else is queued for
+`gg=3`, `x = 1:5`, `A = zeros(2,3)`, `gg + 4` → `ans`. Short-form functions work too:
+`f(x, y) = x + y` then `t = f(2, 3)` gives `t = 5` in the workspace. Numbers, vectors, matrices,
+ranges, common math functions and the MATLAB-style builders are supported. Functions persist
+across runs and console/scratch calls until `clear` (or `clear f`). Anything else is queued for
 `squero-kernel/0` with a clear message. Arrow Up/Arrow Down recall history.
 
 ## Status
