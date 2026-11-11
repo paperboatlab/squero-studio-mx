@@ -10,6 +10,7 @@ import { Script } from "./editor/Script.tsx";
 import { DEFAULT_EDITOR_SETTINGS, type EditorSettings } from "./editor/CodeEditor.tsx";
 import { SqueroLogo } from "./shell/SqueroLogo.tsx";
 import { AboutModal } from "./shell/AboutModal.tsx";
+import { probeKernel, type KernelInfo } from "./kernel/probe.ts";
 import { FRONTEND_VERSION, JULIA_VERSION, KERNEL_PROTOCOL, KERNEL_VERSION, PAPERBOAT_PROTOCOL } from "./version.ts";
 import { FilePanel, type FilePanelHandle } from "./files/FilePanel.tsx";
 import { askWrite, canWrite, loadDirHandle, readTree, saveDirHandle, storageOf } from "./files/storage.ts";
@@ -51,6 +52,7 @@ export function App() {
   const [figureAnchor, setFigureAnchor] = useState<string | null>(null);
   const [exportFormat, setExportFormat] = useState<FigureFormat>("png");
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [kernelInfo, setKernelInfo] = useState<KernelInfo | null>(null);
   const [filesHidden, setFilesHidden] = useState(false);
   const [rightHidden, setRightHidden] = useState(false);
   const [figureFocus, setFigureFocus] = useState<string | null>(null);
@@ -144,6 +146,12 @@ export function App() {
   const rows = useMemo(() => mergeShared(currentVars, paperboat), [currentVars, paperboat]);
 
   useEffect(() => { localStorage.setItem("mx.editor", JSON.stringify(editor)); }, [editor]);
+  useEffect(() => {
+    let live = true;
+    void probeKernel().then((info) => { if (live) setKernelInfo(info); });
+    return () => { live = false; };
+  }, []);
+
   useEffect(() => {
     document.documentElement.dataset.theme = appTheme;
     localStorage.setItem("mx.theme", appTheme);
@@ -694,7 +702,7 @@ export function App() {
             <span className="proj-name" onDoubleClick={() => { setTitleDraft(baseName(selectedFile)); setRenamingTitle(true); }}>{selectedFile}</span>
           )}
         </div>
-        <div className={`status ${status}`}><span className="pip" />{status === "attached" ? "paperboat · attached" : "julia · ready"}</div>
+        <div className={`status ${status}`}><span className="pip" />{status === "attached" ? "paperboat · attached" : kernelInfo ? `julia ${kernelInfo.julia} · kernel` : "julia · ready"}</div>
         <div className="keys">
           <button
             className={`key small chartkey${chartHidden ? " off" : ""}`}
