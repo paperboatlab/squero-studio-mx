@@ -356,3 +356,19 @@ h2, p { margin: 0; }
 /* #%% sections read as cells: a rule above the header, the header in the signal colour. */
 .cm-line.cm-cell-line { background: color-mix(in srgb, var(--signal) 6%, transparent); border-top: 1px solid var(--line-strong); }
 .cm-cell-tag { color: var(--signal-text); font-weight: 600; }
+
+/* Figures browser: one row per run, newest first. */
+.figlist { display: flex; flex-direction: column; gap: 5px; }
+.figrow { display: grid; grid-template-columns: 40px minmax(0, 1fr) 20px; gap: 8px; align-items: center; width: 100%; padding: 6px 7px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-raised); text-align: left; cursor: pointer; }
+.figrow.on { border-color: var(--line-ink); box-shadow: 0 0 0 1px var(--line-ink); }
+.figrow:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.figmark { display: grid; place-items: center; width: 40px; height: 30px; border: 1px solid var(--line); border-radius: 3px; background: var(--surface-sunken); color: var(--text-muted); font: 500 10px var(--font-mono); }
+.figmeta { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.figmeta b { font: 500 11px var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.figmeta span { font: 400 9.5px var(--font-mono); color: var(--text-muted); }
+.figx { border: 0; background: none; padding: 0; color: var(--text-muted); font: 400 14px var(--font-mono); cursor: pointer; }
+.figx:hover { color: var(--danger-text); }
+.stage-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--text-muted); font: 400 12px var(--font-sans); }
+.stage-empty p { font: 500 13px var(--font-mono); color: var(--text); }
+.stage .tabs b { font: 500 12px var(--font-mono); color: var(--text); }
+.varc { grid-template-columns: 20px minmax(0, 1fr) 16px; }

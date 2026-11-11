@@ -1,13 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
-import { Scope } from "@paperboat/shared/plot";
-import { SceneView } from "@paperboat/shared/station";
 import { MenuBar } from "@paperboat/shared/components";
 import type { Command } from "@paperboat/shared";
 import type { Variable } from "@paperboat/shared/protocol";
-import { chartAxes, chartView, surfaceEntity } from "./chart/surface.ts";
 import { FigureView } from "./plot/FigureView.tsx";
 import { parseFigure, type Figure } from "./plot/figure.ts";
-import { demoWorkspaces, sampled, sampled2, times, type WorkspaceVariable } from "./chart/samples.ts";
+import { demoWorkspaces, type WorkspaceVariable } from "./chart/samples.ts";
 import { Script } from "./editor/Script.tsx";
 import { DEFAULT_EDITOR_SETTINGS, type EditorSettings } from "./editor/CodeEditor.tsx";
 import { SqueroLogo } from "./shell/SqueroLogo.tsx";
@@ -18,8 +15,8 @@ import { evaluate, variableFrom, varsOf } from "./kernel/localEval.ts";
 import { PaperboatLink, type LinkStatus } from "./paperboat/link.ts";
 import { mergeShared, setMessage } from "./paperboat/variables.ts";
 
-type Tab = "3d" | "2d" | "figure" | "table";
-type RightTab = "workspace" | "shared";
+type RightTab = "workspace" | "shared" | "figures";
+type FigureEntry = { id: string; source: string; time: number; figure: Figure };
 type Line = { level: "info" | "ok" | "warn"; text: string; cmd?: boolean };
 
 function TypeIcon({ type }: { type: string }) {
@@ -92,8 +89,8 @@ save("data/run-07.mat")
 };
 
 export function App() {
-  const [tab, setTab] = useState<Tab>("3d");
-  const [figure, setFigure] = useState<Figure | null>(null);
+  const [figures, setFigures] = useState<FigureEntry[]>([]);
+  const [activeFigureId, setActiveFigureId] = useState<string | null>(null);
   const [figureFocus, setFigureFocus] = useState<string | null>(null);
   const [rightTab, setRightTab] = useState<RightTab>("workspace");
   const [files, setFiles] = useState<Record<string, string>>(INITIAL_FILES);
@@ -173,19 +170,8 @@ export function App() {
 
   const storage = useMemo(() => (dir ? storageOf(dir) : undefined), [dir]);
 
-  const entities = useMemo(() => {
-    const list = chartAxes();
-    return Object.fromEntries([["surface", surfaceEntity(64)], ...list.map((e) => [e.id, e])]);
-  }, []);
   const currentVars = workspace;
   const rows = useMemo(() => mergeShared(currentVars, paperboat), [currentVars, paperboat]);
-  const channels = useMemo(
-    () => [
-      { id: "v", label: selectedVar || "y", unit: "–", buf: { times, values: sampled } },
-      { id: "v2", label: `${selectedVar || "y"}′`, unit: "–", buf: { times, values: sampled2 } },
-    ],
-    [selectedVar],
-  );
 
   useEffect(() => { localStorage.setItem("mx.editor", JSON.stringify(editor)); }, [editor]);
   useEffect(() => {
@@ -330,13 +316,36 @@ export function App() {
 
   const typeLabel = (type: string) => (type.startsWith("Matrix") ? "matrix" : type.startsWith("Vector") ? "vector" : "float64");
 
-  const chartOf = (type: string): Tab => (type === "Float64" ? "table" : type.startsWith("Matrix") ? "3d" : "2d");
+  const timeOf = (time: number) => new Date(time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
-  const openChart = (v: { name: string; type: string }) => {
-    setSelectedVar(v.name);
-    setTab(chartOf(v.type));
+  const addFigure = (figure: Figure, source: string) => {
+    const entry: FigureEntry = {
+      id: typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+      source,
+      time: Date.now(),
+      figure,
+    };
+    setFigures((prev) => [entry, ...prev]);
+    setActiveFigureId(entry.id);
+    setFigureFocus(null);
     setChartHidden(false);
-    say(`chart: ${v.name} → ${chartOf(v.type)}`, "ok");
+  };
+
+  const removeFigure = (id: string) => {
+    setFigures((prev) => {
+      const next = prev.filter((f) => f.id !== id);
+      if (activeFigureId === id) setActiveFigureId(next[0]?.id ?? null);
+      return next;
+    });
+  };
+
+  const focusLine = (line: string) => {
+    const match = figures.find((f) => f.figure.tiles.some((t) => t.title === line));
+    if (!match) { say("run the script to create this figure", "warn"); return; }
+    setActiveFigureId(match.id);
+    setFigureFocus(line);
+    setChartHidden(false);
+    say(`chart → ${line}`, "ok");
   };
 
   const clearWorkspace = () => {
@@ -352,9 +361,8 @@ export function App() {
 
   const runCode = (code: string, mode: "cell" | "line" | "selection" | "file") => {
     const fig = parseFigure(code);
-    setFigure(fig);
-    setFigureFocus(null);
-    if (fig) setTab("figure");
+    if (fig) addFigure(fig, selectedFile);
+    else setFigureFocus(null);
     const byName = new Map(workspace.map((v) => [v.name, v]));
     let changed = false;
     for (const raw of code.split("\n")) {
@@ -475,7 +483,7 @@ export function App() {
     if (!currentVars.some((v) => v.name === selectedVar)) setSelectedVar(currentVars[0]?.name ?? "");
   }, [currentVars, selectedVar]);
 
-  const picked = rows.find((r) => r.name === selectedVar) ?? rows[0];
+  const activeFigure = figures.find((f) => f.id === activeFigureId) ?? figures[0] ?? null;
   const shownVars = rows.filter((r) => r.source === "mx" && `${r.name} ${r.shape} ${r.type}`.toLowerCase().includes(varQuery.toLowerCase()));
   const active = rows.filter((r) => r.shared).length;
 
@@ -514,6 +522,7 @@ export function App() {
     { id: "clear-console", label: "Clear console", menu: "edit", group: "console", run: () => setLines([]) },
     { id: "chart", label: "Chart", menu: "view", group: "panels", checked: !chartHidden, run: () => setChartHidden((v) => !v) },
     { id: "workspace-tab", label: "Workspace panel", menu: "view", group: "panels", checked: rightTab === "workspace", run: () => setRightTab("workspace") },
+    { id: "figures-tab", label: "Figures", menu: "view", group: "panels", checked: rightTab === "figures", run: () => setRightTab("figures") },
     { id: "console", label: "Console", menu: "view", group: "panels", checked: !consoleHidden, run: () => setConsoleHidden((v) => !v) },
     { id: "shared-tab", label: "Shared variables", menu: "view", group: "panels", checked: rightTab === "shared", run: () => setRightTab("shared") },
     { id: "run", label: "Run script", menu: "run", group: "run", run: runScript },
@@ -588,7 +597,7 @@ export function App() {
         settings={editor}
         onSettings={setEditor}
         variables={workspace.map((v) => ({ name: v.name, type: v.type, value: v.value ?? v.preview }))}
-        onChart={(kind, line) => { setFigureFocus(line); setTab(figure ? "figure" : kind); setChartHidden(false); say(`chart → ${figure ? line : kind}`, "ok"); }}
+        onChart={(_kind, line) => focusLine(line)}
         onRunSelection={runCode}
       />
 
@@ -604,44 +613,22 @@ export function App() {
 
       <main className="stage">
         <div className="tabs">
-          {(["3d", "2d", ...(figure ? (["figure"] as const) : []), "table"] as Tab[]).map((t) => (
-            <button key={t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>{t === "3d" ? "3d" : t === "2d" ? "2d graph" : t === "figure" ? "figure" : "table"}</button>
-          ))}
+          <b>{activeFigure ? baseName(activeFigure.source) : "figures"}</b>
+          <span className="tag">
+            {activeFigure
+              ? `${timeOf(activeFigure.time)} · ${activeFigure.figure.rows === 1 && activeFigure.figure.cols === 1 ? "" : `${activeFigure.figure.rows}×${activeFigure.figure.cols} · `}${activeFigure.figure.tiles.length} plot${activeFigure.figure.tiles.length === 1 ? "" : "s"}`
+              : "run a script or open a figure"}
+          </span>
           <span className="sp" />
-          <span className="tag">{tab === "3d" ? "surface · A" : tab === "2d" ? `${selectedVar || "y"}(t)` : tab === "figure" ? (figure && figure.rows === 1 && figure.cols === 1 ? "figure" : `figure · ${figure?.rows ?? 1}×${figure?.cols ?? 1}`) : `table · ${picked?.name ?? "A"}`}</span>
           <button className="key small stage-hide" onClick={() => setChartHidden(true)} title="Hide chart">×</button>
         </div>
-
         <div className="stage-body">
-          {tab === "3d" && (
-            <>
-              <div className="scene-wrap"><SceneView entities={entities} view={chartView} grid axes /></div>
-              <div className="overlay">
-                <div className="chip"><span className="sig" />A · surface</div>
-                <div className="chip">Station renderer · same SceneView</div>
-              </div>
-            </>
-          )}
-          {tab === "2d" && (
-            <div className="scope-wrap">
-              <Scope name="y(t)" channels={channels} version={1} live={false} settings={{ window: 5, grid: true }} />
-            </div>
-          )}
-          {tab === "figure" && figure && <FigureView figure={figure} focus={figureFocus} />}
-          {tab === "table" && (
-            <div className="table-wrap">
-              <div className="stats">
-                <div><b>−0.184</b><span>min</span></div>
-                <div><b>1.000</b><span>max</span></div>
-                <div><b>0.227</b><span>mean</span></div>
-                <div><b>0.201</b><span>std</span></div>
-              </div>
-              <div className="matrix">
-                {Array.from({ length: 48 }, (_, i) => (
-                  <span key={i} style={{ opacity: 0.35 + ((Math.sin(i * 1.7) + 1) / 2) * 0.65 }}>{(Math.sin(i * 0.7) * 0.4 + 0.4).toFixed(3)}</span>
-                ))}
-              </div>
-              <p className="hint">The matrix lens (heatmap, profiles, histogram, cell edit) is pb#312 work; this scaffold proves the shared renderer and entries.</p>
+          {activeFigure ? (
+            <FigureView figure={activeFigure.figure} focus={figureFocus} />
+          ) : (
+            <div className="stage-empty">
+              <p>No figure yet.</p>
+              <span>Run a script with <span className="mono">plot</span> or <span className="mono">surf</span>, or open the Figures tab.</span>
             </div>
           )}
         </div>
@@ -652,9 +639,10 @@ export function App() {
           <div className="rtabs">
             <button className={rightTab === "workspace" ? "on" : ""} onClick={() => setRightTab("workspace")}>workspace</button>
             <button className={rightTab === "shared" ? "on" : ""} onClick={() => setRightTab("shared")}>shared</button>
+            <button className={rightTab === "figures" ? "on" : ""} onClick={() => setRightTab("figures")}>figures</button>
           </div>
           <span className="sp" />
-          <span className="tag">{active} shared</span>
+          <span className="tag">{rightTab === "figures" ? `${figures.length} ${figures.length === 1 ? "figure" : "figures"}` : `${active} shared`}</span>
         </div>
 
         {rightTab === "workspace" ? (
@@ -680,14 +668,6 @@ export function App() {
                     <div className="nm">{v.name}</div>
                     <div className="sh">{typeLabel(v.type)} · {v.shape}</div>
                   </div>
-                  <span
-                    className="chartpill"
-                    role="button"
-                    tabIndex={0}
-                    title={`Open ${chartOf(v.type)}`}
-                    onClick={(e) => { e.stopPropagation(); openChart(v); }}
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); openChart(v); } }}
-                  >{chartOf(v.type)}</span>
                   <span className={`tie ${v.shared ? "on" : ""}`} title={v.shared ? "Broadcast to Paperboat" : "Matrices travel to a block, not a variable"} />
                 </div>
               ))}
@@ -704,7 +684,7 @@ export function App() {
               <div className="preview"><span className="val">0.871</span><span className="tag">Float64</span><span className="k">↵ show</span></div>
             </div>
           </div>
-        ) : (
+        ) : rightTab === "shared" ? (
           <div className="tabbody">
             <div className="lbl">paperboat</div>
             <div className="attach">
@@ -730,6 +710,30 @@ export function App() {
             <div className="rule" />
             <div className="lbl">runs</div>
             <p className="hint">Runs happen in Paperboat. MX shares the scalars Paperboat needs and reads the signals it produces.</p>
+          </div>
+        ) : (
+          <div className="tabbody figtab">
+            <div className="figlist">
+              {figures.map((f) => (
+                <div
+                  className={`figrow${f.id === activeFigureId ? " on" : ""}`}
+                  key={f.id}
+                  role="button"
+                  tabIndex={0}
+                  title={f.source}
+                  onClick={() => { setActiveFigureId(f.id); setChartHidden(false); }}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setActiveFigureId(f.id); setChartHidden(false); } }}
+                >
+                  <span className="figmark">{f.figure.rows === 1 && f.figure.cols === 1 ? "plot" : `${f.figure.rows}×${f.figure.cols}`}</span>
+                  <div className="figmeta">
+                    <b>{baseName(f.source)}</b>
+                    <span>{timeOf(f.time)} · {f.figure.tiles.length} plot{f.figure.tiles.length === 1 ? "" : "s"}</span>
+                  </div>
+                  <button className="figx" onClick={(e) => { e.stopPropagation(); removeFigure(f.id); }} title="Close figure">×</button>
+                </div>
+              ))}
+              {figures.length === 0 && <p className="hint">Run a script with <span className="mono">plot</span> or <span className="mono">surf</span>; each run adds a figure here.</p>}
+            </div>
           </div>
         )}
       </aside>
