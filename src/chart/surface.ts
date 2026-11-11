@@ -64,7 +64,7 @@ export function surfaceEntity(n = 64, id = "chart.surface"): Entity {
       indices[t++] = b; indices[t++] = c; indices[t++] = d;
     }
   }
-  return { id, shape: "mesh", pos: [0, 0, 0], vertices, indices, values, range: [0, 1] };
+  return { id, shape: "mesh", pos: [0, 0, 0], vertices, indices, values, range: [0, 1], wireframe: true };
 }
 
 /** A set of points and a polyline, also drawn by `SceneView`, for a scatter/line chart. */
