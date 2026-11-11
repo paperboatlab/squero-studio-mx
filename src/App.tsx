@@ -765,7 +765,7 @@ export function App() {
           <span className="sp" />
           <button className="key small stage-hide" onClick={() => setChartHidden(true)} title="Hide chart">×</button>
         </div>
-        <div className="stage-body" ref={stageRef}>
+        <div className={`stage-body${activeFigure ? "" : " empty"}`} ref={stageRef}>
           {activeFigure ? (
             <FigureView figure={activeFigure.figure} focus={figureFocus} />
           ) : (
@@ -825,35 +825,37 @@ export function App() {
                 </div>
               )}
             </div>
-            <div className="scratch">
-              <div className="lbl">scratch</div>
-              <div className="box">
-                <span className="prompt">julia&gt;</span>
-                <input
-                  value={scratch}
-                  onChange={(e) => setScratch(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") { e.preventDefault(); evalScratch(); }
-                    else if (e.key === "Escape") { setScratch(""); setScratchOut(null); }
-                  }}
-                  placeholder="x * 2"
-                  aria-label="Evaluate an expression"
-                  spellCheck={false}
-                />
-                <button className="scratch-run" onClick={evalScratch} title="Evaluate (Enter)" aria-label="Evaluate">↵</button>
+            {consoleHidden && (
+              <div className="scratch">
+                <div className="lbl">scratch</div>
+                <div className="box">
+                  <span className="prompt">julia&gt;</span>
+                  <input
+                    value={scratch}
+                    onChange={(e) => setScratch(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") { e.preventDefault(); evalScratch(); }
+                      else if (e.key === "Escape") { setScratch(""); setScratchOut(null); }
+                    }}
+                    placeholder="x * 2"
+                    aria-label="Evaluate an expression"
+                    spellCheck={false}
+                  />
+                  <button className="scratch-run" onClick={evalScratch} title="Evaluate (Enter)" aria-label="Evaluate">↵</button>
+                </div>
+                {scratchOut ? (
+                  <div className={`preview${scratchOut.error ? " err" : ""}`}>
+                    <span className="val">{scratchOut.text}</span>
+                    {scratchOut.type && <span className="tag">{scratchOut.type}</span>}
+                  </div>
+                ) : (
+                  <div className="preview muted">
+                    <span className="val">assign with name = expr</span>
+                    <span className="tag">never saved</span>
+                  </div>
+                )}
               </div>
-              {scratchOut ? (
-                <div className={`preview${scratchOut.error ? " err" : ""}`}>
-                  <span className="val">{scratchOut.text}</span>
-                  {scratchOut.type && <span className="tag">{scratchOut.type}</span>}
-                </div>
-              ) : (
-                <div className="preview muted">
-                  <span className="val">assign with name = expr</span>
-                  <span className="tag">never saved</span>
-                </div>
-              )}
-            </div>
+            )}
           </div>
         ) : rightTab === "shared" ? (
           <div className="tabbody">

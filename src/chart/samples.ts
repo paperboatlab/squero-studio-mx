@@ -54,3 +54,30 @@ export const demoWorkspaces: Record<string, WorkspaceVariable[]> = {
 export const times = Float64Array.from({ length: 500 }, (_, i) => i * 0.01);
 export const sampled = Float64Array.from(times, (t) => Math.sin(t * 3) * 0.6 + Math.sin(t * 11) * 0.12);
 export const sampled2 = Float64Array.from(times, (t) => Math.cos(t * 2) * 0.35 + Math.sin(t * 7) * 0.08);
+
+/** The demo heatmap: a smooth field, the same data the imagesc example stands for. */
+export function heatSamples(n = 48): number[][] {
+  const rows: number[][] = [];
+  for (let j = 0; j < n; j++) {
+    const row: number[] = [];
+    for (let i = 0; i < n; i++) {
+      const x = (i / n) * 4 - 2, z = (j / n) * 4 - 2;
+      row.push((Math.sin(x * 1.4) * Math.cos(z * 1.2) + 1) / 2);
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
+/** The demo scatter points, in the unit square. */
+export function scatterPoints(count = 180): [number, number][] {
+  const points: [number, number][] = [];
+  for (let i = 0; i < count; i++) {
+    const t = i / count;
+    points.push([
+      0.15 + t * 0.7 + Math.sin(i * 2.1) * 0.06,
+      0.5 + Math.cos(i * 1.7) * 0.28,
+    ]);
+  }
+  return points;
+}
