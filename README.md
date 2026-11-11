@@ -16,11 +16,11 @@ MX is **not** a MATLAB compatibility product. It does not run `.m` files; it giv
    - Matrices and vectors are **not** project variables. They travel as `Table`/`matrix` handles
      into `state_space` or matrix blocks.
    - When MX is not running or not attached, Paperboat runs unchanged. Sharing is additive.
-2. **Use Paperboat's solver.**
-   - MX computes `A, B, C, D, x0`; a `state_space` block derives from
-     `paperboat::toolkit::Model`; the run's `solve::Solver` integrates.
-   - MX never integrates locally. The Run dock offers `hello.run.solvers` (`rk4`, `rk45`, `rk2`,
-     `euler`, `discrete`, `cvode`, `ida`) and `solve::Options`.
+2. **Paperboat owns simulation.**
+   - MX does not start or integrate runs. It shares the scalars Paperboat needs and reads the
+     signals Paperboat produces.
+   - `state_space`/`rhs` blocks still use `paperboat::toolkit::Model` and the run's
+     `solve::Solver`; that work stays in Paperboat.
 3. **2D graphing is the shared one.**
    - `@paperboat/shared/plot` (`Scope`, `Sparkline`; `Plot2D`/`Heatmap` follow) — the same
      component the Board uses.
@@ -32,6 +32,8 @@ MX is **not** a MATLAB compatibility product. It does not run `.m` files; it giv
 ![3D plot on the Station renderer](docs/scaffold-3d.jpg)
 
 ![2D Scope](docs/scaffold-2d.jpg)
+
+![A 2 × 2 subplot page](docs/subplots.jpg)
 
 ## Architecture
 
@@ -60,9 +62,11 @@ src/
   App.tsx                 the shell: files, workspace, stage, shared variables, console
   chart/surface.ts        the peaks surface + axes as Station mesh/line entities
   chart/samples.ts        demo workspaces and run samples
-  editor/CodeEditor.tsx   CodeMirror 6, Julia mode, lint gutter, answer tokens
+  editor/CodeEditor.tsx   CodeMirror 6, Julia mode, completions, settings, answer tokens
   files/FilePanel.tsx     the MX mutations around the shared FileTree
   files/storage.ts        real folders through the File System Access API
+  plot/figure.ts          the subplot plan parsed from a script
+  plot/FigureView.tsx     a figure page: Scope, SceneView, heat and scatter tiles
   kernel/localEval.ts     the pre-kernel console evaluator
   kernel/protocol.ts      squero-kernel/0 types (hello, eval, whos, get/set, snapshot)
   paperboat/link.ts       a minimal paperboat/0 client
@@ -88,10 +92,22 @@ first if needed.
 ### Editor
 
 The script surface is CodeMirror 6 (`src/editor/CodeEditor.tsx`): Julia stream mode, line
-numbers, history, rectangular selection, a lint gutter, and the app's token colours. A small
-habit linter flags `%` comments (Julia uses `#`); the gutter is the seam for kernel diagnostics
-and an LSP later. The same wrapper takes `@codemirror/legacy-modes/mode/modelica`, so Squero OM
-can reuse it once it moves to `@paperboat/editor`.
+numbers, history, rectangular selection, bracket matching/closing, lint gutter, and the app's
+token colours. Completions include Julia keywords, builtins, snippets and the live workspace
+variables. The gear opens settings for dark/light theme, font (Geist/System/Serif), size, line
+height, tab size, wrapping, autocomplete, brackets and lint; they persist in `localStorage`.
+A small habit linter flags `%` comments (Julia uses `#`); the gutter is the seam for kernel
+diagnostics and an LSP later. The same wrapper takes
+`@codemirror/legacy-modes/mode/modelica`, so Squero OM can reuse it once it moves to
+`@paperboat/editor`.
+
+### Figures and subplot
+
+`subplot(m, n, p)` followed by `plot`, `surf`, `mesh`, `imagesc` or `scatter` opens a **figure**
+tab with a grid of shared tiles: line tiles are the Scope, surface tiles the Station SceneView,
+heat/scatter small canvases. Clicking a `→ chart` token in the editor opens the figure and
+highlights the tile for that line. Try `examples/subplots.jl`, `examples/lines.jl` and
+`examples/surfaces.jl`.
 
 ### Workspace
 
@@ -103,6 +119,11 @@ a vector, `table` for a scalar).
 
 `File ▸ Export workspace (.mat)…` writes a MAT v4 file (double matrices/vectors/scalars) that
 MATLAB and Octave load directly.
+
+Every scalar is **broadcast by default**: MX connects to `ws://localhost:8780` automatically,
+loads Paperboat's variables and sends its scalars back with `variables.set` when they change.
+Matrices and vectors are not project variables, so they travel to blocks. One MX instance is
+enough; there is no per-instance name.
 
 ### Files and menus
 

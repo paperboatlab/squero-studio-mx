@@ -34,6 +34,16 @@ export const demoWorkspaces: Record<string, WorkspaceVariable[]> = {
     { name: "A", shape: "512 × 512", type: "Matrix{Float64}", preview: [0.1, 0.3, 0.85, 0.4, 0.2] },
     { name: "sel", shape: "1284", type: "Vector{Float64}", preview: [0.2, 0.5, 0.3, 0.8, 0.4] },
   ],
+  "examples/subplots.jl": [
+    { name: "x", shape: "101", type: "Vector{Float64}", preview: [0, 0.2, 0.5, 0.8, 1] },
+    { name: "A", shape: "64 × 64", type: "Matrix{Float64}", preview: [0.1, 0.3, 0.85, 0.4, 0.2] },
+  ],
+  "examples/lines.jl": [
+    { name: "x", shape: "101", type: "Vector{Float64}", preview: [0, 0.2, 0.5, 0.8, 1] },
+  ],
+  "examples/surfaces.jl": [
+    { name: "A", shape: "64 × 64", type: "Matrix{Float64}", preview: [0.1, 0.3, 0.85, 0.4, 0.2] },
+  ],
   "plots/peaks.jl": [
     { name: "A", shape: "512 × 512", type: "Matrix{Float64}", preview: [0.1, 0.3, 0.85, 0.4, 0.2] },
     { name: "x", shape: "512", type: "Vector{Float64}", preview: [0, 0.4, 0.7, 0.4, 0.1] },

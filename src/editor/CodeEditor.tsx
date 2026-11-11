@@ -1,19 +1,48 @@
-// The script editor: CodeMirror 6 with the Julia stream mode, line numbers, history,
-// selection, and a lint gutter. The same component works for Modelica (`modelica` mode)
-// in Squero OM, which is why this is a thin wrapper with no app-specific logic.
+// The script editor: CodeMirror 6 with two themes, Julia completions (keywords, builtins and
+// the live workspace), bracket matching/closing, a lint gutter and clickable answer tokens.
+// The settings are the caller's; this file only maps them to extensions.
 import { useEffect, useRef } from "react";
-import { EditorState } from "@codemirror/state";
+import { Compartment, EditorState } from "@codemirror/state";
 import {
   EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter,
   drawSelection, dropCursor, rectangularSelection, crosshairCursor, gutter, GutterMarker,
 } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { HighlightStyle, StreamLanguage, syntaxHighlighting } from "@codemirror/language";
+import {
+  HighlightStyle, StreamLanguage, syntaxHighlighting, bracketMatching, indentOnInput,
+} from "@codemirror/language";
 import { julia } from "@codemirror/legacy-modes/mode/julia";
 import { linter, lintGutter, type Diagnostic } from "@codemirror/lint";
+import {
+  autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap,
+  snippetCompletion, type Completion, type CompletionSource,
+} from "@codemirror/autocomplete";
 import { tags } from "@lezer/highlight";
 
-const highlight = HighlightStyle.define([
+export type EditorSettings = {
+  theme: "dark" | "light";
+  fontSize: number;
+  font: "geist" | "system" | "serif";
+  lineHeight: number;
+  tabSize: number;
+  wrap: boolean;
+  autocomplete: boolean;
+  brackets: boolean;
+  lint: boolean;
+};
+
+export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
+  theme: "dark", fontSize: 12, font: "geist", lineHeight: 22,
+  tabSize: 2, wrap: true, autocomplete: true, brackets: true, lint: true,
+};
+
+const FONTS: Record<EditorSettings["font"], string> = {
+  geist: "var(--font-mono)",
+  system: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+  serif: "ui-serif, Georgia, Cambria, serif",
+};
+
+const darkHighlight = HighlightStyle.define([
   { tag: tags.comment, color: "#6b6b63" },
   { tag: tags.keyword, color: "#c792ea" },
   { tag: tags.number, color: "#e5c07b" },
@@ -25,22 +54,67 @@ const highlight = HighlightStyle.define([
   { tag: tags.definition(tags.variableName), color: "#d6d6d0" },
 ]);
 
-const theme = EditorView.theme({
+const lightHighlight = HighlightStyle.define([
+  { tag: tags.comment, color: "#7a7a73" },
+  { tag: tags.keyword, color: "#7c3aed" },
+  { tag: tags.number, color: "#b45309" },
+  { tag: tags.bool, color: "#b45309" },
+  { tag: tags.null, color: "#b45309" },
+  { tag: tags.string, color: "#15803d" },
+  { tag: tags.operator, color: "#55554f" },
+  { tag: tags.function(tags.variableName), color: "#1d4ed8" },
+  { tag: tags.definition(tags.variableName), color: "#161616" },
+]);
+
+const darkTheme = EditorView.theme({
   "&": { height: "100%", backgroundColor: "transparent", color: "#d6d6d0" },
-  ".cm-scroller": { fontFamily: "var(--font-mono)", fontSize: "12px", lineHeight: "22px" },
-  ".cm-content": { padding: "8px 0", caretColor: "var(--signal)" },
+  ".cm-content": { caretColor: "var(--signal)" },
   ".cm-gutters": { backgroundColor: "transparent", border: "none", color: "#4f4f4a" },
-  ".cm-lineNumbers .cm-gutterElement": { padding: "0 10px 0 12px" },
   ".cm-activeLine": { backgroundColor: "rgba(255,255,255,.045)" },
   ".cm-activeLineGutter": { backgroundColor: "transparent", color: "#f2f2ee" },
   ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--signal)" },
   "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": { backgroundColor: "rgba(255,255,255,.18)" },
+  ".cm-tooltip": { backgroundColor: "var(--surface-panel)", border: "1px solid var(--line-strong)", color: "var(--text)", fontFamily: "var(--font-mono)", fontSize: "10px" },
+  ".cm-tooltip-autocomplete > ul > li[aria-selected]": { backgroundColor: "var(--surface-sunken)", color: "var(--text)" },
   ".cm-lint-marker-warning": { color: "var(--signal)" },
-  ".cm-tooltip": {
-    backgroundColor: "var(--surface-panel)", border: "1px solid var(--line-strong)",
-    color: "var(--text)", fontFamily: "var(--font-mono)", fontSize: "10px",
-  },
 }, { dark: true });
+
+const lightTheme = EditorView.theme({
+  "&": { height: "100%", backgroundColor: "#f2f2ef", color: "#161616" },
+  ".cm-content": { caretColor: "#b03d0a" },
+  ".cm-gutters": { backgroundColor: "#eaeae6", border: "none", color: "#9d9d97" },
+  ".cm-activeLine": { backgroundColor: "rgba(0,0,0,.045)" },
+  ".cm-activeLineGutter": { backgroundColor: "transparent", color: "#161616" },
+  ".cm-cursor, .cm-dropCursor": { borderLeftColor: "#b03d0a" },
+  "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": { backgroundColor: "rgba(0,0,0,.13)" },
+  ".cm-tooltip": { backgroundColor: "var(--surface-raised)", border: "1px solid var(--line-strong)", color: "var(--text)", fontFamily: "var(--font-mono)", fontSize: "10px" },
+  ".cm-tooltip-autocomplete > ul > li[aria-selected]": { backgroundColor: "var(--surface-sunken)", color: "var(--text)" },
+  ".cm-lint-marker-warning": { color: "#b03d0a" },
+}, { dark: false });
+
+const geometry = (s: EditorSettings) => EditorView.theme({
+  ".cm-scroller": { fontFamily: FONTS[s.font], fontSize: `${s.fontSize}px`, lineHeight: `${s.lineHeight}px` },
+  ".cm-content": { padding: "8px 0" },
+  ".cm-lineNumbers .cm-gutterElement": { padding: "0 10px 0 12px" },
+});
+
+const KEYWORDS = [
+  "function", "end", "if", "elseif", "else", "for", "while", "begin", "let", "struct", "mutable",
+  "return", "using", "import", "module", "const", "try", "catch", "finally", "do", "quote", "macro",
+  "global", "local", "where", "break", "continue",
+];
+const BUILTINS = [
+  "sin", "cos", "tan", "asin", "acos", "atan", "exp", "log", "sqrt", "abs", "hypot", "floor", "ceil",
+  "round", "zeros", "ones", "eye", "rand", "linspace", "range", "length", "size", "sum", "mean",
+  "maximum", "minimum", "clamp", "mod", "rem", "meshgrid", "surf", "plot", "figure", "colormap",
+  "view", "clim", "savefig", "writematrix", "load", "print", "println",
+];
+const SNIPPETS: Completion[] = [
+  snippetCompletion("function ${name}(${args})\n    ${}\nend", { label: "function", detail: "snippet", type: "keyword" }),
+  snippetCompletion("for ${i} in ${}\n    ${}\nend", { label: "for", detail: "snippet", type: "keyword" }),
+  snippetCompletion("if ${}\n    ${}\nend", { label: "if", detail: "snippet", type: "keyword" }),
+  snippetCompletion("using ${}", { label: "using", detail: "snippet", type: "keyword" }),
+];
 
 /** The lint seam: a MATLAB habit is flagged today, kernel diagnostics plug in here later. */
 const habitLint = linter((view): Diagnostic[] => {
@@ -57,11 +131,15 @@ type AnswerKind = "heat" | "spark" | "dots" | "chart" | "ok" | "run" | "type";
 
 /** A right-hand token: the shape/value a line produced, as in the design study. */
 class AnswerMarker extends GutterMarker {
-  constructor(private readonly text: string, private readonly kind: AnswerKind) { super(); }
+  constructor(
+    private readonly text: string,
+    private readonly kind: AnswerKind,
+    private readonly onClick?: () => void,
+  ) { super(); }
   eq(other: AnswerMarker) { return this.text === other.text && this.kind === other.kind; }
   toDOM() {
     const el = document.createElement("span");
-    el.className = `cm-answer k-${this.kind}`;
+    el.className = `cm-answer k-${this.kind}${this.onClick ? " click" : ""}`;
     if (this.kind === "heat" || this.kind === "spark" || this.kind === "dots") {
       const canvas = document.createElement("canvas");
       canvas.width = 48; canvas.height = 20;
@@ -87,15 +165,25 @@ class AnswerMarker extends GutterMarker {
       el.append(canvas);
     }
     el.append(document.createTextNode(this.text));
+    if (this.onClick) {
+      el.style.pointerEvents = "auto";
+      el.addEventListener("pointerdown", (e) => e.stopPropagation());
+      el.addEventListener("click", (e) => { e.preventDefault(); this.onClick?.(); });
+    }
     return el;
   }
 }
 
-function answerFor(text: string): AnswerMarker | null {
+type ChartKind = "3d" | "2d";
+
+type OnChart = (kind: ChartKind, line: string) => void;
+
+function answerFor(text: string, onChart?: OnChart): AnswerMarker | null {
   const t = text.trim();
   if (!t || t.startsWith("#")) return null;
   if (/^sel\s*=/.test(t)) return new AnswerMarker("1 284", "dots");
-  if (/\bsurf\b/.test(t)) return new AnswerMarker("→ chart", "chart");
+  if (/\b(surf|mesh|imagesc)\b/.test(t)) return new AnswerMarker("→ chart", "chart", () => onChart?.("3d", t));
+  if (/\bplot\b/.test(t)) return new AnswerMarker("→ chart", "chart", () => onChart?.("2d", t));
   if (/\bstate_space\b/.test(t)) return new AnswerMarker("→ run", "run");
   if (/\b(colormap|view|clim)\b/.test(t)) return new AnswerMarker("ok", "ok");
   if (/^n\s*=/.test(t)) return new AnswerMarker("Int64", "type");
@@ -104,20 +192,56 @@ function answerFor(text: string): AnswerMarker | null {
   return null;
 }
 
-const answerGutter = gutter({
+const answerGutter = (onChart?: OnChart) => gutter({
   class: "cm-answer-gutter",
   side: "after",
-  lineMarker(view, line) { return answerFor(view.state.doc.lineAt(line.from).text); },
+  lineMarker(view, line) { return answerFor(view.state.doc.lineAt(line.from).text, onChart); },
   initialSpacer: () => new AnswerMarker("512 × 512", "heat"),
 });
 
-export function CodeEditor({ value, file, onChange }: { value: string; file: string; onChange: (value: string) => void }) {
+export function CodeEditor({
+  value, file, onChange, settings, variables, onChart,
+}: {
+  value: string;
+  file: string;
+  onChange: (value: string) => void;
+  settings: EditorSettings;
+  variables: readonly { name: string; type: string }[];
+  onChart?: OnChart;
+}) {
   const host = useRef<HTMLDivElement>(null);
+  const view = useRef<EditorView | null>(null);
   const change = useRef(onChange);
   change.current = onChange;
+  const vars = useRef(variables);
+  vars.current = variables;
+  const chart = useRef(onChart);
+  chart.current = onChart;
+
+  const compartments = useRef({
+    theme: new Compartment(), font: new Compartment(), wrap: new Compartment(),
+    tab: new Compartment(), auto: new Compartment(), brackets: new Compartment(), lint: new Compartment(),
+  }).current;
+
+  const source: CompletionSource = (context) => {
+    const word = context.matchBefore(/[A-Za-z_]\w*/);
+    if (!word || (word.from === word.to && !context.explicit)) return null;
+    const options: Completion[] = [
+      ...KEYWORDS.map((label) => ({ label, type: "keyword", boost: 1 })),
+      ...BUILTINS.map((label) => ({ label, type: "function" })),
+      ...SNIPPETS,
+      ...vars.current.map((v) => ({ label: v.name, type: "variable", detail: v.type, boost: 6 })),
+    ];
+    return { from: word.from, options };
+  };
+
+  const autocompleteExt = () => autocompletion({ override: [source], activateOnTyping: true, icons: true });
+  const bracketExt = () => [bracketMatching(), closeBrackets()];
+  const lintExt = () => [lintGutter(), habitLint];
+  const themeExt = () => [settings.theme === "dark" ? darkTheme : lightTheme, syntaxHighlighting(settings.theme === "dark" ? darkHighlight : lightHighlight)];
 
   useEffect(() => {
-    const view = new EditorView({
+    const instance = new EditorView({
       state: EditorState.create({
         doc: value,
         extensions: [
@@ -129,23 +253,40 @@ export function CodeEditor({ value, file, onChange }: { value: string; file: str
           dropCursor(),
           rectangularSelection(),
           crosshairCursor(),
-          EditorState.tabSize.of(2),
-          keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+          indentOnInput(),
+          keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab, ...closeBracketsKeymap, ...completionKeymap]),
           StreamLanguage.define(julia),
-          syntaxHighlighting(highlight),
-          lintGutter(),
-          habitLint,
-          answerGutter,
-          EditorView.lineWrapping,
+          compartments.theme.of(themeExt()),
+          compartments.font.of(geometry(settings)),
+          compartments.wrap.of(settings.wrap ? EditorView.lineWrapping : []),
+          compartments.tab.of(EditorState.tabSize.of(settings.tabSize)),
+          compartments.auto.of(settings.autocomplete ? autocompleteExt() : []),
+          compartments.brackets.of(settings.brackets ? bracketExt() : []),
+          compartments.lint.of(settings.lint ? lintExt() : []),
+          answerGutter((kind, line) => chart.current?.(kind, line)),
           EditorView.updateListener.of((u) => { if (u.docChanged) change.current(u.state.doc.toString()); }),
-          theme,
         ],
       }),
       parent: host.current!,
     });
-    return () => view.destroy();
+    view.current = instance;
+    return () => { instance.destroy(); view.current = null; };
     // `key={file}` in the parent remounts for another document.
   }, []);
+
+  useEffect(() => {
+    view.current?.dispatch({
+      effects: [
+        compartments.theme.reconfigure(themeExt()),
+        compartments.font.reconfigure(geometry(settings)),
+        compartments.wrap.reconfigure(settings.wrap ? EditorView.lineWrapping : []),
+        compartments.tab.reconfigure(EditorState.tabSize.of(settings.tabSize)),
+        compartments.auto.reconfigure(settings.autocomplete ? autocompleteExt() : []),
+        compartments.brackets.reconfigure(settings.brackets ? bracketExt() : []),
+        compartments.lint.reconfigure(settings.lint ? lintExt() : []),
+      ],
+    });
+  }, [settings]);
 
   return <div className="cm-host" ref={host} aria-label={`${file} editor`} />;
 }

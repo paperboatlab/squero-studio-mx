@@ -18,7 +18,7 @@ export type SharedVariable = {
   value?: number | boolean | string;
   /** A small preview for the workspace card. */
   preview?: number[];
-  /** The user has asked Paperboat to use this MX variable. */
+  /** Broadcast to Paperboat: every scalar, automatically. */
   shared: boolean;
 };
 
@@ -39,7 +39,6 @@ export function fromPaperboat(v: Variable): SharedVariable {
 export function mergeShared(
   mx: readonly WorkspaceVariable[],
   paperboat: readonly Variable[],
-  shared: ReadonlySet<string>,
 ): SharedVariable[] {
   const pb = paperboat.map(fromPaperboat);
   const names = new Set(mx.map((v) => v.name));
@@ -52,7 +51,7 @@ export function mergeShared(
       shareable: scalar(v),
       value: scalar(v) ? (v.value as number) : undefined,
       preview: v.preview,
-      shared: shared.has(v.name),
+      shared: scalar(v),
     })),
     ...pb.filter((v) => !names.has(v.name)),
   ];
@@ -63,20 +62,16 @@ export function mergeShared(
  * and send the whole list back with `variables.set` (Paperboat has no client-side patch yet).
  * The same-name rule is deliberate: sharing `k` makes Paperboat's `k` the MX value.
  */
-export function toPaperboat(
-  mx: readonly WorkspaceVariable[],
-  paperboat: readonly Variable[],
-  shared: ReadonlySet<string>,
-): Variables {
+export function toPaperboat(mx: readonly WorkspaceVariable[], paperboat: readonly Variable[]): Variables {
   const byName = new Map(paperboat.map((v) => [v.name, v]));
   for (const v of mx) {
-    if (!shared.has(v.name) || !scalar(v)) continue;
+    if (!scalar(v)) continue;
     byName.set(v.name, { name: v.name, type: "number", value: Number(v.value) });
   }
   return [...byName.values()];
 }
 
 /** The message the link sends when the shared set changes. */
-export function setMessage(mx: readonly WorkspaceVariable[], paperboat: readonly Variable[], shared: ReadonlySet<string>) {
-  return { type: "variables.set" as const, variables: toPaperboat(mx, paperboat, shared) };
+export function setMessage(mx: readonly WorkspaceVariable[], paperboat: readonly Variable[]) {
+  return { type: "variables.set" as const, variables: toPaperboat(mx, paperboat) };
 }

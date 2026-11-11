@@ -5,17 +5,19 @@ import { MenuBar } from "@paperboat/shared/components";
 import type { Command } from "@paperboat/shared";
 import type { Variable } from "@paperboat/shared/protocol";
 import { chartAxes, chartView, surfaceEntity } from "./chart/surface.ts";
+import { FigureView } from "./plot/FigureView.tsx";
+import { parseFigure, type Figure } from "./plot/figure.ts";
 import { demoWorkspaces, sampled, sampled2, times, type WorkspaceVariable } from "./chart/samples.ts";
 import { Script } from "./editor/Script.tsx";
+import { DEFAULT_EDITOR_SETTINGS, type EditorSettings } from "./editor/CodeEditor.tsx";
 import { FilePanel, type FilePanelHandle } from "./files/FilePanel.tsx";
 import { readTree, storageOf, writeFile } from "./files/storage.ts";
 import { downloadMat } from "./workspace/mat.ts";
 import { evaluate, variableFrom, varsOf } from "./kernel/localEval.ts";
 import { PaperboatLink, type LinkStatus } from "./paperboat/link.ts";
 import { mergeShared, setMessage } from "./paperboat/variables.ts";
-import type { Solver } from "./sim/stateSpace.ts";
 
-type Tab = "3d" | "2d" | "table";
+type Tab = "3d" | "2d" | "figure" | "table";
 type RightTab = "workspace" | "shared";
 type Line = { level: "info" | "ok" | "warn"; text: string; cmd?: boolean };
 
@@ -36,8 +38,6 @@ function TypeIcon({ type }: { type: string }) {
   }
   return <span className="typeicon t-scalar" title={type} aria-label="scalar"><span className="hash">#</span></span>;
 }
-
-const solver: Solver = "rk45";
 
 const INITIAL_FILES: Record<string, string> = {
   "surface.jl": `# surface.jl — a matrix, a selection, a chart
@@ -67,13 +67,35 @@ surf(A)
 savefig("surface.png")
 writematrix(A, "data/run-07.csv")
 `,
+  "examples/subplots.jl": `# subplots.jl — a 2 × 2 page
+x = 0:0.1:10
+subplot(2, 2, 1)
+plot(x, sin.(x))
+subplot(2, 2, 2)
+plot(x, cos.(x))
+subplot(2, 2, 3)
+surf(peaks(64))
+subplot(2, 2, 4)
+imagesc(peaks(64))
+`,
+  "examples/lines.jl": `# lines.jl — two panels
+x = 0:0.1:10
+subplot(1, 2, 1); plot(x, sin.(x))
+subplot(1, 2, 2); plot(x, cos.(x))
+`,
+  "examples/surfaces.jl": `# surfaces.jl — surface and heat
+subplot(1, 2, 1); surf(peaks(64))
+subplot(1, 2, 2); imagesc(peaks(64))
+`,
 };
 
 export function App() {
   const [tab, setTab] = useState<Tab>("3d");
+  const [figure, setFigure] = useState<Figure | null>(null);
+  const [figureFocus, setFigureFocus] = useState<string | null>(null);
   const [rightTab, setRightTab] = useState<RightTab>("workspace");
   const [files, setFiles] = useState<Record<string, string>>(INITIAL_FILES);
-  const [folders, setFolders] = useState<string[]>(["plots"]);
+  const [folders, setFolders] = useState<string[]>(["plots", "examples"]);
   const [selectedFile, setSelectedFile] = useState("surface.jl");
   const [selectedVar, setSelectedVar] = useState("A");
   const [workspace, setWorkspace] = useState<WorkspaceVariable[]>(() => [...(demoWorkspaces["surface.jl"] ?? [])]);
@@ -84,15 +106,23 @@ export function App() {
   const filePanel = useRef<FilePanelHandle>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const [stageW, setStageW] = useState(540);
+  const [consoleH, setConsoleH] = useState(154);
   const [chartHidden, setChartHidden] = useState(false);
   const drag = useRef<{ x: number; w: number } | null>(null);
   const [status, setStatus] = useState<LinkStatus>("idle");
   const [paperboat, setPaperboat] = useState<Variable[]>([]);
-  const [shared, setShared] = useState<Set<string>>(() => new Set(["k"]));
+  const [pbLoaded, setPbLoaded] = useState(false);
   const [url, setUrl] = useState("ws://localhost:8780");
+  const [editor, setEditor] = useState<EditorSettings>(() => {
+    try { return { ...DEFAULT_EDITOR_SETTINGS, ...JSON.parse(localStorage.getItem("mx.editor") ?? "{}") }; }
+    catch { return DEFAULT_EDITOR_SETTINGS; }
+  });
+  const [appTheme, setAppTheme] = useState<"light" | "dark">(() => (localStorage.getItem("mx.theme") === "dark" ? "dark" : "light"));
+  const lastSent = useRef("");
+  const attachedOnce = useRef(false);
   const [lines, setLines] = useState<Line[]>([
     { level: "info", text: "julia 1.11.5 · kernel 1.11.5-r3 · frontend 0.1.0" },
-    { level: "info", text: "paperboat: attach to share scalars; matrices travel to state_space" },
+    { level: "info", text: "paperboat: scalars broadcast automatically when a backend is up" },
     { level: "ok", text: "3d: Station renderer · mesh A · 4 225 vertices" },
   ]);
   const [input, setInput] = useState("");
@@ -135,7 +165,7 @@ export function App() {
     return Object.fromEntries([["surface", surfaceEntity(64)], ...list.map((e) => [e.id, e])]);
   }, []);
   const currentVars = workspace;
-  const rows = useMemo(() => mergeShared(currentVars, paperboat, shared), [currentVars, paperboat, shared]);
+  const rows = useMemo(() => mergeShared(currentVars, paperboat), [currentVars, paperboat]);
   const channels = useMemo(
     () => [
       { id: "v", label: selectedVar || "y", unit: "–", buf: { times, values: sampled } },
@@ -144,44 +174,81 @@ export function App() {
     [selectedVar],
   );
 
-  const attach = () => {
+  useEffect(() => { localStorage.setItem("mx.editor", JSON.stringify(editor)); }, [editor]);
+  useEffect(() => {
+    document.documentElement.dataset.theme = appTheme;
+    localStorage.setItem("mx.theme", appTheme);
+  }, [appTheme]);
+
+  useEffect(() => {
     const l = new PaperboatLink();
+    link.current = l;
     l.onStatus = (s, detail) => {
       setStatus(s);
-      if (s === "attached") say(`paperboat: attached to ${url}`, "ok");
-      if (s === "failed") say(`paperboat: ${detail ?? "attach failed"}`, "warn");
-      if (s === "idle") say("paperboat: detached");
+      if (s === "attached") {
+        lastSent.current = "";
+        attachedOnce.current = true;
+        say(`paperboat: broadcasting to ${url}`, "ok");
+      } else if (s === "failed") {
+        setPbLoaded(false);
+        if (attachedOnce.current) say(`paperboat: ${detail ?? "lost"}`, "warn");
+      } else if (s === "idle") setPbLoaded(false);
     };
     l.onVariables = (vars) => {
       setPaperboat(vars);
-      say(`paperboat: ${vars.length} variables loaded`);
+      setPbLoaded(true);
+      if (vars.length) say(`paperboat: ${vars.length} variables loaded`);
     };
-    link.current = l;
     l.connect(url);
+    return () => l.close();
+  }, [url]);
+
+  const attach = () => {
+    if (!link.current) return;
+    link.current.close();
+    link.current.connect(url);
+    say(`paperboat: looking for ${url}…`);
   };
 
-  const share = (name: string, on: boolean) => {
-    const next = new Set(shared);
-    if (on) next.add(name); else next.delete(name);
-    setShared(next);
-    const sent = link.current?.send(setMessage(currentVars, paperboat, next)) ?? false;
-    say(`${on ? "share" : "unshare"} ${name} → ${sent ? "variables.set" : "local only (not attached)"}`, sent ? "ok" : "warn");
-  };
-  const toggle = (name: string) => share(name, !shared.has(name));
+  // A single MX instance broadcasts to one backend; retry quietly until it appears.
+  useEffect(() => {
+    if (status === "attached") return;
+    const timer = setInterval(() => {
+      if (link.current && link.current.status !== "connecting") link.current.connect(url);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [status, url]);
 
-  const simulate = () => {
-    say(
-      status === "attached"
-        ? `state_space → paperboat · ${solver} · rk4/rk45/cvode from hello.run.solvers`
-        : "state_space → attach a backend to run the Paperboat solver",
-      status === "attached" ? "ok" : "warn",
-    );
-  };
+  // Every scalar is broadcast automatically, once the backend's list has loaded.
+  useEffect(() => {
+    if (status !== "attached" || !pbLoaded) return;
+    const msg = setMessage(currentVars, paperboat);
+    const payload = JSON.stringify(msg.variables);
+    if (payload === lastSent.current) return;
+    const timer = setTimeout(() => {
+      if (link.current?.send(msg)) {
+        lastSent.current = payload;
+        const n = msg.variables.length;
+        say(`broadcast ${n} variable${n === 1 ? "" : "s"} → paperboat`, "ok");
+      }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [currentVars, paperboat, status, pbLoaded]);
 
   const run = (raw: string) => {
     const cmd = raw.trim();
     if (!cmd) return;
     say(cmd, "info", true);
+    const call = /^([A-Za-z_]\w*)\s*\(\s*([^)]*)\s*\)$/.exec(cmd);
+    if (call) {
+      const arg = call[2].replace(/^["']|["']$/g, "").trim();
+      if (call[1] === "clear" || call[1] === "clearvars") {
+        if (arg && arg !== "all") clearVar(arg);
+        else clearWorkspace();
+        return;
+      }
+      if (call[1] === "clc") { setLines([]); return; }
+    }
     const [head, ...rest] = cmd.split(/\s+/);
     if (head === "clc") { setLines([]); return; }
     if (head === "clear" || head === "clearvars") {
@@ -190,7 +257,8 @@ export function App() {
       return;
     }
     if (head === "help") {
-      say("commands: help · whos · clear [name] · clc · attach · detach · share <name> · unshare <name> · simulate · version");
+      say("commands: help · whos · clear [name] · clc · attach · detach · run · version");
+      say("clear() and clc() work too.");
       say("variables: type a name (A, k) to inspect it");
       say("anything else is queued for the Julia kernel once squero-kernel/0 is attached");
       return;
@@ -201,9 +269,7 @@ export function App() {
     }
     if (head === "attach") { attach(); return; }
     if (head === "detach") { link.current?.close(); setStatus("idle"); say("paperboat: detached", "warn"); return; }
-    if (head === "share") { if (rest[0]) share(rest[0], true); else say("usage: share k", "warn"); return; }
-    if (head === "unshare") { if (rest[0]) share(rest[0], false); else say("usage: unshare k", "warn"); return; }
-    if (head === "simulate" || head === "run") { simulate(); return; }
+    if (head === "run") { runScript(); return; }
     if (head === "version") { say("julia 1.11.5 · frontend 0.1.0 · kernel 1.11.5-r3"); return; }
     const assign = /^([A-Za-z_]\w*)\s*=\s*([\s\S]+)$/.exec(cmd);
     if (assign) {
@@ -273,6 +339,10 @@ export function App() {
 
   const runScript = () => {
     const vars = demoWorkspaces[selectedFile] ?? [];
+    const fig = parseFigure(files[selectedFile] ?? "");
+    setFigure(fig);
+    setFigureFocus(null);
+    if (fig) setTab("figure");
     setWorkspace((prev) => {
       const by = new Map(prev.map((v) => [v.name, v]));
       for (const v of vars) by.set(v.name, v);
@@ -332,6 +402,21 @@ export function App() {
   const shownVars = rows.filter((r) => r.source === "mx" && `${r.name} ${r.shape} ${r.type}`.toLowerCase().includes(varQuery.toLowerCase()));
   const active = rows.filter((r) => r.shared).length;
 
+  const startConsoleResize = (e: ReactPointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = consoleH;
+    const move = (ev: PointerEvent) => setConsoleH(Math.min(Math.max(80, startH - (ev.clientY - startY)), window.innerHeight - 300));
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      document.body.style.cursor = "";
+    };
+    document.body.style.cursor = "row-resize";
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); void saveCurrent(); }
@@ -354,21 +439,19 @@ export function App() {
     { id: "workspace-tab", label: "Workspace panel", menu: "view", group: "panels", checked: rightTab === "workspace", run: () => setRightTab("workspace") },
     { id: "shared-tab", label: "Shared variables", menu: "view", group: "panels", checked: rightTab === "shared", run: () => setRightTab("shared") },
     { id: "run", label: "Run script", menu: "run", group: "run", run: runScript },
-    { id: "simulate", label: "Simulate on Paperboat", menu: "run", group: "run", run: simulate },
   ];
 
   return (
-    <div className={`app split${chartHidden ? " chart-hidden" : ""}`} style={{ "--stage-w": `${stageW}px` } as CSSProperties}>
+    <div className={`app split${chartHidden ? " chart-hidden" : ""}`} style={{ "--stage-w": `${stageW}px`, "--console-h": `${consoleH}px` } as CSSProperties}>
       <header className="topbar">
         <div className="brand">squero <span className="studio">studio</span><span className="wave"><i /><i /><i /><i /><i /></span><span className="badge">MX</span></div>
+        <MenuBar commands={commands} />
         <div className="proj"><span className="dot" />{selectedFile}</div>
         <div className={`status ${status}`}><span className="pip" />{status === "attached" ? "paperboat · attached" : "julia · ready"}</div>
-        <MenuBar commands={commands} />
         <div className="keys">
-          <button className="key run" onClick={simulate}>▶ Simulate</button>
-          <button className="key small" onClick={() => setChartHidden((v) => !v)}>{chartHidden ? "show chart" : "hide chart"}</button>
+          <button className="key small chartkey" onClick={() => setChartHidden((v) => !v)}>{chartHidden ? "show chart" : "hide chart"}</button>
           <button className="key">Console <span className="tag">{lines.length}</span></button>
-          <button className="key small">☾</button>
+          <button className="key small" onClick={() => setAppTheme((t) => (t === "dark" ? "light" : "dark"))} title="Toggle theme">{appTheme === "dark" ? "☀" : "☾"}</button>
         </div>
       </header>
 
@@ -396,6 +479,10 @@ export function App() {
         onRun={runScript}
         dirty={dirty.has(selectedFile)}
         onSave={() => void saveCurrent()}
+        settings={editor}
+        onSettings={setEditor}
+        variables={workspace.map((v) => ({ name: v.name, type: v.type }))}
+        onChart={(kind, line) => { setFigureFocus(line); setTab(figure ? "figure" : kind); setChartHidden(false); say(`chart → ${figure ? line : kind}`, "ok"); }}
       />
 
       <div
@@ -410,12 +497,12 @@ export function App() {
 
       <main className="stage">
         <div className="tabs">
-          {(["3d", "2d", "table"] as const).map((t) => (
-            <button key={t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>{t === "3d" ? "3d" : t === "2d" ? "2d graph" : "table"}</button>
+          {(["3d", "2d", ...(figure ? (["figure"] as const) : []), "table"] as Tab[]).map((t) => (
+            <button key={t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>{t === "3d" ? "3d" : t === "2d" ? "2d graph" : t === "figure" ? "figure" : "table"}</button>
           ))}
           <span className="sp" />
-          <span className="tag">{picked ? `${picked.name} · ${picked.shape} · ${picked.type}` : "no variables"}</span>
-          <button className="key small" onClick={() => setChartHidden(true)} title="Hide chart">×</button>
+          <span className="tag">{tab === "3d" ? "surface · A" : tab === "2d" ? `${selectedVar || "y"}(t)` : tab === "figure" ? `figure · ${figure?.rows ?? 1}×${figure?.cols ?? 1}` : `table · ${picked?.name ?? "A"}`}</span>
+          <button className="key small stage-hide" onClick={() => setChartHidden(true)} title="Hide chart">×</button>
         </div>
 
         <div className="stage-body">
@@ -433,6 +520,7 @@ export function App() {
               <Scope name="y(t)" channels={channels} version={1} live={false} settings={{ window: 5, grid: true }} />
             </div>
           )}
+          {tab === "figure" && figure && <FigureView figure={figure} focus={figureFocus} />}
           {tab === "table" && (
             <div className="table-wrap">
               <div className="stats">
@@ -493,12 +581,7 @@ export function App() {
                     onClick={(e) => { e.stopPropagation(); openChart(v); }}
                     onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); openChart(v); } }}
                   >{chartOf(v.type)}</span>
-                  <button
-                    className={`tie ${v.shared ? "on" : ""}`}
-                    disabled={!v.shareable}
-                    title={v.shareable ? "Share with Paperboat" : "Matrices travel to a block, not a variable"}
-                    onClick={(e) => { e.stopPropagation(); toggle(v.name); }}
-                  />
+                  <span className={`tie ${v.shared ? "on" : ""}`} title={v.shared ? "Broadcast to Paperboat" : "Matrices travel to a block, not a variable"} />
                 </div>
               ))}
               {currentVars.length === 0 && (
@@ -531,21 +614,20 @@ export function App() {
                   <span className="nm">{v.name}</span>
                   <span className="shape">{v.shape}</span>
                   <span className={`src ${v.source}`}>{v.source === "mx" ? "MX" : "PB"}</span>
-                  <span className={`state ${v.shared ? "on" : ""}`}>{v.shared ? "shared" : v.source === "paperboat" ? "project" : v.shareable ? "off" : "block"}</span>
+                  <span className={`state ${v.shared ? "on" : ""}`}>{v.source === "paperboat" ? "project" : v.shared ? "broadcast" : "block"}</span>
                 </div>
               ))}
             </div>
-            <p className="hint">Scalars share by name (<span className="mono">k</span> → Paperboat <span className="mono">k</span>). Matrices and vectors are not project variables: they go to <span className="mono">state_space</span>/matrix blocks. If MX is not running, Paperboat runs unchanged.</p>
+            <p className="hint">Every scalar is broadcast by name automatically once the backend is up (<span className="mono">k</span> → Paperboat <span className="mono">k</span>). Matrices and vectors are not project variables: they go to <span className="mono">state_space</span>/matrix blocks. A single MX instance is enough.</p>
 
             <div className="rule" />
-            <div className="lbl">simulation</div>
-            <div className="simrow"><span className="mono">solver</span><b>{solver}</b><span className="tag">hello.run.solvers</span></div>
-            <div className="simrow"><span className="mono">state_space</span><b>A B C D · x0</b><span className="tag">Paperboat</span></div>
-            <button className="key" onClick={simulate}>Simulate on Paperboat</button>
-            <p className="hint">The kernel never integrates. Paperboat's <span className="mono">solve::Solver</span> advances the state; MX replays the run.</p>
+            <div className="lbl">runs</div>
+            <p className="hint">Runs happen in Paperboat. MX shares the scalars Paperboat needs and reads the signals it produces.</p>
           </div>
         )}
       </aside>
+
+      <div className="console-splitter" role="separator" aria-orientation="horizontal" aria-label="Resize the console" onPointerDown={startConsoleResize} onDoubleClick={() => setConsoleH(154)} />
 
       <section className="console">
         <div className="chead"><span className="on">console</span><span>messages</span><span className="sp" /><span className="tag">julia 1.11.5 · frontend 0.1.0</span></div>
