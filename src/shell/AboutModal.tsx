@@ -3,7 +3,7 @@
 import { useRef } from "react";
 import { useDismiss, useFocusReturn } from "@paperboat/shared/components";
 import type { LinkStatus } from "../paperboat/link.ts";
-import { FRONTEND_VERSION, JULIA_VERSION, KERNEL_IMAGE, KERNEL_VERSION } from "../version.ts";
+import { FRONTEND_VERSION, JULIA_VERSION, KERNEL_IMAGE, KERNEL_PROTOCOL, KERNEL_VERSION, PAPERBOAT_PROTOCOL } from "../version.ts";
 import { SqueroLogo } from "./SqueroLogo.tsx";
 
 const CREATOR = { name: "Thanapong Chuangyanyong", href: "https://github.com/thanapong-chuangyanyong" };
@@ -36,6 +36,8 @@ export function AboutModal({ status, onClose }: { status: LinkStatus; onClose: (
               <dd className="mono">{JULIA_VERSION}</dd>
               <dt>Kernel</dt>
               <dd className="mono">{KERNEL_IMAGE} · {KERNEL_VERSION}</dd>
+              <dt>Protocol</dt>
+              <dd className="mono">{KERNEL_PROTOCOL} · {PAPERBOAT_PROTOCOL}</dd>
               <dt>Paperboat</dt>
               <dd className="mono">{paperboat}</dd>
               <dt>License</dt>
