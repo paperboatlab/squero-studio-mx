@@ -1,0 +1,29 @@
+{
+  "name": "squero-studio-mx",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Squero Studio MX: a MATLAB-like workbench on a Julia kernel, with Paperboat as Simulink.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@paperboat/shared": "file:../paperboat-shared",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "three": "^0.187.0",
+    "uplot": "^1.6.32"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/three": "^0.187.0",
+    "@vitejs/plugin-react": "^6.2.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5"
+  }
+}
