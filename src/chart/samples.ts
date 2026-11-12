@@ -3,7 +3,8 @@
 export type WorkspaceVariable = {
   name: string;
   shape: string;
-  type: "Matrix{Float64}" | "Vector{Float64}" | "Float64";
+  /** Julia's type name: Matrix{Float64}, Vector{Int64}, Float64, Int64, Function… */
+  type: string;
   /** A small preview, if the app has one (the workspace card glyph). */
   preview?: number[];
   /** The scalar or vector value the bridge publishes. */

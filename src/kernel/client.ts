@@ -1,6 +1,7 @@
 // The squero-kernel/0 client: one WebSocket for the session, requests matched by id. The
 // launcher owns the process; nothing here evaluates Julia itself.
 import type { KernelReply } from "./protocol.ts";
+import { LIVE_LIMIT } from "../paperboat/variables.ts";
 
 const url = () => `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/__mx/kernel`;
 
@@ -11,12 +12,15 @@ class KernelClient {
   private opening: Promise<WebSocket> | null = null;
   private seq = 0;
   private waiting = new Map<string, Waiter>();
+  /** A `get` header waiting for its binary frame (the bridge sends the two back to back). */
+  private header: KernelReply | null = null;
 
   private open(): Promise<WebSocket> {
     if (this.socket?.readyState === WebSocket.OPEN) return Promise.resolve(this.socket);
     if (this.opening) return this.opening;
     this.opening = new Promise<WebSocket>((resolve, reject) => {
       const socket = new WebSocket(url());
+      socket.binaryType = "arraybuffer";
       socket.onopen = () => {
         this.socket = socket;
         this.opening = null;
@@ -32,17 +36,27 @@ class KernelClient {
         this.waiting.clear();
       };
       socket.onmessage = (event) => {
-        if (typeof event.data !== "string") return;
+        if (typeof event.data !== "string") {
+          const header = this.header;
+          this.header = null;
+          if (header) this.settle({ ...header, data: new Float64Array(event.data as ArrayBuffer) });
+          return;
+        }
         let reply: KernelReply;
         try { reply = JSON.parse(event.data) as KernelReply; } catch { return; }
-        if (!reply.id) return;
-        const waiter = this.waiting.get(reply.id);
-        if (!waiter) return;
-        this.waiting.delete(reply.id);
-        waiter.resolve(reply);
+        if (reply.array?.bytes) this.header = reply;
+        else this.settle(reply);
       };
     });
     return this.opening;
+  }
+
+  private settle(reply: KernelReply) {
+    if (!reply.id) return;
+    const waiter = this.waiting.get(reply.id);
+    if (!waiter) return;
+    this.waiting.delete(reply.id);
+    waiter.resolve(reply);
   }
 
   async request(message: Record<string, unknown>, timeout = 120000): Promise<KernelReply> {
@@ -70,3 +84,23 @@ export const kernel = new KernelClient();
 export const evalCode = (code: string) => kernel.request({ op: "eval", code });
 export const whois = () => kernel.request({ op: "whos" });
 export const resetKernel = () => kernel.request({ op: "reset" });
+
+
+const countOf = (shape: string) => shape.split("×").reduce((n, part) => n * (Number(part.trim()) || 0), 1);
+
+/**
+ * `list` with each numeric array of at most LIVE_LIMIT values filled in from the kernel (`get`,
+ * column-major Float64): a vector as its values, a matrix as rows. `whos` sends only a preview.
+ */
+export async function withArrays<T extends { name: string; type: string; shape: string; value?: unknown; runnable?: boolean }>(list: T[]): Promise<T[]> {
+  return Promise.all(list.map(async (v) => {
+    const vector = v.type.startsWith("Vector");
+    if (!(vector || v.type.startsWith("Matrix")) || v.runnable === false || countOf(v.shape) > LIVE_LIMIT) return v;
+    const reply = await kernel.request({ op: "get", name: v.name });
+    const { array, data } = reply;
+    if (!reply.ok || !array || !data) return v;
+    if (vector) return { ...v, value: Array.from(data) };
+    const rows = Array.from({ length: array.rows }, (_, r) => Array.from({ length: array.cols }, (_, c) => data[c * array.rows + r]));
+    return { ...v, value: rows };
+  }));
+}

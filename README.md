@@ -10,11 +10,11 @@ MX is **not** a MATLAB compatibility product. It does not run `.m` files; it giv
 ## The four goals of this scaffold
 
 1. **Share variables with Paperboat when MX is running.**
-   - Paperboat's project variables are scalars, booleans and text. MX publishes its shareable
-     scalars by name (`k` → Paperboat `k`) through `variables.set`; Paperboat's `variables.load`
-     and `variables.patch` flow back into the workspace.
-   - Matrices and vectors are **not** project variables. They travel as `Table`/`matrix` handles
-     into `state_space` or matrix blocks.
+   - MX publishes its workspace as **live variables** (`variables.set` with `source: "mx"`):
+     Paperboat lists them read-only beside its project variables and never saves them.
+   - Matrices and vectors are **not** project variables. They are live `matrix` variables
+     carrying their whole rows (`1 2; 3 4`); bind one to a Matrix block's `values` and a run
+     sends the rows in place of the name.
    - When MX is not running or not attached, Paperboat runs unchanged. Sharing is additive.
 2. **Paperboat owns simulation.**
    - MX does not start or integrate runs. It shares the scalars Paperboat needs and reads the
@@ -146,7 +146,9 @@ The repo's `examples/` folder is on disk and is copied to the default workspace;
 
 Like MATLAB's, the workspace is **the session**, not the open file: a run adds/overwrites its
 variables, other variables stay until `clear`, and switching scripts does not change it. `clear`
-empties it, `clear x` removes one binding and `clc` only clears the console. The filter searches
+empties it, `clear x` removes one binding and `clc` only clears the console. In a script,
+`clear()` takes effect between statements, so what the script defines after it stays
+(`clear.jl` leaves `z`, `a`, `f` and `t`). Functions are listed too (`ƒ`) but stay in MX. The filter searches
 name, shape and type. Each card shows the value on the right (a scalar, or an array's first
 entries); the dot is the automatic broadcast to Paperboat.
 
@@ -157,8 +159,11 @@ Every variable is **broadcast by default** to every running Paperboat backend: t
 discovers them with `paperboat list --json` (`/__mx/backends`), MX connects to each one and sends
 its whole workspace with `variables.set` when it changes. There is no URL to pick and no shared
 page; the two conventional local ports are tried when the CLI is not installed. Scalars are
-numbers; arrays are text (JSON when small, a typed descriptor otherwise), while their data still
-travels to `state_space`/matrix blocks.
+numbers. Arrays are `matrix` variables: MX fetches each one whole from the kernel (`get`, a
+binary Float64 frame) after a run and sends its rows, a vector as a column (`1; 2; 3`). An array
+of more than 4096 values is sent without a value and with a note (shape, count, the limit, and
+to share a slice such as `B[1:10, 1:10]`); a Paperboat run that uses it stops with that note.
+A preview is never sent as if it were the matrix.
 
 ### Files and menus
 
