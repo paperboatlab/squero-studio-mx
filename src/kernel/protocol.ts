@@ -32,6 +32,8 @@ export type KernelReply = {
   error?: string;
   stdout?: string;
   value?: unknown;
+  /** `eval`: the value as Julia's REPL prints it (`text/plain`), "" for nothing. */
+  text?: string;
   /** Chart specs from the Julia verbs (`plot`, `surf`, …), see schema/chart.schema.json. */
   charts?: unknown[];
   /** Optimization problem specs, for the Paperboat solver. */
@@ -40,6 +42,8 @@ export type KernelReply = {
   events?: KernelEvent[];
   /** A matrix's header comes before its binary frame; vectors use rows = 1. */
   array?: { rows: number; cols: number; dtype: "f64"; order: "col"; bytes: number };
+  /** The array's values (column-major), filled in by the client from the binary frame. */
+  data?: Float64Array;
 };
 
 /** The launcher/kernel versions the About window and the handshake show. */

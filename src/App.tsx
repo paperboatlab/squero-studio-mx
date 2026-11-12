@@ -11,7 +11,7 @@ import { DEFAULT_EDITOR_SETTINGS, type EditorSettings } from "./editor/CodeEdito
 import { SqueroLogo } from "./shell/SqueroLogo.tsx";
 import { AboutModal } from "./shell/AboutModal.tsx";
 import { probeKernel, type KernelInfo } from "./kernel/probe.ts";
-import { evalCode, resetKernel, whois } from "./kernel/client.ts";
+import { evalCode, resetKernel, whois, withArrays } from "./kernel/client.ts";
 import { figureFromCharts, figureFromOptimization, type ChartSpec, type OptimizationResult } from "./plot/spec.ts";
 import { FRONTEND_VERSION, JULIA_VERSION, KERNEL_PROTOCOL, KERNEL_VERSION, PAPERBOAT_PROTOCOL } from "./version.ts";
 import { FilePanel, type FilePanelHandle } from "./files/FilePanel.tsx";
@@ -48,6 +48,7 @@ function TypeIcon({ type }: { type: string }) {
       </span>
     );
   }
+  if (type === "Function") return <span className="typeicon t-scalar" title={type} aria-label="function"><span className="hash">ƒ</span></span>;
   return <span className="typeicon t-scalar" title={type} aria-label="scalar"><span className="hash">#</span></span>;
 }
 
@@ -229,7 +230,7 @@ export function App() {
   // Every variable is broadcast automatically, once the backend's list has loaded.
   useEffect(() => {
     if (status !== "attached" || !pbLoaded || pbCount === 0) return;
-    const msg = setMessage(currentVars, paperboat);
+    const msg = setMessage(currentVars);
     const payload = JSON.stringify(msg.variables);
     if (payload === lastSent.current) return;
     const timer = setTimeout(() => {
@@ -241,7 +242,7 @@ export function App() {
       }
     }, 250);
     return () => clearTimeout(timer);
-  }, [currentVars, paperboat, status, pbLoaded, pbCount]);
+  }, [currentVars, status, pbLoaded, pbCount]);
 
   /** The console is the kernel's REPL: stdout and the value come back from the same session. */
   const consoleEval = async (code: string) => {
@@ -253,21 +254,21 @@ export function App() {
     if (!kernelInfo) setKernelInfo(info);
     const reply = await evalCode(code);
     for (const line of (reply.stdout ?? "").split("\n")) if (line.trim()) say(line);
-    let resetSession = false;
+    // The kernel already applied `clear` between statements; the workspace follows `whos`.
     for (const event of reply.events ?? []) {
       if (event.type === "clc") setLines([]);
-      else if (event.type === "clear") {
-        if (event.names?.length) setWorkspace((prev) => prev.filter((one) => !event.names!.includes(one.name)));
-        else { setWorkspace([]); setFunctions({}); resetSession = true; }
-      }
+      else if (event.type === "clear" && !event.names?.length) setFunctions({});
     }
-    if (resetSession) await resetKernel();
     if (!reply.ok) {
       say(reply.error ?? "kernel error", "err");
       return;
     }
+    // The kernel prints the value as Julia's REPL would; an older kernel sends only a description.
+    if (reply.text !== undefined) {
+      for (const line of reply.text.split("\n")) if (line.trim()) say(line, "ok");
+    }
     const value = reply.value as { type?: string; shape?: string; value?: number | boolean | string; preview?: number[] } | undefined;
-    if (value && value.type !== "Nothing") {
+    if (reply.text === undefined && value && value.type !== "Nothing") {
       if (value.value !== undefined) {
         say(typeof value.value === "string" ? JSON.stringify(value.value) : String(value.value), "ok");
       } else if (value.preview?.length) {
@@ -279,7 +280,7 @@ export function App() {
     }
     const after = await whois();
     if (after.ok && Array.isArray(after.value)) {
-      setWorkspace(after.value as WorkspaceVariable[]);
+      setWorkspace(await withArrays(after.value as WorkspaceVariable[]));
       const assigned = /^\s*([A-Za-z_]\w*)\s*=/.exec(code);
       if (assigned) setSelectedVar(assigned[1]);
     }
@@ -349,7 +350,7 @@ export function App() {
     setInput(history[next]);
   };
 
-  const typeLabel = (type: string) => (type.startsWith("Matrix") ? "matrix" : type.startsWith("Vector") ? "vector" : "float64");
+  const typeLabel = (type: string) => (type.startsWith("Matrix") ? "matrix" : type.startsWith("Vector") ? "vector" : type.toLowerCase());
 
   const fmt = (n: number) => {
     if (Number.isInteger(n)) return String(n);
@@ -558,15 +559,11 @@ export function App() {
     for (const line of (reply.stdout ?? "").split("\n")) {
       if (line.trim()) say(line);
     }
-    let resetSession = false;
+    // The kernel already applied `clear` between statements; the workspace follows `whos`.
     for (const event of reply.events ?? []) {
       if (event.type === "clc") setLines([]);
-      else if (event.type === "clear") {
-        if (event.names?.length) setWorkspace((prev) => prev.filter((one) => !event.names!.includes(one.name)));
-        else { setWorkspace([]); setFunctions({}); resetSession = true; }
-      }
+      else if (event.type === "clear" && !event.names?.length) setFunctions({});
     }
-    if (resetSession) await resetKernel();
     if (!reply.ok) say(reply.error ?? "kernel error", "err");
 
     const charts = figureFromCharts(reply.charts as ChartSpec[]);
@@ -592,7 +589,7 @@ export function App() {
 
     const after = await whois();
     if (after.ok && Array.isArray(after.value)) {
-      const variables = (after.value as WorkspaceVariable[]).map((one) => ({
+      const variables = (await withArrays(after.value as WorkspaceVariable[])).map((one) => ({
         name: one.name, shape: one.shape, type: one.type, value: one.value, preview: one.preview,
       }));
       const solved = new Set(results.map((one) => one.name));
@@ -959,7 +956,7 @@ export function App() {
                     <div className="sh">{typeLabel(v.type)} · {v.shape}</div>
                   </div>
                   <span className={`vval${v.type === "Float64" ? " scalar" : ""}`} title={valueOf(v)}>{valueOf(v)}</span>
-                  <span className={`tie ${v.shared ? "on" : ""}`} title={v.shared ? "Broadcast to Paperboat" : "Matrices travel to a block, not a variable"} />
+                  <span className={`tie ${v.shared ? "on" : ""}`} title={v.shared ? "Broadcast to Paperboat" : "A function stays in MX"} />
                 </div>
               ))}
               {currentVars.length === 0 && (
