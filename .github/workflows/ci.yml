@@ -50,44 +50,58 @@ jobs:
     defaults:
       run:
         shell: bash
+    env:
+      # the kernel and SqueroBase are private: without the token (a fork's PR) the job says so and stops
+      HAS_TOKEN: ${{ secrets.DOWNSTREAM_TOKEN != '' }}
     steps:
+      - if: env.HAS_TOKEN != 'true'
+        run: echo "::notice::DOWNSTREAM_TOKEN is not available, so the private kernel cannot be checked out; launch check skipped"
       - uses: actions/checkout@v4
+        if: env.HAS_TOKEN == 'true'
         with:
           path: squero-studio-mx
       - uses: actions/checkout@v4
+        if: env.HAS_TOKEN == 'true'
         with:
           repository: paperboatlab/paperboat-shared
           path: paperboat-shared
           token: ${{ secrets.DOWNSTREAM_TOKEN || github.token }}
       - uses: actions/checkout@v4
+        if: env.HAS_TOKEN == 'true'
         with:
           repository: paperboatlab/paperboat
           path: paperboat
           token: ${{ secrets.DOWNSTREAM_TOKEN || github.token }}
-      # private: the kernel and SqueroBase need DOWNSTREAM_TOKEN
       - uses: actions/checkout@v4
+        if: env.HAS_TOKEN == 'true'
         with:
           repository: paperboatlab/squero-julia-kernel
           path: squero-julia-kernel
           token: ${{ secrets.DOWNSTREAM_TOKEN }}
       - uses: actions/checkout@v4
+        if: env.HAS_TOKEN == 'true'
         with:
           repository: paperboatlab/squero-mx-base
           path: squero-mx-base
           token: ${{ secrets.DOWNSTREAM_TOKEN }}
       - uses: actions/setup-node@v4
+        if: env.HAS_TOKEN == 'true'
         with:
           node-version: 22
       - uses: julia-actions/setup-julia@v2
+        if: env.HAS_TOKEN == 'true'
         with:
           version: "1.11.6"  # the kernel image's
       - name: Julia packages of the kernel
+        if: env.HAS_TOKEN == 'true'
         run: julia --startup-file=no --project=squero-julia-kernel -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()'
       - name: The app
+        if: env.HAS_TOKEN == 'true'
         run: |
           (cd paperboat-shared && npm ci --no-audit --no-fund)
           cd squero-studio-mx && npm ci --no-audit --no-fund && npm run build
       - name: The paperboat CLI
+        if: env.HAS_TOKEN == 'true'
         run: |
           if [ "$RUNNER_OS" = Windows ]; then
             cmake -S paperboat/engine -B paperboat/engine/build -G "Visual Studio 17 2022" -A x64
@@ -100,6 +114,7 @@ jobs:
             echo "PAPERBOAT=$GITHUB_WORKSPACE/paperboat/engine/build/tools/paperboat" >> "$GITHUB_ENV"
           fi
       - name: paperboat start squero-studio-mx, check it, stop it
+        if: env.HAS_TOKEN == 'true'
         env:
           SQUERO_JULIA: native
         run: |
