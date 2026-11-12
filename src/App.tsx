@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { MenuBar } from "@paperboat/shared/components";
 import type { Command } from "@paperboat/shared";
 import type { Variable } from "@paperboat/shared/protocol";
@@ -11,23 +11,27 @@ import { DEFAULT_EDITOR_SETTINGS, type EditorSettings } from "./editor/CodeEdito
 import { SqueroLogo } from "./shell/SqueroLogo.tsx";
 import { AboutModal } from "./shell/AboutModal.tsx";
 import { probeKernel, type KernelInfo } from "./kernel/probe.ts";
-import { evalCode, whois } from "./kernel/client.ts";
+import { evalCode, resetKernel, whois } from "./kernel/client.ts";
 import { figureFromCharts, figureFromOptimization, type ChartSpec, type OptimizationResult } from "./plot/spec.ts";
 import { FRONTEND_VERSION, JULIA_VERSION, KERNEL_PROTOCOL, KERNEL_VERSION, PAPERBOAT_PROTOCOL } from "./version.ts";
 import { FilePanel, type FilePanelHandle } from "./files/FilePanel.tsx";
+import { KernelPanel } from "./shell/KernelPanel.tsx";
 import { askWrite, canWrite, loadDirHandle, readTree, saveDirHandle, storageOf } from "./files/storage.ts";
 import { loadServerWorkspace, serverStorage, type ServerWorkspace } from "./files/server.ts";
 import { downloadMat } from "./workspace/mat.ts";
 import { defineFunction, evaluate, variableFrom, varsOf, type FunctionTable } from "./kernel/localEval.ts";
-import { PaperboatLink, type LinkStatus } from "./paperboat/link.ts";
+import { replaceLatexAtCaret } from "./editor/unicode.ts";
+import type { LinkStatus } from "./paperboat/link.ts";
+import { PaperboatHub } from "./paperboat/hub.ts";
+import { discoverBackends } from "./paperboat/discovery.ts";
 import { mergeShared, setMessage } from "./paperboat/variables.ts";
 
-type RightTab = "workspace" | "shared" | "figures";
+type RightTab = "workspace" | "figures";
 
 /** The workspace lives on disk; this is the folder the picker starts from and the default. */
 export const DEFAULT_WORKSPACE = "~/Documents/paperboat/squero-studio/mx";
 type FigureEntry = { id: string; source: string; time: number; figure: Figure };
-type Line = { level: "info" | "ok" | "warn"; text: string; cmd?: boolean };
+type Line = { level: "info" | "ok" | "warn" | "err"; text: string; cmd?: boolean };
 
 function TypeIcon({ type }: { type: string }) {
   if (type.startsWith("Matrix")) {
@@ -54,6 +58,7 @@ export function App() {
   const [figureAnchor, setFigureAnchor] = useState<string | null>(null);
   const [exportFormat, setExportFormat] = useState<FigureFormat>("png");
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [kernelOpen, setKernelOpen] = useState(false);
   const [kernelInfo, setKernelInfo] = useState<KernelInfo | null>(null);
   const [filesHidden, setFilesHidden] = useState(false);
   const [rightHidden, setRightHidden] = useState(false);
@@ -85,14 +90,14 @@ export function App() {
   const [status, setStatus] = useState<LinkStatus>("idle");
   const [paperboat, setPaperboat] = useState<Variable[]>([]);
   const [pbLoaded, setPbLoaded] = useState(false);
-  const [url, setUrl] = useState("ws://localhost:8765");
+  const [pbCount, setPbCount] = useState(0);
   const [editor, setEditor] = useState<EditorSettings>(() => {
     try { return { ...DEFAULT_EDITOR_SETTINGS, ...JSON.parse(localStorage.getItem("mx.editor") ?? "{}") }; }
     catch { return DEFAULT_EDITOR_SETTINGS; }
   });
   const [appTheme, setAppTheme] = useState<"light" | "dark">(() => (localStorage.getItem("mx.theme") === "dark" ? "dark" : "light"));
   const lastSent = useRef("");
-  const attachedOnce = useRef(false);
+  const attachedCount = useRef(0);
   const [lines, setLines] = useState<Line[]>([
     { level: "info", text: `julia ${JULIA_VERSION} · kernel ${KERNEL_VERSION} · frontend ${FRONTEND_VERSION} · ${KERNEL_PROTOCOL} · ${PAPERBOAT_PROTOCOL}` },
     { level: "info", text: "paperboat: every workspace variable broadcasts when a backend is up" },
@@ -104,9 +109,22 @@ export function App() {
   const [lastRun, setLastRun] = useState<{ time: number; ms: number; lines: number; mode: string } | null>(null);
   const [history, setHistory] = useState<string[]>([]);
   const [histAt, setHistAt] = useState(-1);
-  const link = useRef<PaperboatLink | null>(null);
+  const link = useRef<PaperboatHub | null>(null);
+  const refreshBackends = useRef<() => void>(() => {});
   const consoleEnd = useRef<HTMLDivElement>(null);
   const say = (text: string, level: Line["level"] = "info", cmd = false) => setLines((l) => [...l, { level, text, cmd }]);
+  /** Julia's `\pi` + Tab in a plain input: replace at the caret, keep the caret after the symbol. */
+  const latexTab = (event: ReactKeyboardEvent<HTMLInputElement>, setValue: (value: string) => void): boolean => {
+    if (event.key !== "Tab") return false;
+    const target = event.currentTarget;
+    const caret = target.selectionStart ?? target.value.length;
+    const hit = replaceLatexAtCaret(target.value, caret);
+    if (!hit) return false;
+    event.preventDefault();
+    setValue(hit.value);
+    requestAnimationFrame(() => target.setSelectionRange(hit.caret, hit.caret));
+    return true;
+  };
   const baseName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
   const commitTitle = () => {
     const name = titleDraft.trim();
@@ -160,59 +178,110 @@ export function App() {
   }, [appTheme]);
 
   useEffect(() => {
-    const l = new PaperboatLink();
-    link.current = l;
-    l.onStatus = (s, detail) => {
+    const h = new PaperboatHub();
+    link.current = h;
+    h.onStatus = (s) => {
       setStatus(s);
-      if (s === "attached") {
+      const count = h.attached.length;
+      setPbCount(count);
+      if (count !== attachedCount.current) {
+        attachedCount.current = count;
         lastSent.current = "";
-        attachedOnce.current = true;
-        say(`paperboat: broadcasting to ${url}`, "ok");
-      } else if (s === "failed") {
+        if (count > 0) say(`paperboat: ${count} instance${count === 1 ? "" : "s"} attached`, "ok");
+        else if (s === "failed") say("paperboat: no backend answered", "warn");
+      } else if (s === "failed" && count === 0) {
         setPbLoaded(false);
-        if (attachedOnce.current) say(`paperboat: ${detail ?? "lost"}`, "warn");
-      } else if (s === "idle") setPbLoaded(false);
+      }
     };
-    l.onVariables = (vars) => {
+    h.onVariables = (vars, loaded) => {
       setPaperboat(vars);
-      setPbLoaded(true);
-      if (vars.length) say(`paperboat: ${vars.length} variables loaded`);
+      setPbLoaded(loaded);
     };
-    l.connect(url);
-    return () => l.close();
-  }, [url]);
+    let live = true;
+    const poll = async () => {
+      const found = await discoverBackends();
+      if (!live) return;
+      // The launcher knows every backend it started; the two conventional ports keep a
+      // hand-started backend working even when the CLI is not installed.
+      const urls = found.ok && found.backends.length
+        ? found.backends.map((backend) => backend.ws)
+        : ["ws://localhost:8765", "ws://localhost:8780"];
+      h.sync([...new Set(urls)]);
+      setPbCount(h.attached.length);
+    };
+    refreshBackends.current = () => { void poll(); };
+    void poll();
+    const timer = setInterval(() => { void poll(); }, 5000);
+    return () => {
+      live = false;
+      clearInterval(timer);
+      h.close();
+      link.current = null;
+    };
+  }, []);
 
   const attach = () => {
-    if (!link.current) return;
-    link.current.close();
-    link.current.connect(url);
-    say(`paperboat: looking for ${url}…`);
+    lastSent.current = "";
+    refreshBackends.current();
+    say("paperboat: looking for running instances…");
   };
 
-  // A single MX instance broadcasts to one backend; retry quietly until it appears.
+  // Every variable is broadcast automatically, once the backend's list has loaded.
   useEffect(() => {
-    if (status === "attached") return;
-    const timer = setInterval(() => {
-      if (link.current && link.current.status !== "connecting") link.current.connect(url);
-    }, 5000);
-    return () => clearInterval(timer);
-  }, [status, url]);
-
-  // Every scalar is broadcast automatically, once the backend's list has loaded.
-  useEffect(() => {
-    if (status !== "attached" || !pbLoaded) return;
+    if (status !== "attached" || !pbLoaded || pbCount === 0) return;
     const msg = setMessage(currentVars, paperboat);
     const payload = JSON.stringify(msg.variables);
     if (payload === lastSent.current) return;
     const timer = setTimeout(() => {
-      if (link.current?.send(msg)) {
+      const n = link.current?.send(msg) ?? 0;
+      if (n) {
         lastSent.current = payload;
-        const n = msg.variables.length;
-        say(`broadcast ${n} variable${n === 1 ? "" : "s"} → paperboat`, "ok");
+        const count = msg.variables.length;
+        say(`broadcast ${count} variable${count === 1 ? "" : "s"} → ${n} paperboat instance${n === 1 ? "" : "s"}`, "ok");
       }
     }, 250);
     return () => clearTimeout(timer);
-  }, [currentVars, paperboat, status, pbLoaded]);
+  }, [currentVars, paperboat, status, pbLoaded, pbCount]);
+
+  /** The console is the kernel's REPL: stdout and the value come back from the same session. */
+  const consoleEval = async (code: string) => {
+    const info = kernelInfo ?? await probeKernel(60000);
+    if (!info) {
+      say("kernel unavailable · install Julia or start the kernel container", "warn");
+      return;
+    }
+    if (!kernelInfo) setKernelInfo(info);
+    const reply = await evalCode(code);
+    for (const line of (reply.stdout ?? "").split("\n")) if (line.trim()) say(line);
+    for (const event of reply.events ?? []) {
+      if (event.type === "clc") setLines([]);
+      else if (event.type === "clear") {
+        if (event.names?.length) setWorkspace((prev) => prev.filter((one) => !event.names!.includes(one.name)));
+        else { setWorkspace([]); setFunctions({}); }
+      }
+    }
+    if (!reply.ok) {
+      say(reply.error ?? "kernel error", "err");
+      return;
+    }
+    const value = reply.value as { type?: string; shape?: string; value?: number | boolean | string; preview?: number[] } | undefined;
+    if (value && value.type !== "Nothing") {
+      if (value.value !== undefined) {
+        say(typeof value.value === "string" ? JSON.stringify(value.value) : String(value.value), "ok");
+      } else if (value.preview?.length) {
+        const list = value.preview.slice(0, 5).map((n) => String(Number(n.toFixed(3)))).join(", ");
+        say(`[${list}${value.preview.length >= 5 ? ", …" : ""}]`, "ok");
+      } else {
+        say(`${value.type ?? "value"}${value.shape && value.shape !== "—" ? ` · ${value.shape}` : ""}`, "ok");
+      }
+    }
+    const after = await whois();
+    if (after.ok && Array.isArray(after.value)) {
+      setWorkspace(after.value as WorkspaceVariable[]);
+      const assigned = /^\s*([A-Za-z_]\w*)\s*=/.exec(code);
+      if (assigned) setSelectedVar(assigned[1]);
+    }
+  };
 
   const run = (raw: string) => {
     const cmd = raw.trim();
@@ -236,10 +305,9 @@ export function App() {
       return;
     }
     if (head === "help") {
-      say("commands: help · whos · clear [name] · clc · attach · detach · run · version");
-      say("clear() and clc() work too.");
-      say("variables: type a name (A, k) to inspect it");
-      say("anything else is queued for the Julia kernel once squero-kernel/0 is attached");
+      say("Julia expressions run in the kernel and print like a REPL; script stdout lands here too.");
+      say("help · whos · clear [name] · clc · attach · detach · run · version");
+      say("Type \\pi then Tab for π; Arrow Up/Down recall history.");
       return;
     }
     if (head === "whos") {
@@ -247,41 +315,19 @@ export function App() {
       for (const [name, fn] of Object.entries(functions)) say(`${name}(${fn.params.join(", ")})  function`);
       return;
     }
-    const definition = defineFunction(cmd, functions);
-    if (definition) {
-      setFunctions(definition);
-      say(`${cmd.slice(0, cmd.indexOf("(")).trim()} defined`, "ok");
+    if (head === "attach") { attach(); return; }
+    if (head === "detach") {
+      link.current?.close();
+      setStatus("idle");
+      setPbCount(0);
+      setPbLoaded(false);
+      setPaperboat([]);
+      say("paperboat: detached", "warn");
       return;
     }
-    if (head === "attach") { attach(); return; }
-    if (head === "detach") { link.current?.close(); setStatus("idle"); say("paperboat: detached", "warn"); return; }
     if (head === "run") { runScript(); return; }
     if (head === "version") { say(`julia ${JULIA_VERSION} · frontend ${FRONTEND_VERSION} · kernel ${KERNEL_VERSION} · ${KERNEL_PROTOCOL} · ${PAPERBOAT_PROTOCOL}`); return; }
-    const assign = /^([A-Za-z_]\w*)\s*=\s*([\s\S]+)$/.exec(cmd);
-    if (assign) {
-      const res = evaluate(assign[2], varsOf(workspace), functions);
-      if (res.ok) {
-        const next = variableFrom(assign[1], res.value);
-        setWorkspace((prev) => [...prev.filter((one) => one.name !== next.name), next]);
-        setSelectedVar(next.name);
-        say(`${next.name} = ${res.display}`, "ok");
-        return;
-      }
-      say(`local: ${res.error} · queued for squero-kernel/0`, "warn");
-      return;
-    }
-    if (/^[A-Za-z_]\w*$/.test(cmd)) {
-      const v = rows.find((r) => r.name === cmd);
-      if (v) { say(`${v.name} = ${v.shape} ${v.type}`); return; }
-    }
-    const res = evaluate(cmd, varsOf(workspace), functions);
-    if (res.ok) {
-      const next = variableFrom("ans", res.value);
-      setWorkspace((prev) => [...prev.filter((one) => one.name !== "ans"), next]);
-      say(`ans = ${res.display}`, "ok");
-      return;
-    }
-    say(`kernel not attached · "${cmd}" queued for squero-kernel/0`, "warn");
+    void consoleEval(cmd);
   };
 
   const submit = () => {
@@ -354,6 +400,16 @@ export function App() {
     setFigureAnchor(null);
     if (activeFigureId && gone.has(activeFigureId)) setActiveFigureId(next[0]?.id ?? null);
     say(`closed ${gone.size} figure${gone.size === 1 ? "" : "s"}`, "warn");
+  };
+
+  const clearFigures = () => {
+    if (figures.length === 0) return;
+    setFigures([]);
+    setFigureSel([]);
+    setFigureAnchor(null);
+    setActiveFigureId(null);
+    setFigureFocus(null);
+    say(`cleared ${figures.length} figure${figures.length === 1 ? "" : "s"}`, "warn");
   };
 
   const selectFigure = (id: string, additive: boolean, range: boolean) => {
@@ -431,6 +487,7 @@ export function App() {
     setWorkspace([]);
     setFunctions({});
     setSelectedVar("");
+    if (kernelInfo) void resetKernel();
     say("workspace cleared", "warn");
   };
 
@@ -494,7 +551,7 @@ export function App() {
   const runCodeViaKernel = async (code: string, mode: "cell" | "line" | "selection" | "file") => {
     const startedAt = performance.now();
     const count = code.split("\n").filter((line) => line.trim()).length;
-    say(`kernel · run ${mode} · ${count} lines`, "ok");
+    say(mode === "file" ? `run ${selectedFile || "script"}` : `run ${mode} · ${count} line${count === 1 ? "" : "s"}`, "info");
     const reply = await evalCode(code);
     for (const line of (reply.stdout ?? "").split("\n")) {
       if (line.trim()) say(line);
@@ -506,7 +563,7 @@ export function App() {
         else { setWorkspace([]); setFunctions({}); }
       }
     }
-    if (!reply.ok) say(reply.error ?? "kernel error", "warn");
+    if (!reply.ok) say(reply.error ?? "kernel error", "err");
 
     const charts = figureFromCharts(reply.charts as ChartSpec[]);
     if (charts) addFigure(charts, selectedFile);
@@ -551,7 +608,7 @@ export function App() {
     // The first probe may still be starting Julia; wait for it before giving up.
     void probeKernel(60000).then((info) => {
       if (!info) {
-        say("kernel not attached · start the Julia kernel to run scripts", "warn");
+        say("kernel unavailable · install Julia or start the kernel container", "warn");
         return;
       }
       setKernelInfo(info);
@@ -705,9 +762,10 @@ export function App() {
     { id: "open-folder", label: "Open workspace folder…", menu: "file", group: "workspace", run: () => void openFolder() },
     { id: "save", label: "Save", menu: "file", group: "workspace", shortcut: "Ctrl+S", run: () => void saveCurrent(), enabled: dirty.has(selectedFile) && dir !== null, why: dir ? "no unsaved changes" : "open a folder first" },
     { id: "export", label: "Export workspace (.mat)…", menu: "file", group: "workspace", run: exportWorkspace, enabled: workspace.length > 0, why: "the workspace is empty" },
-    { id: "attach", label: "Attach Paperboat…", menu: "file", group: "connect", run: () => setRightTab("shared") },
+    { id: "attach", label: "Find Paperboat backends", menu: "file", group: "connect", run: attach },
     { id: "find", label: "Find variables…", menu: "edit", group: "find", run: () => { setRightTab("workspace"); requestAnimationFrame(() => searchRef.current?.focus()); } },
     { id: "clear-workspace", label: "Clear workspace", menu: "edit", group: "console", run: clearWorkspace },
+    { id: "clear-figures", label: "Clear figures", menu: "edit", group: "figures", run: clearFigures, enabled: figures.length > 0, why: "no figures" },
     { id: "clear-console", label: "Clear console", menu: "edit", group: "console", run: () => setLines([]) },
     { id: "chart", label: "Chart", menu: "view", group: "panels", checked: !chartHidden, run: () => setChartHidden((v) => !v) },
     { id: "files-panel", label: "Files panel", menu: "view", group: "panels", checked: !filesHidden, run: () => setFilesHidden((v) => !v) },
@@ -715,7 +773,7 @@ export function App() {
     { id: "workspace-tab", label: "Workspace tab", menu: "view", group: "panels", checked: rightTab === "workspace", run: () => setRightTab("workspace") },
     { id: "figures-tab", label: "Figures", menu: "view", group: "panels", checked: rightTab === "figures", run: () => setRightTab("figures") },
     { id: "console", label: "Console", menu: "view", group: "panels", checked: !consoleHidden, run: () => setConsoleHidden((v) => !v) },
-    { id: "shared-tab", label: "Shared variables", menu: "view", group: "panels", checked: rightTab === "shared", run: () => setRightTab("shared") },
+    { id: "kernel-panel", label: "Kernel…", menu: "view", group: "about", run: () => setKernelOpen(true) },
     { id: "run", label: "Run script", menu: "run", group: "run", run: runScript },
     { id: "about", label: "About Squero Studio", menu: "view", group: "about", run: () => setAboutOpen(true) },
   ];
@@ -726,8 +784,10 @@ export function App() {
         <span className="wordmark" aria-label="Squero Studio: MX">
           <SqueroLogo product="MX" height={20} running />
         </span>
-        <MenuBar commands={commands} />
-        <button type="button" className="menu-title" aria-expanded={aboutOpen} title="About Squero Studio" onClick={() => setAboutOpen(true)}>About</button>
+        <div className="menus">
+          <MenuBar commands={commands} />
+          <button type="button" className="menu-title" aria-expanded={aboutOpen} aria-haspopup="dialog" title="About Squero Studio" onClick={() => setAboutOpen(true)}>About</button>
+        </div>
         <div className="proj" title="Double-click to rename">
           <span className="dot" />
           {renamingTitle ? (
@@ -748,7 +808,22 @@ export function App() {
             <span className="proj-name" onDoubleClick={() => { setTitleDraft(baseName(selectedFile)); setRenamingTitle(true); }}>{selectedFile}</span>
           )}
         </div>
-        <div className={`status ${status}`}><span className="pip" />{status === "attached" ? "paperboat · attached" : kernelInfo ? `julia ${kernelInfo.julia} · kernel` : "julia · ready"}</div>
+        <div className={`status ${status}`} title="Paperboat backends found by the launcher">
+          <span className="pip" />
+          {status === "attached" ? `paperboat · ${pbCount} attached` : status === "connecting" ? "paperboat · connecting" : "paperboat · not attached"}
+        </div>
+        <button
+          type="button"
+          className={`status status-button${kernelInfo ? " ready" : ""}`}
+          onClick={() => setKernelOpen(true)}
+          aria-expanded={kernelOpen}
+          aria-haspopup="dialog"
+          title="Kernel, Julia versions and packages"
+        >
+          <span className="pip" />
+          {kernelInfo ? `julia ${kernelInfo.julia} · kernel` : "julia · ready"}
+          <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5 6 7.5l3-3" /></svg>
+        </button>
         <div className="keys">
           <button
             className={`key small chartkey${chartHidden ? " off" : ""}`}
@@ -792,6 +867,7 @@ export function App() {
         onSave={() => void saveCurrent()}
         settings={editor}
         onSettings={setEditor}
+        appTheme={appTheme}
         variables={workspace.map((v) => ({ name: v.name, type: v.type, value: v.value ?? v.preview }))}
         functions={functions}
         onChart={(_kind, line) => focusLine(line)}
@@ -818,7 +894,14 @@ export function App() {
               : "run a script or open a figure"}
           </span>
           <span className="sp" />
-          <button className="key small stage-hide" onClick={() => setChartHidden(true)} title="Hide chart">×</button>
+          <button
+            className="key small stage-hide"
+            onClick={() => (activeFigure ? removeFigure(activeFigure.id) : setChartHidden(true))}
+            title={activeFigure ? "Close figure" : "Hide chart"}
+            aria-label={activeFigure ? "Close figure" : "Hide chart"}
+          >
+            ×
+          </button>
         </div>
         <div className={`stage-body${activeFigure ? "" : " empty"}`} ref={stageRef}>
           {activeFigure ? (
@@ -837,10 +920,9 @@ export function App() {
           <div className="rtabs">
             <button className={rightTab === "workspace" ? "on" : ""} onClick={() => setRightTab("workspace")}>workspace</button>
             <button className={rightTab === "figures" ? "on" : ""} onClick={() => setRightTab("figures")}>figures</button>
-            <button className={rightTab === "shared" ? "on" : ""} onClick={() => setRightTab("shared")}>shared</button>
           </div>
           <span className="sp" />
-          {rightTab !== "figures" && <span className="tag">{`${active} shared`}</span>}
+          {rightTab === "workspace" && <span className="tag">{`${active} shared`}</span>}
           <button type="button" className="panel-toggle" onClick={() => setRightHidden(true)} title="Hide workspace" aria-label="Hide workspace" aria-expanded={!rightHidden}>
             <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M5 3l4 4-4 4" /></svg>
           </button>
@@ -889,10 +971,12 @@ export function App() {
                     value={scratch}
                     onChange={(e) => setScratch(e.target.value)}
                     onKeyDown={(e) => {
+                      if (latexTab(e, setScratch)) return;
                       if (e.key === "Enter") { e.preventDefault(); evalScratch(); }
                       else if (e.key === "Escape") { setScratch(""); setScratchOut(null); }
                     }}
                     placeholder="x * 2"
+                    title="\pi then Tab inserts π"
                     aria-label="Evaluate an expression"
                     spellCheck={false}
                   />
@@ -911,33 +995,6 @@ export function App() {
                 )}
               </div>
             )}
-          </div>
-        ) : rightTab === "shared" ? (
-          <div className="tabbody">
-            <div className="lbl">paperboat</div>
-            <div className="attach">
-              <input value={url} onChange={(e) => setUrl(e.target.value)} />
-              <button className="key small" onClick={attach}>{status === "attached" ? "Reattach" : "Attach"}</button>
-            </div>
-            <div className={`linkrow ${status}`}><span className="pip" />{status === "attached" ? "variables.load received" : status === "connecting" ? "connecting…" : "not attached"}</div>
-
-            <div className="rule" />
-            <div className="lbl">workspace → project</div>
-            <div className="shared-list">
-              {rows.map((v) => (
-                <div className="shared-row" key={v.name} role="button" tabIndex={0} onClick={() => setSelectedVar(v.name)}>
-                  <span className="nm">{v.name}</span>
-                  <span className="shape">{v.shape}</span>
-                  <span className={`src ${v.source}`}>{v.source === "mx" ? "MX" : "PB"}</span>
-                  <span className={`state ${v.shared ? "on" : ""}`}>{v.source === "paperboat" ? "project" : v.shared ? "broadcast" : "block"}</span>
-                </div>
-              ))}
-            </div>
-            <p className="hint">Every MX variable is broadcast automatically once the backend is up: scalars as numbers, arrays as text (JSON when small, a typed descriptor otherwise). Array data still travels to <span className="mono">state_space</span>/matrix blocks. A single MX instance is enough.</p>
-
-            <div className="rule" />
-            <div className="lbl">runs</div>
-            <p className="hint">Runs happen in Paperboat. MX shares the scalars Paperboat needs and reads the signals it produces.</p>
           </div>
         ) : (
           <div
@@ -977,7 +1034,16 @@ export function App() {
                     <b>{baseName(f.source)}</b>
                     <span>{timeOf(f.time)} · {f.figure.tiles.length} plot{f.figure.tiles.length === 1 ? "" : "s"}</span>
                   </div>
-                  <button className="figx" onClick={(e) => { e.stopPropagation(); removeFigure(f.id); }} title="Close figure">×</button>
+                  <button
+                    className="figx"
+                    type="button"
+                    aria-label={`Close ${f.source}`}
+                    title="Close figure"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); removeFigure(f.id); }}
+                  >
+                    <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M4 4l6 6M10 4l-6 6" /></svg>
+                  </button>
                 </div>
               ))}
               {figures.length === 0 && <p className="hint">Run a script with <span className="mono">plot</span> or <span className="mono">surf</span>; each run adds a figure here.</p>}
@@ -997,7 +1063,7 @@ export function App() {
 
       <section className="console">
         <div className="chead">
-          <span className="on">console</span><span>messages</span><span className="sp" />
+          <span className="on">console</span><span>repl</span><span className="sp" />
           <span className="tag">julia {JULIA_VERSION} · frontend {FRONTEND_VERSION}</span>
           <button
             type="button"
@@ -1025,10 +1091,12 @@ export function App() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
+              if (latexTab(e, setInput)) return;
               if (e.key === "ArrowUp") { e.preventDefault(); recall(-1); }
               else if (e.key === "ArrowDown") { e.preventDefault(); recall(1); }
             }}
-            placeholder="type help"
+            placeholder="type help · \pi then Tab"
+            title="\pi then Tab inserts π"
             autoComplete="off"
             spellCheck={false}
             aria-label="console command"
@@ -1037,6 +1105,7 @@ export function App() {
       </section>
 
       {aboutOpen && <AboutModal status={status} onClose={() => setAboutOpen(false)} />}
+      {kernelOpen && <KernelPanel kernel={kernelInfo} onClose={() => setKernelOpen(false)} onSay={say} />}
     </div>
   );
 }

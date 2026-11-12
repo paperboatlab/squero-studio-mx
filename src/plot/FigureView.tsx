@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { Heatmap, Scatter, Scope } from "@paperboat/shared/plot";
 import { SceneView } from "@paperboat/shared/station";
-import { chartAxes, chartView, surfaceEntity } from "../chart/surface.ts";
+import { chartAxes, chartView, rangeAxes, surfaceEntity } from "../chart/surface.ts";
 import { heatSamples, sampled, sampled2, scatterPoints, times } from "../chart/samples.ts";
 import type { Entity } from "@paperboat/shared/protocol";
 import type { Figure, FigureTile } from "./figure.ts";
@@ -39,19 +39,43 @@ function OptimizationSurface({ data }: { data: NonNullable<FigureTile["surface"]
       id: "objective", shape: "mesh", pos: [0, 0, 0], vertices, indices, values,
       range: [0, 1], wireframe: true,
     };
-    const marker: Entity | null = point ? {
-      id: "optimum", shape: "sphere", pos: point, size: [across * 0.05, across * 0.05, across * 0.05],
-      color: "#e5484d",
-    } : null;
+    const axes = rangeAxes(x, y, lo, hi);
+    const markerSize = Math.max(across * 0.045, zspan * 0.035);
+    const marks: Entity[] = point ? [
+      {
+        id: "optimum", shape: "sphere",
+        pos: [point[0], point[1] + markerSize * 0.8, point[2]],
+        size: [markerSize, markerSize, markerSize],
+        color: "#e5484d",
+      },
+      {
+        id: "optimum.drop", shape: "line",
+        pos: [point[0], lo, point[2]], to: [point[0], point[1], point[2]],
+        color: "#e5484d", overlay: true,
+      },
+      {
+        id: "optimum.cross.x", shape: "line",
+        pos: [point[0] - markerSize * 2, lo + zspan * 0.0015, point[2]],
+        to: [point[0] + markerSize * 2, lo + zspan * 0.0015, point[2]],
+        color: "#e5484d", overlay: true,
+      },
+      {
+        id: "optimum.cross.z", shape: "line",
+        pos: [point[0], lo + zspan * 0.0015, point[2] - markerSize * 2],
+        to: [point[0], lo + zspan * 0.0015, point[2] + markerSize * 2],
+        color: "#e5484d", overlay: true,
+      },
+    ] : [];
+    const all = [surface, ...axes, ...marks];
     const cx = (Math.min(...x) + Math.max(...x)) / 2;
     const cz = (Math.min(...y) + Math.max(...y)) / 2;
     const mid = (lo + hi) / 2;
     return {
-      entities: (marker ? { surface, marker } : { surface }) as Record<string, Entity>,
+      entities: Object.fromEntries(all.map((one) => [one.id, one])) as Record<string, Entity>,
       view: {
         mode: "3d" as const,
         grid: true,
-        floor: lo - across * 0.15,
+        floor: 0,
         camera: {
           eye: [cx + across * 0.95, hi + Math.max(zspan, across) * 0.85, cz + across * 0.95] as [number, number, number],
           target: [cx, mid, cz] as [number, number, number],
@@ -60,7 +84,9 @@ function OptimizationSurface({ data }: { data: NonNullable<FigureTile["surface"]
       },
     };
   }, [data]);
-  return <SceneView entities={entities} view={view} grid axes={false} />;
+  // The in-scene axes label the data; the shared view cube is the one corner orientation widget
+  // (no second bottom-left triad).
+  return <SceneView entities={entities} view={view} grid />;
 }
 
 const HEAT = heatSamples();
@@ -92,7 +118,7 @@ function Tile({ tile, focus, headless }: { tile: FigureTile; focus?: string | nu
           return <Scope name={tile.title} channels={channels} version={1} live={false} settings={{ window: 5, grid: true }} small />;
         })()}
         {tile.kind === "surface" && tile.surface && <OptimizationSurface data={tile.surface} />}
-        {tile.kind === "surface" && !tile.surface && entities && <SceneView entities={entities} view={chartView} grid axes />}
+        {tile.kind === "surface" && !tile.surface && entities && <SceneView entities={entities} view={chartView} grid />}
         {tile.kind === "heat" && <Heatmap values={tile.heat ?? HEAT} />}
         {tile.kind === "scatter" && <Scatter points={tile.points ?? SCATTER} color="#3e63dd" />}
       </div>

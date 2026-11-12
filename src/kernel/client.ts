@@ -69,3 +69,4 @@ class KernelClient {
 export const kernel = new KernelClient();
 export const evalCode = (code: string) => kernel.request({ op: "eval", code });
 export const whois = () => kernel.request({ op: "whos" });
+export const resetKernel = () => kernel.request({ op: "reset" });

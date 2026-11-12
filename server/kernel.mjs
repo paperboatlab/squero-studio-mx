@@ -32,17 +32,29 @@ export function kernelRuntime() {
 export function kernelCommand({ workspace, image = KERNEL_IMAGE, runtime = kernelRuntime() } = {}) {
   if (runtime === "native") {
     const repo = process.env.SQUERO_KERNEL_REPO ?? path.resolve(process.cwd(), "../squero-julia-kernel");
+    const env = { SQUERO_BASE };
+    if (workspace) {
+      // The workspace project is a secondary environment: scripts can `using` a package the
+      // julia up panel added, while the kernel's own dependencies still come from its repo.
+      env.JULIA_LOAD_PATH = ["@", path.resolve(workspace), "@stdlib"].join(path.delimiter);
+    }
     return {
       cmd: "julia",
       args: ["--startup-file=no", `--project=${repo}`, path.join(repo, "src", "kernel.jl")],
-      env: { SQUERO_BASE },
+      env,
       runtime,
     };
   }
   if (runtime === "podman" || runtime === "docker") {
     const args = ["run", "--rm", "-i", "--network=none"];
     if (runtime === "podman") args.push("--userns=keep-id");
-    if (workspace) args.push("-v", `${workspace}:/workspace:rw`, "-w", "/workspace");
+    if (workspace) {
+      args.push("-v", `${workspace}:/workspace:rw`, "-w", "/workspace");
+      // Keep the kernel image's depot for JSON3 and the stdlib, and the workspace depot for
+      // packages the user adds. The second load path entry makes those packages visible.
+      args.push("-e", "JULIA_DEPOT_PATH=/workspace/.julia:/home/kernel/.julia");
+      args.push("-e", "JULIA_LOAD_PATH=@:/workspace:@stdlib");
+    }
     if (existsSync(SQUERO_BASE)) {
       // `:z` relabels the read-only mount for SELinux hosts; docker ignores the extra option.
       const mount = runtime === "podman" ? `${SQUERO_BASE}:/opt/squero-mx-base:ro,z` : `${SQUERO_BASE}:/opt/squero-mx-base:ro`;

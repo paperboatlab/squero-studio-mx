@@ -57,7 +57,7 @@ h2, p { margin: 0; }
 .foot { flex: none; height: 28px; margin-top: auto; display: flex; align-items: center; padding: 0 12px; border-top: 1px solid var(--line); font: 400 10.5px var(--font-mono); color: var(--text-muted); }
 
 .vars { padding: 8px; display: flex; flex-direction: column; gap: 6px; overflow: auto; }
-.varc { display: grid; grid-template-columns: minmax(0, 1fr) 58px 18px; gap: 8px; align-items: center; padding: 6px 8px; background: var(--surface-raised); border: 1px solid var(--line); border-radius: var(--radius-md); }
+.varc { display: grid; grid-template-columns: minmax(0, 1fr) 58px 18px; gap: 8px; align-items: center; padding: 6px 8px; background: var(--surface-raised); border: 1px solid var(--line); border-radius: var(--radius-md); transition: border-color var(--motion), box-shadow var(--motion), background var(--motion); }
 .varc.on { border-color: var(--line-ink); box-shadow: 0 0 0 1px var(--line-ink); }
 .varc .nm { font: 500 12.5px var(--font-mono); }
 .varc .sh { font: 400 10px var(--font-mono); color: var(--text-muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -131,6 +131,7 @@ h2, p { margin: 0; }
 .lines .prompt { color: var(--signal-text); }
 .lines .ok { color: #2e7d32; }
 .lines .warn { color: var(--signal-text); }
+.lines .err { color: var(--danger-text); }
 :root[data-theme="dark"] .lines .ok { color: #8ad19a; }
 
 /* The Scope is built for a dashboard cell; in the MX stage it must fill the panel. */
@@ -186,6 +187,7 @@ h2, p { margin: 0; }
 .files .file { width: 100%; border: 0; border-radius: 0; background: none; padding: 0 12px; text-align: left; }
 .varc { cursor: pointer; }
 .varc:focus-visible, .shared-row:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+@media (prefers-reduced-motion: reduce) { .varc { transition: none; } }
 .shared-row { cursor: pointer; }
 .cm-host { height: 100%; }
 .cm-editor { height: 100%; }
@@ -303,6 +305,12 @@ body.resizing .app.split { transition: none; }
 
 /* Topbar menus and the workspace-folder edit key. */
 .topbar .menubar { margin-left: 4px; }
+.topbar .menus { display: flex; align-items: center; gap: 2px; }
+.topbar .menus .menubar { margin-left: 0; }
+.status-button { border: 0; background: none; padding: 0; cursor: pointer; font: inherit; }
+.status-button:hover { color: var(--text); }
+.status-button svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.status.ready .pip { background: var(--signal); box-shadow: 0 0 0 3px color-mix(in srgb, var(--signal) 14%, transparent); }
 .topbar .menu-title { height: 26px; padding: 0 8px; }
 .files-head .edit-root { border: 0; background: none; padding: 0; color: var(--text-muted); font: 400 9.5px var(--font-mono); cursor: pointer; }
 .files-head .edit-root:hover { color: var(--text); }
@@ -310,6 +318,9 @@ body.resizing .app.split { transition: none; }
 /* Editor settings, answer-token clicks and the fixed-size hide key. */
 .editor { position: relative; }
 .settings-key.on { background: var(--text); color: var(--surface-panel); border-color: var(--text); }
+.settings-key svg { width: 14px; height: 14px; display: block; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
+.settings-key svg circle { fill: var(--surface-raised); }
+.settings-key.on svg circle { fill: var(--text); }
 .editor-settings { position: absolute; top: 42px; right: 10px; z-index: 30; width: 262px; padding: 10px; display: flex; flex-direction: column; gap: 7px; background: var(--surface-raised); border: 1px solid var(--line-ink); border-radius: var(--radius-md); box-shadow: var(--shadow-1); }
 .es-head { display: flex; align-items: center; gap: 6px; padding-bottom: 5px; border-bottom: 1px solid var(--line); }
 .es-head b { font: 500 11px var(--font-mono); }
@@ -325,6 +336,25 @@ body.resizing .app.split { transition: none; }
 .stage-hide { width: 22px; height: 22px; padding: 0; display: inline-grid; place-items: center; font-size: 13px; line-height: 1; }
 .cm-answer.click { cursor: pointer; }
 .cm-answer.click:hover { color: var(--signal); border-color: color-mix(in srgb, var(--signal) 50%, transparent); }
+
+/* Completion kinds are words, not emoji: short mono tags that read at 10px. */
+.cm-tooltip-autocomplete .cm-completionIcon { width: 20px; padding-right: 6px; opacity: .7; font: 500 8px var(--font-mono); text-transform: lowercase; }
+.cm-tooltip-autocomplete .cm-completionIcon:after { font-size: 8px; }
+.cm-tooltip-autocomplete > ul > li[aria-selected] .cm-completionIcon { opacity: 1; }
+.cm-tooltip-autocomplete .cm-completionIcon-function:after,
+.cm-tooltip-autocomplete .cm-completionIcon-method:after { content: "fn"; }
+.cm-tooltip-autocomplete .cm-completionIcon-variable:after { content: "var"; }
+.cm-tooltip-autocomplete .cm-completionIcon-keyword:after { content: "kw"; }
+.cm-tooltip-autocomplete .cm-completionIcon-type:after,
+.cm-tooltip-autocomplete .cm-completionIcon-class:after,
+.cm-tooltip-autocomplete .cm-completionIcon-interface:after { content: "typ"; }
+.cm-tooltip-autocomplete .cm-completionIcon-snippet:after { content: "snp"; }
+.cm-tooltip-autocomplete .cm-completionIcon-property:after { content: "prop"; }
+.cm-tooltip-autocomplete .cm-completionIcon-constant:after { content: "const"; }
+.cm-tooltip-autocomplete .cm-completionIcon-namespace:after { content: "ns"; }
+.cm-tooltip-autocomplete .cm-completionIcon-enum:after { content: "enum"; }
+.cm-tooltip-autocomplete .cm-completionIcon-text:after { content: "txt"; font-size: 8px; }
+.cm-tooltip-autocomplete .cm-completionIcon-unicode:after { content: "λ"; font-size: 9px; }
 
 /* A drag bar for the console. */
 .app.split { grid-template-rows: 56px minmax(0, 1fr) 6px var(--console-h, 154px); }
@@ -346,6 +376,13 @@ body.resizing .app.split { transition: none; }
 .figure-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 
 .figure-tile.focus { outline: 2px solid var(--signal); outline-offset: -2px; }
+/* A Scope's floating menu must clear the tile, the grid and the stage frame. */
+.figure-tile:has(.scope-pop),
+.figure-grid:has(.scope-pop),
+.stage-body:has(.scope-pop),
+.stage:has(.scope-pop) { overflow: visible; }
+.app.split .stage:has(.scope-pop) { overflow: visible; z-index: 6; }
+.figure-grid:has(.scope-pop) { position: relative; z-index: 6; }
 .editor .head .key { white-space: nowrap; }
 
 /* The explicit folder picker in the Files rail. */
@@ -438,7 +475,8 @@ body.resizing .app.split { transition: none; }
 .figmeta { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .figmeta b { font: 500 11px var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .figmeta span { font: 400 9.5px var(--font-mono); color: var(--text-muted); }
-.figx { border: 0; background: none; padding: 0; color: var(--text-muted); font: 400 14px var(--font-mono); cursor: pointer; }
+.figx { width: 18px; height: 18px; display: inline-grid; place-items: center; border: 0; border-radius: 50%; background: none; padding: 0; color: var(--text-muted); cursor: pointer; }
+.figx svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; }
 .figx:hover { color: var(--danger-text); }
 .stage-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--text-muted); font: 400 12px var(--font-sans); }
 .stage-empty p { font: 500 13px var(--font-mono); color: var(--text); }
@@ -486,3 +524,67 @@ body.resizing .app.split { transition: none; }
 @media (max-width: 640px) { .about-body { grid-template-columns: 1fr; } }
 
 .rightpane .head .tag { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- julia up panel ------------------------------------------------------------------ */
+.juliatab { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 7px; padding: 10px 12px; overflow: auto; }
+.jl-subtabs { flex: none; display: flex; align-items: center; gap: 10px; font: 400 11px var(--font-mono); color: var(--text-muted); }
+.jl-subtabs button { border: 0; background: none; padding: 0; color: inherit; font: inherit; cursor: pointer; }
+.jl-subtabs button.on { color: var(--text); font-weight: 500; }
+.jl-subtabs button.on::before { content: "[ "; } .jl-subtabs button.on::after { content: " ]"; }
+.jl-head { flex: none; display: flex; align-items: center; gap: 8px; }
+.jl-title { min-width: 0; display: flex; align-items: baseline; gap: 8px; }
+.jl-title b { font: 500 11px var(--font-mono); white-space: nowrap; }
+.jl-title .tag { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jl-head .key { margin-left: auto; flex: none; }
+.jl-chans { display: flex; flex-direction: column; gap: 3px; }
+.jl-ch { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 4px 6px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-raised); font: 400 10px var(--font-mono); }
+.jl-ch .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); }
+.jl-ch.on .nm { color: var(--text); font-weight: 500; }
+.jl-ch .ver { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.jl-ch .upd { color: var(--text-muted); white-space: nowrap; }
+.jl-ch .upd.has { color: var(--signal-text); }
+.jl-path { font: 400 9.5px var(--font-mono); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jl-tags { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.jl-tags .tag { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jl-add { display: flex; align-items: center; gap: 6px; padding: 4px 6px 4px 8px; background: var(--surface-well); border-radius: var(--radius-md); box-shadow: var(--well-shadow); }
+.jl-add .prompt { flex: none; color: var(--signal-text); font: 500 10px var(--font-mono); }
+.jl-add input { flex: 1; min-width: 0; background: transparent; border: 0; box-shadow: none; padding: 0; font: 400 11px var(--font-mono); color: var(--text); }
+.jl-add input::placeholder { color: var(--text-muted); }
+.jl-add .key { flex: none; }
+.jl-list { display: flex; flex-direction: column; gap: 3px; }
+.jl-pkg { display: grid; grid-template-columns: minmax(0, 1fr) auto 18px; gap: 8px; align-items: center; padding: 4px 5px 4px 7px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-raised); }
+.jl-pkg .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 11px var(--font-mono); }
+.jl-pkg .ver { color: var(--text-muted); font: 400 9.5px var(--font-mono); font-variant-numeric: tabular-nums; }
+.jl-rm { width: 18px; height: 18px; display: inline-grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--text-muted); cursor: pointer; }
+.jl-rm svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; }
+.jl-rm:hover:not(:disabled) { color: var(--danger-text); }
+.jl-foot { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+.jl-foot .tag { margin-left: auto; }
+.jl-busy { color: var(--signal-text); font: 400 10px var(--font-mono); }
+.jl-error { color: var(--danger-text); font: 400 10px / 1.45 var(--font-mono); white-space: pre-wrap; word-break: break-word; }
+.jl-log { margin: 0; padding: 6px 7px; max-height: 132px; overflow: auto; background: var(--surface-well); border-radius: var(--radius-md); box-shadow: var(--well-shadow); color: var(--text-muted); font: 400 9.5px / 1.45 var(--font-mono); white-space: pre-wrap; word-break: break-word; }
+
+/* The General registry browser inside the kernel panel. */
+.jr-results { display: flex; flex-direction: column; gap: 3px; }
+.jr-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: center; padding: 4px 5px 4px 7px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-raised); }
+.jr-name { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 0; border: 0; background: none; text-align: left; cursor: pointer; }
+.jr-name .nm { font: 500 11px var(--font-mono); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.jr-name .uuid { font: 400 9px var(--font-mono); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.jr-name:hover .nm { color: var(--signal-text); }
+.jr-installed { color: var(--signal-text); }
+.jr-card { display: flex; flex-direction: column; gap: 6px; padding: 9px 10px; border: 1px solid var(--line-ink); border-radius: var(--radius-md); background: var(--surface-raised); }
+.jr-card-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.jr-card-head b { font: 500 12px var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jr-card-head .tag { margin-left: auto; flex: none; }
+.jr-desc { margin: 0; font: 400 11px / 1.45 var(--font-sans); color: var(--text-muted); }
+.jr-facts { display: flex; flex-wrap: wrap; gap: 8px; font: 400 9.5px var(--font-mono); color: var(--text-muted); }
+.jr-versions { display: flex; flex-wrap: wrap; gap: 3px; }
+.jr-versions .tag { padding: 0 3px; border: 1px solid var(--line); border-radius: 2px; font-size: 9px; }
+.jr-repo { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 9.5px var(--font-mono); color: var(--text); text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 2px; }
+.jr-actions { display: flex; align-items: center; gap: 8px; }
+
+/* The kernel is a centred floating panel, like About, with room for the registry. */
+.kernel-dialog { width: min(660px, calc(100vw - 32px)); height: min(760px, calc(100vh - 64px)); }
+.kernel-dialog .modal-head { gap: 8px; }
+.kernel-dialog .modal-head h3 { margin-right: 2px; }
+.kernel-dialog .modal-head .tag { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

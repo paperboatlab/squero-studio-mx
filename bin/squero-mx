@@ -9,6 +9,8 @@ import { spawn } from "node:child_process";
 import { DEFAULT_WORKSPACE, shortRoot, workspaceMiddleware } from "../server/workspace.mjs";
 import { attachKernel, kernelRuntime, KERNEL_IMAGE } from "../server/kernel.mjs";
 import { optimizeMiddleware } from "../server/optimize.mjs";
+import { juliaMiddleware } from "../server/julia.mjs";
+import { backendsMiddleware } from "../server/backends.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const dist = path.resolve(here, "../dist");
@@ -48,10 +50,20 @@ const MIME = {
 
 const workspaceApi = workspaceMiddleware(workspace);
 const optimizeApi = optimizeMiddleware();
+const juliaApi = juliaMiddleware({ workspace });
+const backendsApi = backendsMiddleware();
 const server = createServer((req, res) => {
   const url = new URL(req.url ?? "/", "http://localhost");
   if (url.pathname === "/__mx/optimize") {
     void optimizeApi(req, res, () => { res.statusCode = 404; res.end(); });
+    return;
+  }
+  if (url.pathname.startsWith("/__mx/julia")) {
+    void juliaApi(req, res, () => { res.statusCode = 404; res.end(); });
+    return;
+  }
+  if (url.pathname.startsWith("/__mx/backends")) {
+    backendsApi(req, res, () => { res.statusCode = 404; res.end(); });
     return;
   }
   if (url.pathname.startsWith("/__mx/workspace")) {
