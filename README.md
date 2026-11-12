@@ -128,10 +128,11 @@ script, time and plot count; click a row to show it, `×` closes it. Clicking a 
 in the editor shows the matching figure and outlines its tile. `Edit ▸ Clear figures` empties
 the browser.
 
-3D surfaces draw one origin frame through (0, 0, 0): red x, green y and blue z run in both
-directions past the data, with the ground grid on y = 0. The optimization cost plot uses the
-same in-scene frame and marks the returned optimum with a red sphere and a drop line to its
-footprint.
+3D surfaces draw one origin frame through (0, 0, 0) in muted grey: x, y and z run in both
+directions past the data, with the ground grid on y = 0. A bottom-left triad and the top-right
+wireframe view cube carry the live x/y/z direction; the cube turns with the camera and its axes
+sit on one vertex. The optimization cost plot uses the same in-scene frame and marks the returned
+optimum with a red sphere and a drop line to its footprint.
 
 The browser supports Ctrl/Cmd-click to add/remove a figure and Shift-click for a range; `Delete`
 closes the selected figures (Ctrl/Cmd+A selects all). Export the selection, or the shown figure,

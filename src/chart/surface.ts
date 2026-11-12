@@ -84,17 +84,17 @@ export function chartAxes(): Entity[] {
   const out: Entity[] = [];
   const add = (id: string, from: [number, number, number], to: [number, number, number], color: string) =>
     out.push({ id, shape: "line", pos: from, to, color, overlay: true });
-  const red = "#e5484d", green = "#30a46c", blue = "#3e63dd";
+  const grey = "#8a8a84";
   const far = 8, tick = 0.07;
 
-  add("axis.x", [-far, 0, 0], [far, 0, 0], red);
-  add("axis.z", [0, 0, -far], [0, 0, far], blue);
-  add("axis.y", [0, -far, 0], [0, far, 0], green);
+  add("axis.x", [-far, 0, 0], [far, 0, 0], grey);
+  add("axis.z", [0, 0, -far], [0, 0, far], grey);
+  add("axis.y", [0, -far, 0], [0, far, 0], grey);
 
   for (const t of [-6, -4, -2, 0, 2, 4, 6]) {
-    add(`axis.x.${t}`, [t, 0, -tick], [t, 0, tick], red);
-    add(`axis.z.${t}`, [-tick, 0, t], [tick, 0, t], blue);
-    add(`axis.y.${t}`, [-tick, t, 0], [tick, t, 0], green);
+    add(`axis.x.${t}`, [t, 0, -tick], [t, 0, tick], grey);
+    add(`axis.z.${t}`, [-tick, 0, t], [tick, 0, t], grey);
+    add(`axis.y.${t}`, [-tick, t, 0], [tick, t, 0], grey);
   }
   return out;
 }
@@ -107,21 +107,21 @@ export function rangeAxes(xs: readonly number[], ys: readonly number[], base: nu
   const out: Entity[] = [];
   const add = (id: string, from: [number, number, number], to: [number, number, number], color: string) =>
     out.push({ id, shape: "line", pos: from, to, color, overlay: true });
-  const red = "#e5484d", green = "#30a46c", blue = "#3e63dd";
+  const grey = "#8a8a84";
   const x0 = Math.min(...xs), x1 = Math.max(...xs);
   const z0 = Math.min(...ys), z1 = Math.max(...ys);
   const far = Math.max(8, Math.abs(x0), Math.abs(x1), Math.abs(z0), Math.abs(z1), Math.abs(base), Math.abs(top)) * 1.4;
   const tick = far * 0.015;
 
-  add("axis.x", [-far, 0, 0], [far, 0, 0], red);
-  add("axis.z", [0, 0, -far], [0, 0, far], blue);
-  add("axis.y", [0, -far, 0], [0, far, 0], green);
+  add("axis.x", [-far, 0, 0], [far, 0, 0], grey);
+  add("axis.z", [0, 0, -far], [0, 0, far], grey);
+  add("axis.y", [0, -far, 0], [0, far, 0], grey);
 
   for (let i = -2; i <= 2; i++) {
     const t = (far / 2) * i;
-    add(`axis.x.${i}`, [t, 0, -tick], [t, 0, tick], red);
-    add(`axis.z.${i}`, [-tick, 0, t], [tick, 0, t], blue);
-    add(`axis.y.${i}`, [-tick, t, 0], [tick, t, 0], green);
+    add(`axis.x.${i}`, [t, 0, -tick], [t, 0, tick], grey);
+    add(`axis.z.${i}`, [-tick, 0, t], [tick, 0, t], grey);
+    add(`axis.y.${i}`, [-tick, t, 0], [tick, t, 0], grey);
   }
   return out;
 }
