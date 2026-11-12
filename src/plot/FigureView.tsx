@@ -13,14 +13,21 @@ function OptimizationSurface({ data }: { data: NonNullable<FigureTile["surface"]
   const { entities, view } = useMemo(() => {
     const { x, y, z, point } = data;
     const nx = x.length, ny = y.length;
-    const vertices: number[] = [];
-    const values: number[] = [];
     let lo = Infinity, hi = -Infinity;
     for (const row of z) for (const value of row) { if (value < lo) lo = value; if (value > hi) hi = value; }
     const span = hi - lo || 1;
+    const xspan = Math.max(...x) - Math.min(...x) || 1;
+    const yspan = Math.max(...y) - Math.min(...y) || 1;
+    const across = Math.max(xspan, yspan);
+    // The objective is drawn to the footprint's scale (a cost of 0.01 over a 1 × 1 box would be
+    // flat): its lowest value on the floor, its highest at 0.6 of the footprint.
+    const k = (across * 0.6) / span;
+    const height = (value: number) => (value - lo) * k;
+    const vertices: number[] = [];
+    const values: number[] = [];
     for (let j = 0; j < ny; j++) {
       for (let i = 0; i < nx; i++) {
-        vertices.push(x[i], z[j][i], y[j]);
+        vertices.push(x[i], height(z[j][i]), y[j]);
         values.push((z[j][i] - lo) / span);
       }
     }
@@ -31,45 +38,27 @@ function OptimizationSurface({ data }: { data: NonNullable<FigureTile["surface"]
         indices.push(a, c, b, b, c, d);
       }
     }
-    const xspan = Math.max(...x) - Math.min(...x) || 1;
-    const yspan = Math.max(...y) - Math.min(...y) || 1;
-    const zspan = hi - lo || 1;
-    const across = Math.max(xspan, yspan, 1);
+    const top = height(hi);
     const surface: Entity = {
       id: "objective", shape: "mesh", pos: [0, 0, 0], vertices, indices, values,
       range: [0, 1], wireframe: true,
     };
-    const axes = rangeAxes(x, y, lo, hi);
-    const markerSize = Math.max(across * 0.045, zspan * 0.035);
-    const marks: Entity[] = point ? [
-      {
-        id: "optimum", shape: "sphere",
-        pos: [point[0], point[1] + markerSize * 0.8, point[2]],
-        size: [markerSize, markerSize, markerSize],
-        color: "#e5484d",
-      },
-      {
-        id: "optimum.drop", shape: "line",
-        pos: [point[0], lo, point[2]], to: [point[0], point[1], point[2]],
-        color: "#e5484d", overlay: true,
-      },
-      {
-        id: "optimum.cross.x", shape: "line",
-        pos: [point[0] - markerSize * 2, lo + zspan * 0.0015, point[2]],
-        to: [point[0] + markerSize * 2, lo + zspan * 0.0015, point[2]],
-        color: "#e5484d", overlay: true,
-      },
-      {
-        id: "optimum.cross.z", shape: "line",
-        pos: [point[0], lo + zspan * 0.0015, point[2] - markerSize * 2],
-        to: [point[0], lo + zspan * 0.0015, point[2] + markerSize * 2],
-        color: "#e5484d", overlay: true,
-      },
-    ] : [];
+    const axes = rangeAxes(x, y, 0, top, 0);
+    const markerSize = across * 0.045;
+    const marks: Entity[] = [];
+    if (point) {
+      const at = height(point[1]);
+      marks.push(
+        { id: "optimum", shape: "sphere", pos: [point[0], at + markerSize * 0.8, point[2]], size: [markerSize, markerSize, markerSize], color: "#e5484d" },
+        { id: "optimum.drop", shape: "line", pos: [point[0], 0, point[2]], to: [point[0], at, point[2]], color: "#e5484d", overlay: true },
+        { id: "optimum.cross.x", shape: "line", pos: [point[0] - markerSize * 2, 0, point[2]], to: [point[0] + markerSize * 2, 0, point[2]], color: "#e5484d", overlay: true },
+        { id: "optimum.cross.z", shape: "line", pos: [point[0], 0, point[2] - markerSize * 2], to: [point[0], 0, point[2] + markerSize * 2], color: "#e5484d", overlay: true },
+      );
+    }
     const all = [surface, ...axes, ...marks];
     const cx = (Math.min(...x) + Math.max(...x)) / 2;
     const cz = (Math.min(...y) + Math.max(...y)) / 2;
-    const mid = (lo + hi) / 2;
+    // Far enough that the whole footprint, its height and the axes fit a 45° view.
     return {
       entities: Object.fromEntries(all.map((one) => [one.id, one])) as Record<string, Entity>,
       view: {
@@ -77,8 +66,8 @@ function OptimizationSurface({ data }: { data: NonNullable<FigureTile["surface"]
         grid: true,
         floor: 0,
         camera: {
-          eye: [cx + across * 0.95, hi + Math.max(zspan, across) * 0.85, cz + across * 0.95] as [number, number, number],
-          target: [cx, mid, cz] as [number, number, number],
+          eye: [cx + across * 1.35, top + across * 0.95, cz + across * 1.35] as [number, number, number],
+          target: [cx, top * 0.35, cz] as [number, number, number],
           fov: 45,
         },
       },

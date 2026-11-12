@@ -1,6 +1,6 @@
 // The optimization bridge: one fmincon-shaped problem from the kernel → `paperboat optimize`.
 // The solver, its readers and its trace stay in Paperboat; this only moves JSON over HTTP.
-import { spawnSync } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -61,10 +61,15 @@ export function optimizeMiddleware() {
     const file = path.join(dir, "problem.json");
     writeFileSync(file, JSON.stringify(problem));
     const grid = Number.isInteger(body.grid) ? Math.max(2, Math.min(96, body.grid)) : 33;
-    const run = spawnSync(binary, ["optimize", file, "--json", "--grid", String(grid)], {
-      encoding: "utf8",
-      timeout: 120000,
-      env: process.env,
+    // Async: a solve can take a while, and a sync child would stall every other request.
+    const run = await new Promise((resolve) => {
+      execFile(binary, ["optimize", file, "--json", "--grid", String(grid)], {
+        encoding: "utf8", timeout: 120000, maxBuffer: 64 * 1024 * 1024, env: process.env,
+      }, (error, stdout, stderr) => resolve({
+        stdout, stderr,
+        // a non-zero exit still prints its result; only a spawn failure or a timeout is an error
+        error: error && (typeof error.code === "string" || error.killed) ? error : undefined,
+      }));
     });
     rmSync(dir, { recursive: true, force: true });
 

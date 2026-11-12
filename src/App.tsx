@@ -61,6 +61,8 @@ export function App() {
   const [aboutOpen, setAboutOpen] = useState(false);
   const [kernelOpen, setKernelOpen] = useState(false);
   const [kernelInfo, setKernelInfo] = useState<KernelInfo | null>(null);
+  /** The first probe answered (or gave up): until then the chip says the kernel is starting. */
+  const [kernelProbed, setKernelProbed] = useState(false);
   const [filesHidden, setFilesHidden] = useState(false);
   const [rightHidden, setRightHidden] = useState(false);
   const [figureFocus, setFigureFocus] = useState<string | null>(null);
@@ -169,7 +171,7 @@ export function App() {
   useEffect(() => { localStorage.setItem("mx.editor", JSON.stringify(editor)); }, [editor]);
   useEffect(() => {
     let live = true;
-    void probeKernel(60000).then((info) => { if (live) setKernelInfo(info); });
+    void probeKernel(60000).then((info) => { if (live) { setKernelInfo(info); setKernelProbed(true); } });
     return () => { live = false; };
   }, []);
 
@@ -350,7 +352,9 @@ export function App() {
     setInput(history[next]);
   };
 
-  const typeLabel = (type: string) => (type.startsWith("Matrix") ? "matrix" : type.startsWith("Vector") ? "vector" : type.toLowerCase());
+  /** A card's short type: matrix, vector, or Julia's type name without module or parameters (int64, namedtuple). */
+  const typeLabel = (type: string) =>
+    type.startsWith("Matrix") ? "matrix" : type.startsWith("Vector") ? "vector" : (type.replace(/\{[\s\S]*$/, "").split(".").pop() ?? type).replace(/^@/, "").toLowerCase();
 
   const fmt = (n: number) => {
     if (Number.isInteger(n)) return String(n);
@@ -824,7 +828,7 @@ export function App() {
           title="Kernel, Julia versions and packages"
         >
           <span className="pip" />
-          {kernelInfo ? `julia ${kernelInfo.julia} · kernel` : "julia · ready"}
+          {kernelInfo ? `julia ${kernelInfo.julia} · kernel` : kernelProbed ? "julia · unavailable" : "julia · starting"}
           <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5 6 7.5l3-3" /></svg>
         </button>
         <div className="keys">
@@ -956,7 +960,7 @@ export function App() {
                     <div className="sh">{typeLabel(v.type)} · {v.shape}</div>
                   </div>
                   <span className={`vval${v.type === "Float64" ? " scalar" : ""}`} title={valueOf(v)}>{valueOf(v)}</span>
-                  <span className={`tie ${v.shared ? "on" : ""}`} title={v.shared ? "Broadcast to Paperboat" : "A function stays in MX"} />
+                  <span className={`tie ${v.shared ? "on" : ""}`} title={v.shared ? "Broadcast to Paperboat" : "Stays in MX: not a number, text or array"} />
                 </div>
               ))}
               {currentVars.length === 0 && (

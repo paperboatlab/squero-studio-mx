@@ -321,6 +321,9 @@ export function variableFrom(name: string, value: NumValue): WorkspaceVariable {
 
 export function varsOf(workspace: readonly WorkspaceVariable[]): Record<string, NumValue> {
   const out: Record<string, NumValue> = {};
-  for (const v of workspace) out[v.name] = v.value ?? v.preview ?? 0;
+  for (const v of workspace) {
+    const value = v.value ?? v.preview ?? 0;
+    if (typeof value !== "string" && typeof value !== "boolean") out[v.name] = value; // the scratch line is numeric
+  }
   return out;
 }

@@ -131,8 +131,10 @@ the browser.
 3D surfaces draw one origin frame through (0, 0, 0) in muted grey: x, y and z run in both
 directions past the data, with the ground grid on y = 0. A bottom-left triad and the top-right
 wireframe view cube carry the live x/y/z direction; the cube turns with the camera and its axes
-sit on one vertex. The optimization cost plot uses the same in-scene frame and marks the returned
-optimum with a red sphere and a drop line to its footprint.
+sit on one vertex. The optimization cost plot uses the same in-scene frame, sized to the decision
+box, and draws the objective's height to that box (lowest value on the floor, highest at 0.6 of its
+width), so a small cost over a large box is not flat; the camera fits the whole surface and the
+returned optimum is a red sphere with a drop line to its footprint.
 
 The browser supports Ctrl/Cmd-click to add/remove a figure and Shift-click for a range; `Delete`
 closes the selected figures (Ctrl/Cmd+A selects all). Export the selection, or the shown figure,
@@ -191,7 +193,8 @@ returns to where it was — menus, the About dialog and the editor settings all 
 
 ### Kernel panel and julia up
 
-The kernel chip in the bar is a button: it opens a centred panel with the running Julia/kernel
+The kernel chip in the bar is a button (`julia · starting` until the first probe answers, then
+`julia <version> · kernel`, or `julia · unavailable`): it opens a centred panel with the running Julia/kernel
 versions, the **julia up** view, and the **registry** view. `julia` is the version juliaup has
 selected; *Update* runs `juliaup update`, the environment lists the workspace project's direct
 packages and lets you add, remove, update or reload them.
@@ -222,8 +225,9 @@ kernel: charts are shared Paperboat components and solvers live in Paperboat.
 ### Console
 
 The bottom console is a real Julia REPL and the script stdout sink. Anything that is not a UI
-command is evaluated in the kernel session and prints its value or its Julia error; scripts run
-from the editor print their stdout here too.
+command is evaluated in the kernel session and prints its value as Julia's REPL does (a matrix
+keeps its columns) or its Julia error in red; scripts run from the editor print their stdout here
+too.
 
 ```
 help · whos · clear [name] · clc · attach · detach
@@ -236,8 +240,9 @@ The scratch line under the workspace still evaluates simple expressions locally 
 attached.
 
 Optimization specs go to the launcher's `/__mx/optimize`, which runs
-`paperboat optimize <problem> --json --grid 41`: the same readers, OSQP/Ipopt solver and
-`options.display` trace the Paperboat blocks use. The app binds `x_opt`/`f_opt` and draws the
+`paperboat optimize <problem> --json --grid 41` (the checkout's CLI, or `$PAPERBOAT_BIN`; it runs
+asynchronously, so a long solve never stalls the launcher): the same readers, OSQP/Ipopt solver and
+`options.display` trace the Paperboat blocks use. An NLP needs a Paperboat built with Ipopt. The app binds `x_opt`/`f_opt` and draws the
 optimum on the objective surface.
 
 ## Status

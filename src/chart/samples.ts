@@ -7,8 +7,8 @@ export type WorkspaceVariable = {
   type: string;
   /** A small preview, if the app has one (the workspace card glyph). */
   preview?: number[];
-  /** The scalar or vector value the bridge publishes. */
-  value?: number | number[] | number[][];
+  /** The scalar, text or array value (whole when the kernel sent it, else a preview). */
+  value?: number | boolean | string | number[] | number[][];
 };
 
 export const demoWorkspaces: Record<string, WorkspaceVariable[]> = {
