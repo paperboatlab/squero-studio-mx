@@ -86,7 +86,7 @@ function OptimizationSurface({ data }: { data: NonNullable<FigureTile["surface"]
   }, [data]);
   // The in-scene axes label the data; the shared view cube is the one corner orientation widget
   // (no second bottom-left triad).
-  return <SceneView entities={entities} view={view} grid />;
+  return <SceneView entities={entities} view={view} grid axes />;
 }
 
 const HEAT = heatSamples();
@@ -118,7 +118,7 @@ function Tile({ tile, focus, headless }: { tile: FigureTile; focus?: string | nu
           return <Scope name={tile.title} channels={channels} version={1} live={false} settings={{ window: 5, grid: true }} small />;
         })()}
         {tile.kind === "surface" && tile.surface && <OptimizationSurface data={tile.surface} />}
-        {tile.kind === "surface" && !tile.surface && entities && <SceneView entities={entities} view={chartView} grid />}
+        {tile.kind === "surface" && !tile.surface && entities && <SceneView entities={entities} view={chartView} grid axes />}
         {tile.kind === "heat" && <Heatmap values={tile.heat ?? HEAT} />}
         {tile.kind === "scatter" && <Scatter points={tile.points ?? SCATTER} color="#3e63dd" />}
       </div>
