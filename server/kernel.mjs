@@ -20,12 +20,12 @@ const has = (cmd) => {
   return probe.status === 0;
 };
 
+let runtime;
+/** The first runtime present; probed once, as each probe is a blocking child. */
 export function kernelRuntime() {
   if (process.env.SQUERO_JULIA) return process.env.SQUERO_JULIA;
-  if (has("podman")) return "podman";
-  if (has("docker")) return "docker";
-  if (has("julia")) return "native";
-  return "none";
+  runtime ??= has("podman") ? "podman" : has("docker") ? "docker" : has("julia") ? "native" : "none";
+  return runtime;
 }
 
 /** The command that runs the kernel. `workspace` is mounted at /workspace for load/save. */

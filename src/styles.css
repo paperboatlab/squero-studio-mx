@@ -181,6 +181,7 @@ h2, p { margin: 0; }
 .tabbody .scratch { margin-top: auto; border-top: 1px solid var(--line); padding: 9px 0 0; }
 
 .console .lines { overflow: auto; }
+.console .lines > div { white-space: pre-wrap; overflow-wrap: anywhere; } /* the REPL's matrix columns */
 .cin { flex: none; display: flex; align-items: center; gap: 8px; padding: 5px 12px 7px; border-top: 1px solid var(--line); background: var(--surface-raised); }
 .cin .prompt { color: var(--signal-text); font: 500 11px var(--font-mono); }
 .cin input { flex: 1; min-width: 0; background: transparent; border: 0; box-shadow: none; outline: none; padding: 2px 0; color: var(--text); font: 400 11.5px var(--font-mono); }
@@ -203,7 +204,7 @@ h2, p { margin: 0; }
 .instrument figcaption { flex: none; display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; font: var(--size-2xs) var(--font-sans); color: var(--text-muted); }
 .instrument figcaption output { color: var(--text); font-family: var(--font-mono); }
 .instrument figcaption span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.scope-wrap .instrument figcaption { color: var(--text-on-screen-muted); }
+.scope-wrap .instrument figcaption { padding: 0 8px 6px; color: var(--text-on-screen-muted); }
 .scope-wrap .instrument figcaption output { color: var(--text-on-screen); }
 .scope-wrap .instrument .scope-status { color: var(--text-on-screen); }
 
@@ -217,7 +218,7 @@ h2, p { margin: 0; }
 
 /* Resizable, hideable chart panel. */
 /* The side panels collapse to a standing tab, sliding like Lookout's drawers. */
-.app.split { --files-w: 220px; --right-w: 320px; grid-template-columns: var(--files-w) minmax(320px, 1fr) 6px var(--stage-w, 540px) var(--right-w); transition: grid-template-columns var(--slide), grid-template-rows var(--slide); }
+.app.split { --files-w: 220px; --right-w: 320px; grid-template-columns: var(--files-w) minmax(320px, 1fr) 6px minmax(240px, var(--stage-w, 540px)) var(--right-w); transition: grid-template-columns var(--slide), grid-template-rows var(--slide); }
 body.resizing .app.split { transition: none; }
 .app.split .files, .app.split .rightpane { position: relative; }
 .app.split.files-hidden { --files-w: 30px; }
@@ -321,7 +322,7 @@ body.resizing .app.split { transition: none; }
 
 /* Editor settings, answer-token clicks and the fixed-size hide key. */
 .editor { position: relative; }
-.settings-key.on { background: var(--text); color: var(--surface-panel); border-color: var(--text); }
+.settings-key.on { border-color: var(--line-ink); color: var(--text); }
 .settings-key svg { width: 14px; height: 14px; display: block; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
 .settings-key svg circle { fill: var(--surface-raised); }
 .settings-key.on svg circle { fill: var(--text); }
@@ -333,9 +334,13 @@ body.resizing .app.split { transition: none; }
 .es-row select { height: 22px; min-width: 96px; padding: 0 5px; font: 400 10.5px var(--font-mono); }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
 .seg button { border: 0; border-radius: 0; height: 22px; padding: 0 8px; background: none; color: var(--text-muted); font: 400 10px var(--font-mono); }
-.seg button.on { background: var(--text); color: var(--surface-panel); }
+/* A chosen option is bold ink in brackets, never a fill (DESIGN.md); every option keeps the room. */
+.seg button::before { content: "["; margin-right: 2px; }
+.seg button::after { content: "]"; margin-left: 2px; }
+.seg button:not(.on)::before, .seg button:not(.on)::after { visibility: hidden; }
+.seg button.on { color: var(--text); font-weight: 600; }
 .es-check { display: flex; align-items: center; gap: 6px; font: 400 10.5px var(--font-mono); color: var(--text); }
-.es-check input { accent-color: var(--signal); }
+.es-check input { accent-color: var(--text); }
 .chartkey { height: 24px; }
 .stage-hide { width: 22px; height: 22px; padding: 0; display: inline-grid; place-items: center; font-size: 13px; line-height: 1; }
 .cm-answer.click { cursor: pointer; }

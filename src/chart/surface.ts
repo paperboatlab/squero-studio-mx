@@ -101,16 +101,16 @@ export function chartAxes(): Entity[] {
 
 /**
  * The same origin frame for a data-bound grid. The surface may sit anywhere, but the axes stay
- * at (0, 0, 0) and reach past the data in every direction.
+ * at (0, 0, 0) and reach past the data in every direction (at least `least`, the chart box).
  */
-export function rangeAxes(xs: readonly number[], ys: readonly number[], base: number, top: number): Entity[] {
+export function rangeAxes(xs: readonly number[], ys: readonly number[], base: number, top: number, least = 8): Entity[] {
   const out: Entity[] = [];
   const add = (id: string, from: [number, number, number], to: [number, number, number], color: string) =>
     out.push({ id, shape: "line", pos: from, to, color, overlay: true });
   const grey = "#8a8a84";
   const x0 = Math.min(...xs), x1 = Math.max(...xs);
   const z0 = Math.min(...ys), z1 = Math.max(...ys);
-  const far = Math.max(8, Math.abs(x0), Math.abs(x1), Math.abs(z0), Math.abs(z1), Math.abs(base), Math.abs(top)) * 1.4;
+  const far = Math.max(least, Math.abs(x0), Math.abs(x1), Math.abs(z0), Math.abs(z1), Math.abs(base), Math.abs(top)) * 1.4;
   const tick = far * 0.015;
 
   add("axis.x", [-far, 0, 0], [far, 0, 0], grey);

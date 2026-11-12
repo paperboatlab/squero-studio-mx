@@ -163,7 +163,7 @@ export function JuliaPanel({ onSay }: { onSay?: (text: string, level: Level) => 
           <span className="tag">
             {status
               ? status.juliaup.present ? `juliaup ${status.juliaup.version ?? ""}`.trim() : "juliaup not found"
-              : loadingStatus ? "reading the kernel…" : "juliaup not found"}
+              : loadingStatus ? "" : "juliaup not found"}
           </span>
         </div>
         <button

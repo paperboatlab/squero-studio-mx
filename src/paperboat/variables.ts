@@ -19,7 +19,7 @@ export type SharedVariable = {
   source: Source;
   /** What the bridge would write: only scalars are shareable today. */
   shareable: boolean;
-  value?: number | boolean | string;
+  value?: WorkspaceVariable["value"];
   /** A small preview for the workspace card. */
   preview?: number[];
   /** Broadcast to Paperboat: every variable, automatically. */
@@ -83,9 +83,9 @@ export function mergeShared(
       type: v.type,
       source: "mx" as const,
       shareable: true,
-      value: scalar(v) ? (v.value as number) : undefined,
+      value: v.value,
       preview: v.preview,
-      shared: v.type !== "Function",
+      shared: typeof v.value === "number" || typeof v.value === "boolean" || typeof v.value === "string" || v.type.startsWith("Matrix") || v.type.startsWith("Vector"),
     })),
     ...pb.filter((v) => !names.has(v.name)),
   ];
@@ -97,15 +97,15 @@ export function mergeShared(
  * variables, not in them; a same-named project variable is shadowed while MX shares one.
  */
 export function toPaperboat(mx: readonly WorkspaceVariable[]): Variables {
-  return mx.filter((v) => v.type !== "Function").map((v): Variable => {
-    if (scalar(v)) return { name: v.name, type: "number", value: Number(v.value) };
+  return mx.flatMap((v): Variable[] => {
+    if (scalar(v)) return [{ name: v.name, type: "number", value: Number(v.value) }];
     if (typeof v.value === "boolean" || typeof v.value === "string")
-      return { name: v.name, type: typeof v.value === "boolean" ? "boolean" : "text", value: v.value };
+      return [{ name: v.name, type: typeof v.value === "boolean" ? "boolean" : "text", value: v.value }];
     if (v.type.startsWith("Matrix") || v.type.startsWith("Vector")) {
       const text = matrixText(v);
-      return text === undefined ? { name: v.name, type: "matrix", note: withheld(v) } : { name: v.name, type: "matrix", value: text };
+      return [text === undefined ? { name: v.name, type: "matrix", note: withheld(v) } : { name: v.name, type: "matrix", value: text }];
     }
-    return { name: v.name, type: "text", value: `${v.type} ${v.shape}`.trim(), note: "MX workspace: not a number or an array" };
+    return []; // a function, a tuple, an object: nothing a Paperboat field can take
   });
 }
 

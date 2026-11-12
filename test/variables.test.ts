@@ -39,8 +39,13 @@ test("only MX's own variables travel; Paperboat's stay Paperboat's", () => {
   assert.deepEqual(msg.variables.map((v) => v.name), ["A", "x", "t", "k"]);
 });
 
-test("a function is listed in MX but not broadcast", () => {
-  const ws: WorkspaceVariable[] = [{ name: "f", shape: "—", type: "Function" }, { name: "t", shape: "1", type: "Int64", value: 5 }];
+test("functions and opaque objects are listed in MX but not broadcast", () => {
+  const ws: WorkspaceVariable[] = [
+    { name: "f", shape: "—", type: "Function" },
+    { name: "opts", shape: "—", type: "@NamedTuple{tol::Float64}" },
+    { name: "t", shape: "1", type: "Int64", value: 5 },
+  ];
   assert.deepEqual(toPaperboat(ws).map((v) => v.name), ["t"]);
   assert.equal(mergeShared(ws, []).find((v) => v.name === "f")?.shared, false);
+  assert.equal(mergeShared(ws, []).find((v) => v.name === "opts")?.shared, false);
 });

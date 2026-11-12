@@ -3,7 +3,7 @@
 import { useRef } from "react";
 import { useDismiss, useFocusReturn } from "@paperboat/shared/components";
 import type { KernelInfo } from "../kernel/probe.ts";
-import { JULIA_VERSION, KERNEL_IMAGE } from "../version.ts";
+import { JULIA_VERSION, KERNEL_IMAGE, KERNEL_VERSION } from "../version.ts";
 import { JuliaPanel } from "../julia/JuliaPanel.tsx";
 
 export function KernelPanel({
@@ -23,7 +23,7 @@ export function KernelPanel({
         <header className="modal-head">
           <h3>kernel</h3>
           <span className="tag">{kernel ? `julia ${kernel.julia}` : `julia ${JULIA_VERSION}`}</span>
-          <span className="tag">{kernel?.image || KERNEL_IMAGE}</span>
+          <span className="tag">{kernel?.image || `${KERNEL_IMAGE}:${KERNEL_VERSION}`}</span>
           <span className="sp" />
           <button type="button" className="modal-close" onClick={onClose} aria-label="Close">×</button>
         </header>
