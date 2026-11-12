@@ -1,8 +1,8 @@
 // The shared-variable contract between an MX workspace and a Paperboat project.
 //
-// Paperboat's `Variable` is a scalar/boolean/text used by params and expressions; matrices and
-// vectors are not project variables (they travel as Table/matrix handles to blocks). So the
-// bridge shares MX scalars and leaves matrices to `state_space`/matrix blocks.
+// Paperboat's project variables are scalar/boolean/text; a live MX matrix is a separate kind of
+// variable, carried on a signal wire (a Table) and never saved in the project. The bridge keeps
+// scalars as numbers and marks matrices as `matrix`, not `text`.
 import type { Variable, Variables } from "@paperboat/shared/protocol";
 import type { WorkspaceVariable } from "../chart/samples.ts";
 
@@ -77,8 +77,17 @@ export function mergeShared(
 export function toPaperboat(mx: readonly WorkspaceVariable[], paperboat: readonly Variable[]): Variables {
   const byName = new Map(paperboat.map((v) => [v.name, v]));
   for (const v of mx) {
-    if (scalar(v)) byName.set(v.name, { name: v.name, type: "number", value: Number(v.value) });
-    else byName.set(v.name, { name: v.name, type: "text", value: broadcastValue(v), note: "MX workspace — array data travels to blocks" });
+    if (scalar(v)) {
+      byName.set(v.name, { name: v.name, type: "number", value: Number(v.value) });
+      continue;
+    }
+    const matrix = v.type.startsWith("Matrix") || v.type.startsWith("Vector");
+    byName.set(v.name, {
+      name: v.name,
+      type: matrix ? "matrix" : "text",
+      value: broadcastValue(v),
+      note: matrix ? "MX workspace — a matrix travels on signal wires" : "MX workspace — array data travels to blocks",
+    });
   }
   return [...byName.values()];
 }
