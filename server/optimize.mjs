@@ -9,16 +9,21 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 
 /** The checkout's CLI (bin/paperboat, else the built binary), or $PAPERBOAT_BIN. */
+// On Windows bin/paperboat is a bash script node cannot spawn; the build is paperboat.exe, under
+// the configuration's folder with the Visual Studio generator.
 export function paperboatBinary() {
   if (process.env.PAPERBOAT_BIN) return process.env.PAPERBOAT_BIN;
-  for (const candidate of [
-    path.resolve(here, "../../paperboat/bin/paperboat"),
-    path.resolve(here, "../../paperboat/engine/build/tools/paperboat"),
-  ]) {
+  const build = path.resolve(here, "../../paperboat/engine/build/tools");
+  const candidates = process.platform === "win32"
+    ? ["Release", "RelWithDebInfo", "Debug", "."].map((dir) => path.join(build, dir, "paperboat.exe"))
+    : [path.resolve(here, "../../paperboat/bin/paperboat"), path.join(build, "paperboat")];
+  for (const candidate of candidates) {
     if (existsSync(candidate)) return candidate;
   }
-  const lookup = spawnSync("sh", ["-c", "command -v paperboat"], { encoding: "utf8" });
-  return lookup.status === 0 ? lookup.stdout.trim() : "";
+  const lookup = process.platform === "win32"
+    ? spawnSync("where", ["paperboat.exe"], { encoding: "utf8" })
+    : spawnSync("sh", ["-c", "command -v paperboat"], { encoding: "utf8" });
+  return lookup.status === 0 ? lookup.stdout.split(/\r?\n/)[0].trim() : "";
 }
 
 /** POST { problem, grid? } → the solver's result JSON (trace, x, objective, grid). */

@@ -12,8 +12,11 @@ export const KERNEL_PROTOCOL = 0;
 
 // SqueroBase is the verbs' only definition; the kernel loads this checkout. It is mounted read
 // only into the container, or passed as SQUERO_BASE to a native julia.
-export const SQUERO_BASE =
-  process.env.SQUERO_BASE ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../squero-mx-base");
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+export const SQUERO_BASE = process.env.SQUERO_BASE ?? path.resolve(HERE, "../../squero-mx-base");
+// The kernel checkout beside this app (a sibling checkout, or the pkg store's), not beside
+// whatever folder the launcher was started from.
+const KERNEL_REPO = process.env.SQUERO_KERNEL_REPO ?? path.resolve(HERE, "../../squero-julia-kernel");
 
 const has = (cmd) => {
   const probe = spawnSync(cmd, ["--version"], { stdio: "ignore" });
@@ -31,7 +34,7 @@ export function kernelRuntime() {
 /** The command that runs the kernel. `workspace` is mounted at /workspace for load/save. */
 export function kernelCommand({ workspace, image = KERNEL_IMAGE, runtime = kernelRuntime() } = {}) {
   if (runtime === "native") {
-    const repo = process.env.SQUERO_KERNEL_REPO ?? path.resolve(process.cwd(), "../squero-julia-kernel");
+    const repo = KERNEL_REPO;
     const env = { SQUERO_BASE };
     if (workspace) {
       // The workspace project is a secondary environment: scripts can `using` a package the
