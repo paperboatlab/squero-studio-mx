@@ -1,7 +1,7 @@
 // The Julia General registry, read through the launcher. The Julia depot already carries a
 // General.tar.gz; when it is missing we fetch the GitHub archive once and cache it. Search only
 // needs Registry.toml; Package.toml, Versions.toml and Deps.toml are read per package.
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -15,6 +15,13 @@ const localRegistry = () => process.env.MX_REGISTRY ?? path.join(os.homedir(), "
 let registryPromise = null;
 const githubCache = new Map();
 
+// A short popular shelf for the registry view: names Julia users reach for first, kept small
+// enough to read in one panel and read without a GitHub request per row.
+const FEATURED = [
+  "DataFrames", "Plots", "DifferentialEquations", "Flux", "IJulia",
+  "JuMP", "Makie", "Distributions", "CSV", "JSON3",
+];
+
 async function archive() {
   const local = localRegistry();
   if (existsSync(local)) return { file: local, source: "julia depot" };
@@ -27,14 +34,31 @@ async function archive() {
   return { file: cached, source: "github" };
 }
 
-function readEntry(file, prefix, entry) {
+function tarEntry(file, name) {
+  return new Promise((resolve) => {
+    const child = spawn("tar", ["-xOzf", file, name], { stdio: ["ignore", "pipe", "ignore"] });
+    let output = "";
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(value);
+    };
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      finish("");
+    }, 30000);
+    child.stdout.on("data", (chunk) => { output += chunk.toString(); });
+    child.on("error", () => finish(""));
+    child.on("close", (code) => finish(code === 0 ? output : ""));
+  });
+}
+
+async function readEntry(file, prefix, entry) {
   for (const name of [entry, `${prefix}${entry}`]) {
-    const run = spawnSync("tar", ["-xOzf", file, name], {
-      encoding: "utf8",
-      timeout: 30000,
-      maxBuffer: 8 * 1024 * 1024,
-    });
-    if (run.status === 0 && run.stdout?.trim()) return run.stdout;
+    const text = await tarEntry(file, name);
+    if (text.trim()) return text;
   }
   return "";
 }
@@ -53,11 +77,11 @@ async function load() {
     registryPromise = (async () => {
       const { file, source } = await archive();
       let prefix = "";
-      let text = readEntry(file, "", "Registry.toml");
+      let text = await readEntry(file, "", "Registry.toml");
       for (const candidate of ["General-master/", "General-main/"]) {
         if (text) break;
         prefix = candidate;
-        text = readEntry(file, "", `${candidate}Registry.toml`);
+        text = await readEntry(file, "", `${candidate}Registry.toml`);
       }
       if (!text) throw new Error("Registry.toml not found in the General archive");
       return { file, prefix, source, ...parseRegistry(text) };
@@ -147,15 +171,42 @@ async function githubInfo(repo) {
   }
 }
 
+/** The opening shelf: ten well-known packages with their latest version. */
+export async function registryFeatured() {
+  const registry = await load();
+  const results = await Promise.all(FEATURED.map(async (name) => {
+    const entry = registry.byName.get(name.toLowerCase());
+    if (!entry) return null;
+    const base = `${entry.path}/`;
+    const [packageToml, versionsToml] = await Promise.all([
+      readEntry(registry.file, registry.prefix, `${base}Package.toml`),
+      readEntry(registry.file, registry.prefix, `${base}Versions.toml`),
+    ]);
+    const info = keyValues(packageToml);
+    const versions = versionsOf(versionsToml);
+    return {
+      name: info.name ?? entry.name,
+      uuid: info.uuid ?? entry.uuid,
+      path: entry.path,
+      latest: versions[0] ?? "",
+      repo: info.repo ?? "",
+    };
+  }));
+  const list = results.filter(Boolean);
+  return { source: registry.source, total: list.length, results: list };
+}
+
 export async function registryPackage(name) {
   const registry = await load();
   const key = name.trim().toLowerCase();
   const entry = registry.byName.get(key);
   if (!entry) throw new Error(`not in the General registry: ${name || "empty"}`);
   const base = `${entry.path}/`;
-  const packageToml = readEntry(registry.file, registry.prefix, `${base}Package.toml`);
-  const versionsToml = readEntry(registry.file, registry.prefix, `${base}Versions.toml`);
-  const depsToml = readEntry(registry.file, registry.prefix, `${base}Deps.toml`);
+  const [packageToml, versionsToml, depsToml] = await Promise.all([
+    readEntry(registry.file, registry.prefix, `${base}Package.toml`),
+    readEntry(registry.file, registry.prefix, `${base}Versions.toml`),
+    readEntry(registry.file, registry.prefix, `${base}Deps.toml`),
+  ]);
   const info = keyValues(packageToml);
   const versions = versionsOf(versionsToml);
   const repo = info.repo ?? "";

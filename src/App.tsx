@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { MenuBar } from "@paperboat/shared/components";
+import { GlideBrackets, MenuBar } from "@paperboat/shared/components";
 import type { Command } from "@paperboat/shared";
 import type { Variable } from "@paperboat/shared/protocol";
 import { FigureView } from "./plot/FigureView.tsx";
@@ -786,7 +786,9 @@ export function App() {
         </span>
         <div className="menus">
           <MenuBar commands={commands} />
-          <button type="button" className="menu-title" aria-expanded={aboutOpen} aria-haspopup="dialog" title="About Squero Studio" onClick={() => setAboutOpen(true)}>About</button>
+          <div className="menu-wrap">
+            <button type="button" className="menu-title" aria-haspopup="dialog" aria-expanded={aboutOpen} title="About Squero Studio" onClick={() => setAboutOpen(true)}>About</button>
+          </div>
         </div>
         <div className="proj" title="Double-click to rename">
           <span className="dot" />
@@ -917,9 +919,10 @@ export function App() {
 
       <aside className="panel rightpane">
         <div className="head">
-          <div className="rtabs">
-            <button className={rightTab === "workspace" ? "on" : ""} onClick={() => setRightTab("workspace")}>workspace</button>
-            <button className={rightTab === "figures" ? "on" : ""} onClick={() => setRightTab("figures")}>figures</button>
+          <div className="rtabs" role="tablist" aria-label="Workspace views">
+            <GlideBrackets />
+            <button role="tab" aria-selected={rightTab === "workspace"} className={`opt${rightTab === "workspace" ? " on" : ""}`} onClick={() => setRightTab("workspace")}>workspace</button>
+            <button role="tab" aria-selected={rightTab === "figures"} className={`opt${rightTab === "figures" ? " on" : ""}`} onClick={() => setRightTab("figures")}>figures</button>
           </div>
           <span className="sp" />
           {rightTab === "workspace" && <span className="tag">{`${active} shared`}</span>}

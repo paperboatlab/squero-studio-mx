@@ -2,12 +2,12 @@
 // The launcher owns every command; the panel only renders what they report. Package work runs
 // in the same place as the kernel (native Julia or the kernel container), with the workspace
 // mounted so Project.toml, Manifest.toml and the depot persist next to the scripts.
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { KERNEL_IMAGE, kernelRuntime } from "./kernel.mjs";
-import { registryPackage, registrySearch } from "./registry.mjs";
+import { registryFeatured, registryPackage, registrySearch } from "./registry.mjs";
 
 const LIST = `
 print("JULIA\\t", VERSION, "\\n")
@@ -70,9 +70,33 @@ export function validPackageName(name, add = false) {
   return (add ? ADD_SPEC : NAME).test(value);
 }
 
-const probe = (cmd, args = ["--version"]) => {
-  const run = spawnSync(cmd, args, { encoding: "utf8", timeout: 15000 });
-  return run.error ? null : run;
+const runCommand = (cmd, args, timeout) => new Promise((resolve) => {
+  const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"], env: process.env });
+  let stdout = "";
+  let stderr = "";
+  let settled = false;
+  const finish = (result) => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(timer);
+    resolve(result);
+  };
+  const timer = setTimeout(() => {
+    child.kill("SIGKILL");
+    finish({ ok: false, output: `${stdout}${stderr}`.trim(), error: `${cmd}: timed out` });
+  }, timeout);
+  child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
+  child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
+  child.on("error", (error) => finish({ ok: false, output: `${stdout}${stderr}`.trim(), error: error.message }));
+  child.on("close", (code) => {
+    const output = `${stdout}${stderr}`.trim();
+    finish({ ok: code === 0, output, error: code === 0 ? "" : output.slice(-1600) || `${cmd} exited ${code}` });
+  });
+});
+
+const probe = async (cmd, args = ["--version"]) => {
+  const run = await runCommand(cmd, args, 15000);
+  return run.ok ? { stdout: run.output } : null;
 };
 
 const runner = ({ workspace, runtime, image, network = false, script, args = [] }) => {
@@ -100,27 +124,13 @@ const runner = ({ workspace, runtime, image, network = false, script, args = [] 
   return null;
 };
 
-const execute = (call, timeout) => {
-  const run = spawnSync(call.cmd, call.args, {
-    encoding: "utf8",
-    timeout,
-    maxBuffer: 16 * 1024 * 1024,
-    env: process.env,
-  });
-  if (run.error) return { ok: false, output: "", error: run.error.message };
-  const output = `${run.stdout ?? ""}${run.stderr ?? ""}`.trim();
-  return {
-    ok: run.status === 0,
-    output,
-    error: run.status === 0 ? "" : output.slice(-1600) || `${call.cmd} exited ${run.status}`,
-  };
-};
+const execute = (call, timeout) => runCommand(call.cmd, call.args, timeout);
 
-function juliaupInfo() {
-  const tool = probe("juliaup", ["--version"]);
+async function juliaupInfo() {
+  const tool = await probe("juliaup", ["--version"]);
   if (!tool) return { present: false, channels: [] };
   const version = (tool.stdout ?? "").trim().replace(/^Juliaup\s+/i, "");
-  const status = probe("juliaup", ["status"]);
+  const status = await probe("juliaup", ["status"]);
   return {
     present: true,
     version,
@@ -140,7 +150,7 @@ export async function juliaStatus({ workspace, runtime = kernelRuntime(), image 
       exists: existsSync(projectFile),
       projectFile,
     },
-    juliaup: juliaupInfo(),
+    juliaup: await juliaupInfo(),
     julia: { present: false, version: "" },
     packages: [],
     packageError: "",
@@ -151,7 +161,7 @@ export async function juliaStatus({ workspace, runtime = kernelRuntime(), image 
     status.packageError = "no Julia runtime: install julia, podman or docker (or set SQUERO_JULIA)";
     return status;
   }
-  const listed = execute(call, 120000);
+  const listed = await execute(call, 120000);
   const version = juliaVersion(listed.output);
   status.julia = { present: Boolean(version), version };
   if (!listed.ok) status.packageError = listed.error;
@@ -171,14 +181,14 @@ async function packageOp(options, action, name) {
   });
   if (!call) return { ok: false, output: "", error: "no Julia runtime" };
   await fs.mkdir(projectPath, { recursive: true });
-  return execute(call, 600000);
+  return await execute(call, 600000);
 }
 
 async function updateJuliaup() {
-  if (!probe("juliaup", ["--version"])) {
+  if (!(await probe("juliaup", ["--version"]))) {
     return { ok: false, output: "", error: "juliaup is not installed" };
   }
-  return execute({ cmd: "juliaup", args: ["update"] }, 600000);
+  return await execute({ cmd: "juliaup", args: ["update"] }, 600000);
 }
 
 const body = (req) =>
@@ -198,7 +208,7 @@ export function juliaMiddleware({ workspace, runtime = kernelRuntime(), image = 
     const route = url.pathname.startsWith("/__mx/julia")
       ? url.pathname.slice("/__mx/julia".length) || "/"
       : url.pathname;
-    const allowed = new Set(["/", "/package", "/update", "/registry", "/registry/package"]);
+    const allowed = new Set(["/", "/package", "/update", "/registry", "/registry/package", "/registry/featured"]);
     if (!allowed.has(route)) {
       next();
       return;
@@ -220,6 +230,9 @@ export function juliaMiddleware({ workspace, runtime = kernelRuntime(), image = 
       }
       if (req.method === "GET" && route === "/registry/package") {
         return reply(200, { ok: true, ...(await registryPackage(url.searchParams.get("name") ?? "")) });
+      }
+      if (req.method === "GET" && route === "/registry/featured") {
+        return reply(200, { ok: true, ...(await registryFeatured()) });
       }
       if (req.method === "POST" && route === "/package") {
         const payload = JSON.parse(await body(req));
