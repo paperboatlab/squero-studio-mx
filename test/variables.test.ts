@@ -11,10 +11,12 @@ test("every variable is broadcast by default", () => {
   }
 });
 
-test("arrays are broadcast as text; scalars as numbers", () => {
+test("arrays are broadcast as matrices; scalars as numbers", () => {
   const out = toPaperboat(demoWorkspaces["surface.jl"], []);
   assert.equal(out.find((v) => v.name === "k")?.type, "number");
-  assert.equal(out.find((v) => v.name === "x")?.type, "text");
+  assert.equal(out.find((v) => v.name === "x")?.type, "matrix");
+  assert.equal(out.find((v) => v.name === "A")?.type, "matrix");
+  assert.equal(typeof out.find((v) => v.name === "A")?.value, "string");
 });
 
 test("sharing a scalar overrides the Paperboat value by name", () => {

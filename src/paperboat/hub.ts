@@ -33,7 +33,8 @@ export class PaperboatHub {
   sync(urls: string[]): void {
     const wanted = new Set(urls);
     for (const [url, link] of this.links) {
-      if (wanted.has(url)) continue;
+      // A backend that restarted, or a socket that failed, gets a fresh link on the next poll.
+      if (wanted.has(url) && link.status !== "failed" && link.status !== "idle") continue;
       link.close();
       this.links.delete(url);
     }

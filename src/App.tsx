@@ -253,13 +253,15 @@ export function App() {
     if (!kernelInfo) setKernelInfo(info);
     const reply = await evalCode(code);
     for (const line of (reply.stdout ?? "").split("\n")) if (line.trim()) say(line);
+    let resetSession = false;
     for (const event of reply.events ?? []) {
       if (event.type === "clc") setLines([]);
       else if (event.type === "clear") {
         if (event.names?.length) setWorkspace((prev) => prev.filter((one) => !event.names!.includes(one.name)));
-        else { setWorkspace([]); setFunctions({}); }
+        else { setWorkspace([]); setFunctions({}); resetSession = true; }
       }
     }
+    if (resetSession) await resetKernel();
     if (!reply.ok) {
       say(reply.error ?? "kernel error", "err");
       return;
@@ -556,13 +558,15 @@ export function App() {
     for (const line of (reply.stdout ?? "").split("\n")) {
       if (line.trim()) say(line);
     }
+    let resetSession = false;
     for (const event of reply.events ?? []) {
       if (event.type === "clc") setLines([]);
       else if (event.type === "clear") {
         if (event.names?.length) setWorkspace((prev) => prev.filter((one) => !event.names!.includes(one.name)));
-        else { setWorkspace([]); setFunctions({}); }
+        else { setWorkspace([]); setFunctions({}); resetSession = true; }
       }
     }
+    if (resetSession) await resetKernel();
     if (!reply.ok) say(reply.error ?? "kernel error", "err");
 
     const charts = figureFromCharts(reply.charts as ChartSpec[]);
