@@ -24,9 +24,32 @@ export type SharedVariable = {
 
 const scalar = (v: WorkspaceVariable) => typeof v.value === "number";
 
-/** Scalars keep their number; arrays become text (JSON when small, a typed descriptor otherwise). */
+const shapeOf = (shape: string): [number, number] | null => {
+  const match = /^(\d+)(?:\s*×\s*(\d+))?$/.exec(shape.trim());
+  return match ? [Number(match[1]), Number(match[2] ?? 1)] : null;
+};
+
+/** A matrix in the text the matrix blocks parse (`1 2; 3 4`), when the whole matrix is here.
+ *  A large matrix keeps its typed descriptor; its data travels through a matrix handle. */
+function matrixText(v: WorkspaceVariable): string {
+  const data = v.value;
+  if (Array.isArray(data) && Array.isArray(data[0]))
+    return (data as number[][]).map((row) => row.join(" ")).join("; ");
+  const flat = Array.isArray(data) ? (data as number[]) : v.preview;
+  const shape = shapeOf(v.shape);
+  if (flat && shape && flat.length === shape[0] * shape[1]) {
+    const rows: string[] = [];
+    for (let r = 0; r < shape[0]; r++) rows.push(flat.slice(r * shape[1], (r + 1) * shape[1]).join(" "));
+    return rows.join("; ");
+  }
+  const preview = flat?.length ? ` · [${flat.join(", ")}]` : "";
+  return `${v.type} ${v.shape}${preview}`;
+}
+
+/** Scalars keep their number; arrays become matrix text (or a typed descriptor when large). */
 function broadcastValue(v: WorkspaceVariable): number | string {
   if (typeof v.value === "number") return v.value;
+  if (v.type.startsWith("Matrix") || v.type.startsWith("Vector")) return matrixText(v);
   const data = v.value ?? v.preview;
   if (data) {
     const text = JSON.stringify(data);
