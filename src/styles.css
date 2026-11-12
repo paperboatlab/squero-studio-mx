@@ -168,10 +168,14 @@ h2, p { margin: 0; }
 .runstrip .runstat { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
 
 .rightpane { display: flex; flex-direction: column; min-height: 0; }
-.rtabs { display: flex; align-items: center; gap: 10px; font: 400 12px var(--font-mono); color: var(--text-muted); white-space: nowrap; flex: none; }
-.rtabs button { border: 0; background: none; padding: 0; color: inherit; font: inherit; white-space: nowrap; flex: none; }
+.rtabs { position: relative; display: flex; align-items: center; gap: 10px; font: 400 12px var(--font-mono); color: var(--text-muted); white-space: nowrap; flex: none; }
+.rtabs button { border: 0; background: none; padding: 0 3px; color: inherit; font: inherit; white-space: nowrap; flex: none; cursor: pointer; transition: color var(--glide); }
+.rtabs button::before { content: "["; margin-right: 3px; }
+.rtabs button::after { content: "]"; margin-left: 3px; }
+.rtabs button:not(.on)::before, .rtabs button:not(.on)::after { visibility: hidden; }
 .rtabs button.on { color: var(--text); font-weight: 500; }
-.rtabs button.on::before { content: "[ "; } .rtabs button.on::after { content: " ]"; }
+.glide .opt::before, .glide .opt::after { visibility: hidden !important; }
+.glide-bracket { position: absolute; display: flex; align-items: center; pointer-events: none; opacity: 0; white-space: pre; }
 .tabbody { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; padding: 9px 10px; overflow: auto; }
 .tabbody .vars { padding: 0; }
 .tabbody .scratch { margin-top: auto; border-top: 1px solid var(--line); padding: 9px 0 0; }
@@ -307,7 +311,7 @@ body.resizing .app.split { transition: none; }
 .topbar .menubar { margin-left: 4px; }
 .topbar .menus { display: flex; align-items: center; gap: 2px; }
 .topbar .menus .menubar { margin-left: 0; }
-.status-button { border: 0; background: none; padding: 0; cursor: pointer; font: inherit; }
+.status-button { border: 0; background: none; padding: 0; cursor: pointer; font: 400 11.5px var(--font-mono); }
 .status-button:hover { color: var(--text); }
 .status-button svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
 .status.ready .pip { background: var(--signal); box-shadow: 0 0 0 3px color-mix(in srgb, var(--signal) 14%, transparent); }
@@ -527,10 +531,12 @@ body.resizing .app.split { transition: none; }
 
 /* ---- julia up panel ------------------------------------------------------------------ */
 .juliatab { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 7px; padding: 10px 12px; overflow: auto; }
-.jl-subtabs { flex: none; display: flex; align-items: center; gap: 10px; font: 400 11px var(--font-mono); color: var(--text-muted); }
-.jl-subtabs button { border: 0; background: none; padding: 0; color: inherit; font: inherit; cursor: pointer; }
+.jl-subtabs { position: relative; flex: none; display: flex; align-items: center; gap: 10px; font: 400 11px var(--font-mono); color: var(--text-muted); }
+.jl-subtabs button { border: 0; background: none; padding: 0 3px; color: inherit; font: inherit; cursor: pointer; transition: color var(--glide); }
+.jl-subtabs button::before { content: "["; margin-right: 3px; }
+.jl-subtabs button::after { content: "]"; margin-left: 3px; }
+.jl-subtabs button:not(.on)::before, .jl-subtabs button:not(.on)::after { visibility: hidden; }
 .jl-subtabs button.on { color: var(--text); font-weight: 500; }
-.jl-subtabs button.on::before { content: "[ "; } .jl-subtabs button.on::after { content: " ]"; }
 .jl-head { flex: none; display: flex; align-items: center; gap: 8px; }
 .jl-title { min-width: 0; display: flex; align-items: baseline; gap: 8px; }
 .jl-title b { font: 500 11px var(--font-mono); white-space: nowrap; }
@@ -561,12 +567,15 @@ body.resizing .app.split { transition: none; }
 .jl-foot { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
 .jl-foot .tag { margin-left: auto; }
 .jl-busy { color: var(--signal-text); font: 400 10px var(--font-mono); }
+.jl-loading { padding: 16px 2px; color: var(--text-muted); font: 400 11px / 1.55 var(--font-mono); }
 .jl-error { color: var(--danger-text); font: 400 10px / 1.45 var(--font-mono); white-space: pre-wrap; word-break: break-word; }
+.jl-error .plain { margin-left: 8px; border: 0; background: none; padding: 0; color: var(--text); font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 .jl-log { margin: 0; padding: 6px 7px; max-height: 132px; overflow: auto; background: var(--surface-well); border-radius: var(--radius-md); box-shadow: var(--well-shadow); color: var(--text-muted); font: 400 9.5px / 1.45 var(--font-mono); white-space: pre-wrap; word-break: break-word; }
 
 /* The General registry browser inside the kernel panel. */
 .jr-results { display: flex; flex-direction: column; gap: 3px; }
-.jr-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: center; padding: 4px 5px 4px 7px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-raised); }
+.jr-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; align-items: center; padding: 4px 5px 4px 7px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-raised); }
+.jr-latest { color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .jr-name { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 0; border: 0; background: none; text-align: left; cursor: pointer; }
 .jr-name .nm { font: 500 11px var(--font-mono); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .jr-name .uuid { font: 400 9px var(--font-mono); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }

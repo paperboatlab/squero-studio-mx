@@ -190,12 +190,13 @@ versions, the **julia up** view, and the **registry** view. `julia` is the versi
 selected; *Update* runs `juliaup update`, the environment lists the workspace project's direct
 packages and lets you add, remove, update or reload them.
 
-The registry view searches the **General** registry (`Registry.toml` from the Julia depot's
-`General.tar.gz`, or the GitHub archive cached in `~/.cache/squero-mx`). A result opens its
-`Package.toml`, version history and dependencies, with the description and stars from GitHub
-when available; *Add* installs it into the workspace project. Package work runs in the same
-native Julia or kernel container the scripts use, with the workspace mounted so `Project.toml`,
-`Manifest.toml` and the workspace depot persist. The kernel puts that project on
+The registry view opens on ten popular packages and searches the **General** registry as you
+type (`Registry.toml` from the Julia depot's `General.tar.gz`, or the GitHub archive cached in
+`~/.cache/squero-mx`). A result opens its `Package.toml`, version history and dependencies, with
+the description and stars from GitHub when available; **Add** on the row or in the detail card
+installs it into the workspace project, with no separate `pkg` field to fill in. Package work
+runs in the same native Julia or kernel container the scripts use, with the workspace mounted so
+`Project.toml`, `Manifest.toml` and the workspace depot persist. The kernel puts that project on
 `JULIA_LOAD_PATH`, so a package added here is available to a script.
 
 ### Launcher, kernel and the app manifest

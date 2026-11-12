@@ -17,7 +17,7 @@ export type JuliaStatus = {
   packageError?: string;
 };
 
-export type RegistryEntry = { name: string; uuid: string; path: string };
+export type RegistryEntry = { name: string; uuid: string; path: string; latest?: string; repo?: string };
 export type RegistrySearch = { ok: boolean; source: string; total: number; results: RegistryEntry[]; error?: string };
 export type RegistryGithub = { description?: string; stars?: number; topics?: string[]; updated?: string; url?: string; error?: string };
 export type RegistryPackage = {
@@ -66,6 +66,11 @@ export async function juliaUpdate(target: "julia" | "packages"): Promise<JuliaSt
 
 export async function searchRegistry(query: string): Promise<RegistrySearch> {
   const res = await fetch(`${BASE}/registry?q=${encodeURIComponent(query)}`);
+  return readJson<RegistrySearch>(res);
+}
+
+export async function loadFeaturedRegistry(): Promise<RegistrySearch> {
+  const res = await fetch(`${BASE}/registry/featured`);
   return readJson<RegistrySearch>(res);
 }
 
