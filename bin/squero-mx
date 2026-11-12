@@ -15,10 +15,14 @@ import { backendsMiddleware } from "../server/backends.mjs";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const dist = path.resolve(here, "../dist");
 
+// `--name=value` or `--name value` (paperboat passes the second form).
 const arg = (name, fallback) => {
-  const hit = process.argv.find((value) => value === `--${name}` || value.startsWith(`--${name}=`));
-  if (!hit) return fallback;
-  return hit.includes("=") ? hit.slice(hit.indexOf("=") + 1) : "";
+  const at = process.argv.findIndex((value) => value === `--${name}` || value.startsWith(`--${name}=`));
+  if (at < 0) return fallback;
+  const hit = process.argv[at];
+  if (hit.includes("=")) return hit.slice(hit.indexOf("=") + 1);
+  const next = process.argv[at + 1];
+  return next !== undefined && !next.startsWith("--") ? next : "";
 };
 
 const workspace = path.resolve(arg("workspace", process.env.MX_WORKSPACE ?? DEFAULT_WORKSPACE));
@@ -96,7 +100,13 @@ const listen = (port, left = 100) => {
     console.log(`  url     ${url}`);
     console.log(`  folder  ${shortRoot(workspace)}`);
     console.log(`  kernel  ${KERNEL_IMAGE} (${kernelRuntime()})`);
-    if (open) spawn(process.platform === "darwin" ? "open" : "xdg-open", [url], { stdio: "ignore", detached: true }).unref();
+    if (open) {
+      const [cmd, args] =
+        process.platform === "win32" ? ["cmd", ["/c", "start", "", url]]
+        : process.platform === "darwin" ? ["open", [url]]
+        : ["xdg-open", [url]];
+      spawn(cmd, args, { stdio: "ignore", detached: true, windowsHide: true }).unref();
+    }
   });
 };
 
