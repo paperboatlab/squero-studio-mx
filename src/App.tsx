@@ -589,7 +589,7 @@ export function App() {
     const after = await whois();
     if (after.ok && Array.isArray(after.value)) {
       const variables = (after.value as WorkspaceVariable[]).map((one) => ({
-        name: one.name, shape: one.shape, type: one.type, preview: one.preview,
+        name: one.name, shape: one.shape, type: one.type, value: one.value, preview: one.preview,
       }));
       const solved = new Set(results.map((one) => one.name));
       setWorkspace([...variables.filter((one) => !solved.has(one.name)), ...results]);
