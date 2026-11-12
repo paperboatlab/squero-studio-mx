@@ -10,9 +10,9 @@ import {
 } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import {
-  HighlightStyle, StreamLanguage, syntaxHighlighting, bracketMatching, indentOnInput,
+  HighlightStyle, syntaxHighlighting, bracketMatching, indentOnInput,
 } from "@codemirror/language";
-import { julia } from "@codemirror/legacy-modes/mode/julia";
+import { julia } from "./julia.ts";
 import { linter, lintGutter, type Diagnostic } from "@codemirror/lint";
 import {
   autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap,
@@ -20,9 +20,10 @@ import {
 } from "@codemirror/autocomplete";
 import { tags } from "@lezer/highlight";
 import { defineFunction, evaluate, variableFrom, type FunctionTable, type NumValue } from "../kernel/localEval.ts";
+import { LATEX_SYMBOLS } from "./unicode.ts";
 
 export type EditorSettings = {
-  theme: "dark" | "light";
+  theme: "ui" | "dark" | "light";
   fontSize: number;
   font: "geist" | "system" | "serif";
   lineHeight: number;
@@ -34,7 +35,7 @@ export type EditorSettings = {
 };
 
 export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
-  theme: "dark", fontSize: 12, font: "geist", lineHeight: 22,
+  theme: "ui", fontSize: 12, font: "geist", lineHeight: 22,
   tabSize: 2, wrap: true, autocomplete: true, brackets: true, lint: true,
 };
 
@@ -45,27 +46,47 @@ const FONTS: Record<EditorSettings["font"], string> = {
 };
 
 const darkHighlight = HighlightStyle.define([
-  { tag: tags.comment, color: "#6b6b63" },
-  { tag: tags.keyword, color: "#c792ea" },
-  { tag: tags.number, color: "#e5c07b" },
-  { tag: tags.bool, color: "#e5c07b" },
-  { tag: tags.null, color: "#e5c07b" },
+  { tag: [tags.comment, tags.lineComment, tags.blockComment, tags.docComment], color: "#6f737a", fontStyle: "italic" },
+  { tag: [tags.keyword, tags.operatorKeyword, tags.typeOperator], color: "#c792ea" },
   { tag: tags.string, color: "#98c379" },
-  { tag: tags.operator, color: "#abb2bf" },
-  { tag: tags.function(tags.variableName), color: "#61afef" },
-  { tag: tags.definition(tags.variableName), color: "#d6d6d0" },
+  { tag: tags.special(tags.string), color: "#56b6c2" },
+  { tag: tags.escape, color: "#d19a66" },
+  { tag: [tags.number, tags.bool, tags.null], color: "#e5c07b" },
+  { tag: tags.atom, color: "#56b6c2" },
+  { tag: tags.operator, color: "#a6adc8" },
+  { tag: tags.punctuation, color: "#7f848e" },
+  { tag: tags.variableName, color: "#d6d6d0" },
+  { tag: tags.propertyName, color: "#61afef" },
+  { tag: [tags.function(tags.variableName), tags.function(tags.propertyName)], color: "#61afef" },
+  { tag: tags.standard(tags.variableName), color: "#56b6c2" },
+  { tag: tags.typeName, color: "#e5c07b" },
+  { tag: tags.macroName, color: "#c678dd" },
+  { tag: tags.definition(tags.variableName), color: "#f2f2ee", fontWeight: "600" },
+  { tag: tags.definition(tags.typeName), color: "#f2f2ee", fontWeight: "600" },
+  { tag: tags.special(tags.variableName), color: "#e06c75" },
+  { tag: tags.invalid, color: "#e06c75", textDecoration: "underline wavy" },
 ]);
 
 const lightHighlight = HighlightStyle.define([
-  { tag: tags.comment, color: "#7a7a73" },
-  { tag: tags.keyword, color: "#7c3aed" },
-  { tag: tags.number, color: "#b45309" },
-  { tag: tags.bool, color: "#b45309" },
-  { tag: tags.null, color: "#b45309" },
+  { tag: [tags.comment, tags.lineComment, tags.blockComment, tags.docComment], color: "#7a7a73", fontStyle: "italic" },
+  { tag: [tags.keyword, tags.operatorKeyword, tags.typeOperator], color: "#7c3aed" },
   { tag: tags.string, color: "#15803d" },
+  { tag: tags.special(tags.string), color: "#0f766e" },
+  { tag: tags.escape, color: "#b45309" },
+  { tag: [tags.number, tags.bool, tags.null], color: "#b45309" },
+  { tag: tags.atom, color: "#0f766e" },
   { tag: tags.operator, color: "#55554f" },
-  { tag: tags.function(tags.variableName), color: "#1d4ed8" },
-  { tag: tags.definition(tags.variableName), color: "#161616" },
+  { tag: tags.punctuation, color: "#8a8a84" },
+  { tag: tags.variableName, color: "#161616" },
+  { tag: tags.propertyName, color: "#1d4ed8" },
+  { tag: [tags.function(tags.variableName), tags.function(tags.propertyName)], color: "#1d4ed8" },
+  { tag: tags.standard(tags.variableName), color: "#0f766e" },
+  { tag: tags.typeName, color: "#a16207" },
+  { tag: tags.macroName, color: "#9333ea" },
+  { tag: tags.definition(tags.variableName), color: "#000000", fontWeight: "600" },
+  { tag: tags.definition(tags.typeName), color: "#000000", fontWeight: "600" },
+  { tag: tags.special(tags.variableName), color: "#b42318" },
+  { tag: tags.invalid, color: "#b42318", textDecoration: "underline wavy" },
 ]);
 
 const darkTheme = EditorView.theme({
@@ -76,9 +97,20 @@ const darkTheme = EditorView.theme({
   ".cm-activeLineGutter": { backgroundColor: "transparent", color: "#f2f2ee" },
   ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--signal)" },
   "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": { backgroundColor: "rgba(255,255,255,.18)" },
-  ".cm-tooltip": { backgroundColor: "var(--surface-panel)", border: "1px solid var(--line-strong)", color: "var(--text)", fontFamily: "var(--font-mono)", fontSize: "10px" },
-  ".cm-tooltip-autocomplete > ul > li[aria-selected]": { backgroundColor: "var(--surface-sunken)", color: "var(--text)" },
+  ".cm-selectionMatch": { backgroundColor: "rgba(255,255,255,.08)" },
+  ".cm-matchingBracket, .cm-nonmatchingBracket": { backgroundColor: "rgba(255,255,255,.1)", outline: "1px solid #4a4a4a" },
+  ".cm-tooltip": { backgroundColor: "#191919", border: "1px solid #3a3a3a", color: "#d6d6d0", fontFamily: "var(--font-mono)", fontSize: "10px", borderRadius: "5px", boxShadow: "0 8px 22px rgb(0 0 0 / .5)" },
+  ".cm-tooltip.cm-tooltip-autocomplete": { overflow: "hidden" },
+  ".cm-tooltip-autocomplete > ul": { fontFamily: "var(--font-mono)", fontSize: "11px", maxHeight: "16em", padding: "3px" },
+  ".cm-tooltip-autocomplete > ul > li": { padding: "3px 7px", lineHeight: "1.5", borderLeft: "2px solid transparent" },
+  ".cm-tooltip-autocomplete > ul > li[aria-selected]": { backgroundColor: "transparent", color: "#f2f2ee", borderLeftColor: "var(--signal)" },
+  ".cm-completionDetail": { color: "#8a8a84", fontStyle: "normal", fontSize: "9.5px", marginLeft: "8px" },
+  ".cm-completionMatchedText": { color: "var(--signal)", textDecoration: "none" },
+  ".cm-completionInfo": { backgroundColor: "#191919", border: "1px solid #3a3a3a", color: "#d6d6d0", padding: "6px 8px", fontFamily: "var(--font-mono)", fontSize: "10px" },
+  ".cm-lintRange-warning": { textDecorationColor: "var(--signal)" },
   ".cm-lint-marker-warning": { color: "var(--signal)" },
+  ".cm-answer-gutter": { borderLeftColor: "rgba(255,255,255,.06)" },
+  ".cm-answer": { borderColor: "rgba(255,255,255,.14)", backgroundColor: "rgba(255,255,255,.04)", color: "#9d9d97" },
 }, { dark: true });
 
 const lightTheme = EditorView.theme({
@@ -89,9 +121,20 @@ const lightTheme = EditorView.theme({
   ".cm-activeLineGutter": { backgroundColor: "transparent", color: "#161616" },
   ".cm-cursor, .cm-dropCursor": { borderLeftColor: "#b03d0a" },
   "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": { backgroundColor: "rgba(0,0,0,.13)" },
-  ".cm-tooltip": { backgroundColor: "var(--surface-raised)", border: "1px solid var(--line-strong)", color: "var(--text)", fontFamily: "var(--font-mono)", fontSize: "10px" },
-  ".cm-tooltip-autocomplete > ul > li[aria-selected]": { backgroundColor: "var(--surface-sunken)", color: "var(--text)" },
+  ".cm-selectionMatch": { backgroundColor: "rgba(0,0,0,.06)" },
+  ".cm-matchingBracket, .cm-nonmatchingBracket": { backgroundColor: "rgba(0,0,0,.08)", outline: "1px solid #9d9d97" },
+  ".cm-tooltip": { backgroundColor: "#f2f2ef", border: "1px solid #161616", color: "#161616", fontFamily: "var(--font-mono)", fontSize: "10px", borderRadius: "5px", boxShadow: "0 8px 22px rgb(0 0 0 / .16)" },
+  ".cm-tooltip.cm-tooltip-autocomplete": { overflow: "hidden" },
+  ".cm-tooltip-autocomplete > ul": { fontFamily: "var(--font-mono)", fontSize: "11px", maxHeight: "16em", padding: "3px" },
+  ".cm-tooltip-autocomplete > ul > li": { padding: "3px 7px", lineHeight: "1.5", borderLeft: "2px solid transparent" },
+  ".cm-tooltip-autocomplete > ul > li[aria-selected]": { backgroundColor: "transparent", color: "#161616", borderLeftColor: "#b03d0a" },
+  ".cm-completionDetail": { color: "#6f6f69", fontStyle: "normal", fontSize: "9.5px", marginLeft: "8px" },
+  ".cm-completionMatchedText": { color: "#b03d0a", textDecoration: "none" },
+  ".cm-completionInfo": { backgroundColor: "#f2f2ef", border: "1px solid #161616", color: "#161616", padding: "6px 8px", fontFamily: "var(--font-mono)", fontSize: "10px" },
+  ".cm-lintRange-warning": { textDecorationColor: "#b03d0a" },
   ".cm-lint-marker-warning": { color: "#b03d0a" },
+  ".cm-answer-gutter": { borderLeftColor: "rgba(0,0,0,.1)" },
+  ".cm-answer": { borderColor: "rgba(0,0,0,.18)", backgroundColor: "rgba(0,0,0,.035)", color: "#55554f" },
 }, { dark: false });
 
 const geometry = (s: EditorSettings) => EditorView.theme({
@@ -132,19 +175,27 @@ const cellSections = ViewPlugin.fromClass(class {
 const KEYWORDS = [
   "function", "end", "if", "elseif", "else", "for", "while", "begin", "let", "struct", "mutable",
   "return", "using", "import", "module", "const", "try", "catch", "finally", "do", "quote", "macro",
-  "global", "local", "where", "break", "continue",
+  "global", "local", "where", "break", "continue", "abstract", "primitive", "baremodule", "public",
+  "export", "outer", "in", "isa",
 ];
 const BUILTINS = [
   "sin", "cos", "tan", "asin", "acos", "atan", "exp", "log", "sqrt", "abs", "hypot", "floor", "ceil",
   "round", "zeros", "ones", "eye", "rand", "linspace", "range", "length", "size", "sum", "mean",
   "maximum", "minimum", "clamp", "mod", "rem", "meshgrid", "surf", "plot", "figure", "colormap",
-  "view", "clim", "savefig", "writematrix", "load", "print", "println",
+  "view", "clim", "savefig", "writematrix", "load", "print", "println", "display", "show",
+  "read", "write", "open", "close", "parse", "string", "collect", "reshape", "transpose",
+  "inv", "det", "norm", "dot", "cross", "sort", "filter", "map", "reduce", "enumerate", "zip",
+  "push!", "pop!", "append!", "keys", "values", "haskey", "get", "merge", "copy", "fill",
+  "repeat", "vcat", "hcat", "first", "last", "isempty", "isnan", "isinf", "isfinite",
 ];
+const MACROS = ["@time", "@elapsed", "@show", "@. ", "@which", "@assert", "@boundscheck", "@inline"];
 const SNIPPETS: Completion[] = [
-  snippetCompletion("function ${name}(${args})\n    ${}\nend", { label: "function", detail: "snippet", type: "keyword" }),
-  snippetCompletion("for ${i} in ${}\n    ${}\nend", { label: "for", detail: "snippet", type: "keyword" }),
-  snippetCompletion("if ${}\n    ${}\nend", { label: "if", detail: "snippet", type: "keyword" }),
-  snippetCompletion("using ${}", { label: "using", detail: "snippet", type: "keyword" }),
+  snippetCompletion("function ${name}(${args})\n    ${}\nend", { label: "function", detail: "snippet", type: "snippet" }),
+  snippetCompletion("for ${i} in ${}\n    ${}\nend", { label: "for", detail: "snippet", type: "snippet" }),
+  snippetCompletion("if ${}\n    ${}\nend", { label: "if", detail: "snippet", type: "snippet" }),
+  snippetCompletion("let ${}\n    ${}\nend", { label: "let", detail: "snippet", type: "snippet" }),
+  snippetCompletion("using ${}", { label: "using", detail: "snippet", type: "snippet" }),
+  snippetCompletion("@time ${}", { label: "@time", detail: "snippet", type: "snippet" }),
 ];
 
 /** The lint seam: a MATLAB habit is flagged today, kernel diagnostics plug in here later. */
@@ -271,12 +322,13 @@ const answerGutter = (getVars: () => Record<string, NumValue>, getFunctions: () 
 });
 
 export function CodeEditor({
-  value, file, onChange, settings, variables, functions, onChart, onRunSelection, onPos,
+  value, file, onChange, settings, appTheme, variables, functions, onChart, onRunSelection, onPos,
 }: {
   value: string;
   file: string;
   onChange: (value: string) => void;
   settings: EditorSettings;
+  appTheme: "light" | "dark";
   variables: readonly { name: string; type: string; value?: NumValue }[];
   functions?: FunctionTable;
   onChart?: OnChart;
@@ -333,22 +385,52 @@ export function CodeEditor({
   };
 
   const source: CompletionSource = (context) => {
-    const word = context.matchBefore(/[A-Za-z_]\w*/);
+    const word = context.matchBefore(/[@A-Za-z_]\w*/);
     if (!word || (word.from === word.to && !context.explicit)) return null;
     const options: Completion[] = [
-      ...KEYWORDS.map((label) => ({ label, type: "keyword", boost: 1 })),
-      ...BUILTINS.map((label) => ({ label, type: "function" })),
+      ...vars.current.map((v) => ({ label: v.name, type: "variable", detail: v.type, boost: 9 })),
+      ...Object.entries(fns.current).map(([name, fn]) => ({ label: name, type: "function", detail: `(${fn.params.join(", ")})`, boost: 10 })),
+      ...KEYWORDS.map((label) => ({ label, type: "keyword", detail: "keyword", boost: 1 })),
+      ...MACROS.map((label) => ({ label: label.trim(), type: "keyword", detail: "macro", boost: 2 })),
+      ...BUILTINS.map((label) => ({ label, type: "function", detail: "builtin", boost: 2 })),
       ...SNIPPETS,
-      ...vars.current.map((v) => ({ label: v.name, type: "variable", detail: v.type, boost: 6 })),
-      ...Object.entries(fns.current).map(([name, fn]) => ({ label: name, type: "function", detail: `(${fn.params.join(", ")})`, boost: 7 })),
     ];
     return { from: word.from, options };
   };
 
-  const autocompleteExt = () => autocompletion({ override: [source], activateOnTyping: true, icons: true });
+  /** `\pi` + Tab, the Julia REPL habit; returns false so Tab still indents when it has no match. */
+  const insertLatex = (instance: EditorView): boolean => {
+    const sel = instance.state.selection.main;
+    if (!sel.empty) return false;
+    const line = instance.state.doc.lineAt(sel.head);
+    const before = instance.state.sliceDoc(line.from, sel.head);
+    const match = /\\([A-Za-z]+)$/.exec(before);
+    const symbol = match ? LATEX_SYMBOLS[match[1]] : undefined;
+    if (!match || !symbol) return false;
+    const from = sel.head - match[0].length;
+    instance.dispatch({
+      changes: { from, to: sel.head, insert: symbol },
+      selection: { anchor: from + symbol.length },
+    });
+    return true;
+  };
+
+  const latexSource: CompletionSource = (context) => {
+    const word = context.matchBefore(/\\[A-Za-z]*/);
+    if (!word) return null;
+    const typed = word.text.slice(1).toLowerCase();
+    const options: Completion[] = Object.entries(LATEX_SYMBOLS)
+      .filter(([name]) => !typed || name.toLowerCase().startsWith(typed))
+      .slice(0, 80)
+      .map(([name, symbol]) => ({ label: `\\${name}`, apply: symbol, detail: symbol, type: "unicode", boost: 100 }));
+    return options.length ? { from: word.from, options } : null;
+  };
+
+  const autocompleteExt = () => autocompletion({ override: [source, latexSource], activateOnTyping: true, icons: true });
   const bracketExt = () => [bracketMatching(), closeBrackets()];
   const lintExt = () => [lintGutter(), habitLint];
-  const themeExt = () => [settings.theme === "dark" ? darkTheme : lightTheme, syntaxHighlighting(settings.theme === "dark" ? darkHighlight : lightHighlight)];
+  const resolvedTheme = settings.theme === "ui" ? appTheme : settings.theme;
+  const themeExt = () => [resolvedTheme === "dark" ? darkTheme : lightTheme, syntaxHighlighting(resolvedTheme === "dark" ? darkHighlight : lightHighlight)];
 
   useEffect(() => {
     const instance = new EditorView({
@@ -367,9 +449,10 @@ export function CodeEditor({
           Prec.high(keymap.of([
             { key: "Mod-Enter", run: () => runAt("cell") },
             { key: "Shift-Enter", run: () => runAt("line") },
+            { key: "Tab", run: insertLatex },
           ])),
           keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab, ...closeBracketsKeymap, ...completionKeymap]),
-          StreamLanguage.define(julia),
+          julia,
           compartments.theme.of(themeExt()),
           compartments.font.of(geometry(settings)),
           compartments.wrap.of(settings.wrap ? EditorView.lineWrapping : []),
@@ -411,7 +494,7 @@ export function CodeEditor({
         compartments.lint.reconfigure(settings.lint ? lintExt() : []),
       ],
     });
-  }, [settings]);
+  }, [settings, appTheme]);
 
   useEffect(() => {
     view.current?.dispatch({

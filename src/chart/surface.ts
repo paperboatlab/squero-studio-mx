@@ -78,37 +78,51 @@ export function pointsEntity(points: readonly [number, number, number][], id = "
   }));
 }
 
-/** Coordinate axes at (0,0,0), drawn through the surface by the shared SceneView. */
+/** Coordinate axes through the origin, on the ground plane: ±x, ±y and ±z, far enough to
+ *  read as an instrument frame rather than a decoration. Drawn by the shared SceneView. */
 export function chartAxes(): Entity[] {
   const out: Entity[] = [];
   const add = (id: string, from: [number, number, number], to: [number, number, number], color: string) =>
     out.push({ id, shape: "line", pos: from, to, color, overlay: true });
   const red = "#e5484d", green = "#30a46c", blue = "#3e63dd";
-  const half = 2.2, up = 1.35, head = 0.12, tick = 0.07;
+  const far = 8, tick = 0.07;
 
-  add("axis.x", [-half, 0.002, 0], [half, 0.002, 0], red);
-  add("axis.z", [0, 0.002, -half], [0, 0.002, half], blue);
-  add("axis.y", [0, 0.002, 0], [0, up, 0], green);
+  add("axis.x", [-far, 0, 0], [far, 0, 0], red);
+  add("axis.z", [0, 0, -far], [0, 0, far], blue);
+  add("axis.y", [0, -far, 0], [0, far, 0], green);
 
-  for (const t of [-2, -1, 0, 1, 2]) {
-    add(`axis.x.${t}`, [t, 0.002, -tick], [t, 0.002, tick], red);
-    add(`axis.z.${t}`, [-tick, 0.002, t], [tick, 0.002, t], blue);
+  for (const t of [-6, -4, -2, 0, 2, 4, 6]) {
+    add(`axis.x.${t}`, [t, 0, -tick], [t, 0, tick], red);
+    add(`axis.z.${t}`, [-tick, 0, t], [tick, 0, t], blue);
+    add(`axis.y.${t}`, [-tick, t, 0], [tick, t, 0], green);
   }
-  for (const h of [0.5, 1]) add(`axis.y.${h}`, [-tick, h, 0], [tick, h, 0], green);
+  return out;
+}
 
-  // Arrowheads at the positive ends.
-  add("axis.x.a1", [half, 0.002, 0], [half - head, 0.002 + tick, 0], red);
-  add("axis.x.a2", [half, 0.002, 0], [half - head, 0.002 - tick, 0], red);
-  add("axis.x.a3", [half, 0.002, 0], [half - head, 0.002, tick], red);
-  add("axis.x.a4", [half, 0.002, 0], [half - head, 0.002, -tick], red);
-  add("axis.z.a1", [0, 0.002, half], [tick, 0.002, half - head], blue);
-  add("axis.z.a2", [0, 0.002, half], [-tick, 0.002, half - head], blue);
-  add("axis.z.a3", [0, 0.002, half], [0, 0.002 + tick, half - head], blue);
-  add("axis.z.a4", [0, 0.002, half], [0, 0.002 - tick, half - head], blue);
-  add("axis.y.a1", [0, up, 0], [tick, up - head, 0], green);
-  add("axis.y.a2", [0, up, 0], [-tick, up - head, 0], green);
-  add("axis.y.a3", [0, up, 0], [0, up - head, tick], green);
-  add("axis.y.a4", [0, up, 0], [0, up - head, -tick], green);
+/**
+ * The same origin frame for a data-bound grid. The surface may sit anywhere, but the axes stay
+ * at (0, 0, 0) and reach past the data in every direction.
+ */
+export function rangeAxes(xs: readonly number[], ys: readonly number[], base: number, top: number): Entity[] {
+  const out: Entity[] = [];
+  const add = (id: string, from: [number, number, number], to: [number, number, number], color: string) =>
+    out.push({ id, shape: "line", pos: from, to, color, overlay: true });
+  const red = "#e5484d", green = "#30a46c", blue = "#3e63dd";
+  const x0 = Math.min(...xs), x1 = Math.max(...xs);
+  const z0 = Math.min(...ys), z1 = Math.max(...ys);
+  const far = Math.max(8, Math.abs(x0), Math.abs(x1), Math.abs(z0), Math.abs(z1), Math.abs(base), Math.abs(top)) * 1.4;
+  const tick = far * 0.015;
+
+  add("axis.x", [-far, 0, 0], [far, 0, 0], red);
+  add("axis.z", [0, 0, -far], [0, 0, far], blue);
+  add("axis.y", [0, -far, 0], [0, far, 0], green);
+
+  for (let i = -2; i <= 2; i++) {
+    const t = (far / 2) * i;
+    add(`axis.x.${i}`, [t, 0, -tick], [t, 0, tick], red);
+    add(`axis.z.${i}`, [-tick, 0, t], [tick, 0, t], blue);
+    add(`axis.y.${i}`, [-tick, t, 0], [tick, t, 0], green);
+  }
   return out;
 }
 

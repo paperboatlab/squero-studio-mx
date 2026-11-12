@@ -5,7 +5,7 @@ import { CodeEditor, type EditorSettings } from "./CodeEditor.tsx";
 import type { FunctionTable } from "../kernel/localEval.ts";
 
 export function Script({
-  file, code, onChange, onRun, dirty, onSave, settings, onSettings, variables, functions, onChart, onRunSelection, lastRun,
+  file, code, onChange, onRun, dirty, onSave, settings, onSettings, appTheme, variables, functions, onChart, onRunSelection, lastRun,
 }: {
   file: string;
   code: string;
@@ -15,6 +15,7 @@ export function Script({
   onSave: () => void;
   settings: EditorSettings;
   onSettings: (settings: EditorSettings) => void;
+  appTheme: "light" | "dark";
   variables: readonly { name: string; type: string }[];
   functions?: FunctionTable;
   onChart?: (kind: "3d" | "2d", line: string) => void;
@@ -39,15 +40,22 @@ export function Script({
         <span className="sp" />
         <button className="key small" onClick={onSave} disabled={!dirty} title="Save (Ctrl+S)">Save</button>
         <button className="key small" onClick={onRun}>Run</button>
-        <button ref={gear} className={`key small settings-key ${open ? "on" : ""}`} onClick={() => setOpen((v) => !v)} title="Editor settings" aria-expanded={open}>⚙</button>
+        <button ref={gear} className={`key small settings-key ${open ? "on" : ""}`} onClick={() => setOpen((v) => !v)} title="Editor settings" aria-label="Editor settings" aria-expanded={open}>
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M2.5 5.25h2.1M6.8 5.25h6.7M2.5 10.75h4M9.8 10.75h3.7" />
+            <circle cx="5.6" cy="5.25" r="1.5" />
+            <circle cx="8.1" cy="10.75" r="1.5" />
+          </svg>
+        </button>
       </div>
 
       {open && (
         <div ref={settingsRef} className="editor-settings" role="dialog" aria-label="Editor settings" data-own-keys>
           <div className="es-head"><b>editor</b><span className="sp" /><button className="plain tag" onClick={() => setOpen(false)}>close</button></div>
           <div className="es-row"><span>theme</span><span className="seg">
-            <button className={settings.theme === "dark" ? "on" : ""} onClick={() => set("theme", "dark")}>dark</button>
+            <button className={settings.theme === "ui" ? "on" : ""} onClick={() => set("theme", "ui")} title="Follow the main UI theme">ui</button>
             <button className={settings.theme === "light" ? "on" : ""} onClick={() => set("theme", "light")}>light</button>
+            <button className={settings.theme === "dark" ? "on" : ""} onClick={() => set("theme", "dark")}>dark</button>
           </span></div>
           <label className="es-row"><span>font</span>
             <select value={settings.font} onChange={(e) => set("font", e.target.value as EditorSettings["font"])}>
@@ -79,7 +87,7 @@ export function Script({
       )}
 
       <div className="code">
-        <CodeEditor key={file} value={code} file={file} onChange={onChange} settings={settings} variables={variables} functions={functions} onChart={onChart} onRunSelection={onRunSelection} onPos={setPos} />
+        <CodeEditor key={file} value={code} file={file} onChange={onChange} settings={settings} appTheme={appTheme} variables={variables} functions={functions} onChart={onChart} onRunSelection={onRunSelection} onPos={setPos} />
       </div>
       {!file && <div className="editor-empty">Open the workspace folder, or create a script with +.</div>}
       <div className="runstrip">

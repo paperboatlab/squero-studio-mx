@@ -59,23 +59,31 @@ Versioning follows Julia for the product (`1.11.6`) and tracks the frontend sepa
 
 ```
 src/
-  App.tsx                 the shell: files, workspace, stage, shared variables, console
-  chart/surface.ts        the peaks surface + axes as Station mesh/line entities
+  App.tsx                 the shell: files, workspace, stage, kernel panel, console
+  chart/surface.ts        the peaks surface + the origin axes as Station entities
   chart/samples.ts        demo workspaces and run samples
-  editor/CodeEditor.tsx   CodeMirror 6, Julia mode, completions, settings, answer tokens
+  editor/CodeEditor.tsx   CodeMirror 6, Julia language, completions, settings, answer tokens
+  editor/julia.ts         the Julia stream parser (macros, types, symbols, interpolation)
+  editor/unicode.ts       the `\pi` + Tab symbol map shared by the editor and console
   files/FilePanel.tsx     the MX mutations around the shared FileTree
   files/storage.ts        real folders through the File System Access API
+  julia/JuliaPanel.tsx    juliaup, the workspace packages and the General registry browser
+  julia/client.ts         `/__mx/julia` status, package and registry calls
+  shell/KernelPanel.tsx   the centred kernel dialog opened from the bar
   plot/figure.ts          the figure model: tiles, series, surfaces
   plot/spec.ts            chart/optimization specs → the figure model (no parser)
   plot/FigureView.tsx     a figure page: Scope, SceneView, heat and scatter tiles
   kernel/client.ts        the squero-kernel/0 socket (one session, requests by id)
   kernel/localEval.ts     the scratch-line evaluator before a kernel is attached
   kernel/protocol.ts      squero-kernel/0 types (hello, eval, whos, get/set, snapshot)
-  paperboat/link.ts       a minimal paperboat/0 client
+  paperboat/link.ts       one paperboat/0 socket
+  paperboat/hub.ts        every discovered backend, broadcast to as one
+  paperboat/discovery.ts  the launcher's `paperboat list --json` view
   paperboat/variables.ts  the shared-variable contract (scalars by name; matrices to blocks)
   sim/stateSpace.ts       the A/B/C/D → Paperboat run contract
   workspace/mat.ts        a MAT v4 writer for the numeric workspace
-test/                     mesh, variables, MAT and local-evaluator tests
+server/                   workspace, kernel, backends, optimize and Julia/registry bridges
+test/                     mesh, variables, MAT, Julia registry symbols and evaluator tests
 ```
 
 ## Run
@@ -93,15 +101,19 @@ first if needed.
 
 ### Editor
 
-The script surface is CodeMirror 6 (`src/editor/CodeEditor.tsx`): Julia stream mode, line
-numbers, history, rectangular selection, bracket matching/closing, lint gutter, and the app's
-token colours. Completions include Julia keywords, builtins, snippets and the live workspace
-variables. The gear opens settings for dark/light theme, font (Geist/System/Serif), size, line
-height, tab size, wrapping, autocomplete, brackets and lint; they persist in `localStorage`.
+The script surface is CodeMirror 6 (`src/editor/CodeEditor.tsx`): the local Julia stream parser
+(`editor/julia.ts`), line numbers, history, rectangular selection, bracket matching/closing, lint
+gutter, and a light/dark palette that also themes the answer gutter and the completion popup. The
+parser separates macros, symbols, type annotations and types, standard calls, definitions,
+escapes and string interpolation. Completions include the live workspace, functions, keywords,
+builtins, snippets and LaTeX-style symbols; the popup uses mono kind tags (`fn`, `var`, `kw`,
+`snp`, `λ`) and marks the chosen row with a line, not a fill.
+
+The sliders key opens settings for theme (`ui` follows the main UI, or light/dark), font
+(Geist/System/Serif), size, line height, tab size, wrapping, autocomplete, brackets and lint; they
+persist in `localStorage`. `\pi` then Tab becomes π in both the editor and the console.
 A small habit linter flags `%` comments (Julia uses `#`); the gutter is the seam for kernel
-diagnostics and an LSP later. The same wrapper takes
-`@codemirror/legacy-modes/mode/modelica`, so Squero OM can reuse it once it moves to
-`@paperboat/editor`.
+diagnostics and an LSP later.
 
 `Ctrl/Cmd+Enter` runs the current cell (a `#%%` section, or the selection; the whole file when
 there is no cell). `Shift+Enter` runs the selection, or the current line. Both also parse a
@@ -112,8 +124,14 @@ there is no cell). `Shift+Enter` runs the selection, or the current line. Both a
 `subplot(m, n, p)` followed by `plot`, `surf`, `mesh`, `imagesc` or `scatter` adds a **figure**
 to the Figures browser, with a grid of shared tiles: line tiles are the Scope, surface tiles the
 Station SceneView, heat/scatter small canvases. A run adds one figure, newest first, with its
-script, time and plot count; click a row to show it, `×` to close it. Clicking a `→ chart` token
-in the editor shows the matching figure and outlines its tile.
+script, time and plot count; click a row to show it, `×` closes it. Clicking a `→ chart` token
+in the editor shows the matching figure and outlines its tile. `Edit ▸ Clear figures` empties
+the browser.
+
+3D surfaces draw one origin frame through (0, 0, 0): red x, green y and blue z run in both
+directions past the data, with the ground grid on y = 0. The optimization cost plot uses the
+same in-scene frame and marks the returned optimum with a red sphere and a drop line to its
+footprint.
 
 The browser supports Ctrl/Cmd-click to add/remove a figure and Shift-click for a range; `Delete`
 closes the selected figures (Ctrl/Cmd+A selects all). Export the selection, or the shown figure,
@@ -134,11 +152,12 @@ entries); the dot is the automatic broadcast to Paperboat.
 `File ▸ Export workspace (.mat)…` writes a MAT v4 file (double matrices/vectors/scalars) that
 MATLAB and Octave load directly.
 
-Every variable is **broadcast by default**: MX connects to `ws://localhost:8780` automatically,
-loads Paperboat's variables and sends its whole workspace back with `variables.set` when it
-changes. Scalars are numbers; arrays are text (JSON when small, a typed descriptor otherwise),
-while their data still travels to `state_space`/matrix blocks. One MX instance is enough; there
-is no per-instance name.
+Every variable is **broadcast by default** to every running Paperboat backend: the launcher
+discovers them with `paperboat list --json` (`/__mx/backends`), MX connects to each one and sends
+its whole workspace with `variables.set` when it changes. There is no URL to pick and no shared
+page; the two conventional local ports are tried when the CLI is not installed. Scalars are
+numbers; arrays are text (JSON when small, a typed descriptor otherwise), while their data still
+travels to `state_space`/matrix blocks.
 
 ### Files and menus
 
@@ -164,6 +183,21 @@ and license facts, and the credits. Floating surfaces follow one rule (shared `u
 press outside or Escape closes them, the trigger does not immediately reopen them, and focus
 returns to where it was — menus, the About dialog and the editor settings all use it.
 
+### Kernel panel and julia up
+
+The kernel chip in the bar is a button: it opens a centred panel with the running Julia/kernel
+versions, the **julia up** view, and the **registry** view. `julia` is the version juliaup has
+selected; *Update* runs `juliaup update`, the environment lists the workspace project's direct
+packages and lets you add, remove, update or reload them.
+
+The registry view searches the **General** registry (`Registry.toml` from the Julia depot's
+`General.tar.gz`, or the GitHub archive cached in `~/.cache/squero-mx`). A result opens its
+`Package.toml`, version history and dependencies, with the description and stars from GitHub
+when available; *Add* installs it into the workspace project. Package work runs in the same
+native Julia or kernel container the scripts use, with the workspace mounted so `Project.toml`,
+`Manifest.toml` and the workspace depot persist. The kernel puts that project on
+`JULIA_LOAD_PATH`, so a package added here is available to a script.
+
 ### Launcher, kernel and the app manifest
 
 `npm start` (or `bin/squero-mx`) serves `dist/` with the same default workspace and kernel bridge
@@ -180,18 +214,19 @@ kernel: charts are shared Paperboat components and solvers live in Paperboat.
 
 ### Console
 
-The bottom console is a real command line, not a log. It accepts:
+The bottom console is a real Julia REPL and the script stdout sink. Anything that is not a UI
+command is evaluated in the kernel session and prints its value or its Julia error; scripts run
+from the editor print their stdout here too.
 
 ```
 help · whos · clear [name] · clc · attach · detach
-share <name> · unshare <name> · simulate/run · version
+run · version
 ```
 
-Scripts run in the kernel: `squero-kernel/0` evaluates them, SqueroBase records the chart
-and optimization specs, and the app renders those specs. A run has no local parser or solver.
-The scratch line still evaluates locally until a kernel is attached (then it uses the same
-session); short-form functions, numbers, vectors, matrices, ranges, common math functions and
-the MATLAB-style builders are supported there. Arrow Up/Arrow Down recall history.
+`clear` resets the kernel session and the workspace; `clear x` removes one binding from the
+workspace; `clc` clears the console. `\pi` then Tab becomes π. Arrow Up/Arrow Down recall history.
+The scratch line under the workspace still evaluates simple expressions locally until a kernel is
+attached.
 
 Optimization specs go to the launcher's `/__mx/optimize`, which runs
 `paperboat optimize <problem> --json --grid 41`: the same readers, OSQP/Ipopt solver and

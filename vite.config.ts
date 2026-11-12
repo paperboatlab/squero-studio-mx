@@ -3,6 +3,8 @@ import react from "@vitejs/plugin-react";
 import { DEFAULT_WORKSPACE, workspaceMiddleware } from "./server/workspace.mjs";
 import { attachKernel } from "./server/kernel.mjs";
 import { optimizeMiddleware } from "./server/optimize.mjs";
+import { juliaMiddleware } from "./server/julia.mjs";
+import { backendsMiddleware } from "./server/backends.mjs";
 
 // Dev server only for now. The MX launcher (bin/squero-mx) serves dist/ with the same workspace
 // API and kernel bridge. dedupe: @paperboat/shared is a linked sibling with its own
@@ -13,11 +15,15 @@ function mxServer(): Plugin {
     name: "mx-server",
     configureServer(server) {
       server.middlewares.use("/__mx/workspace", workspaceMiddleware(DEFAULT_WORKSPACE));
+      server.middlewares.use("/__mx/julia", juliaMiddleware({ workspace: DEFAULT_WORKSPACE }));
+      server.middlewares.use("/__mx/backends", backendsMiddleware());
       server.middlewares.use(optimizeMiddleware());
       if (server.httpServer) attachKernel(server.httpServer, { workspace: DEFAULT_WORKSPACE });
     },
     configurePreviewServer(server) {
       server.middlewares.use("/__mx/workspace", workspaceMiddleware(DEFAULT_WORKSPACE));
+      server.middlewares.use("/__mx/julia", juliaMiddleware({ workspace: DEFAULT_WORKSPACE }));
+      server.middlewares.use("/__mx/backends", backendsMiddleware());
       server.middlewares.use(optimizeMiddleware());
       if (server.httpServer) attachKernel(server.httpServer, { workspace: DEFAULT_WORKSPACE });
     },
