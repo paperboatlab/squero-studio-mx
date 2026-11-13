@@ -1,6 +1,7 @@
 // The default workspace on disk, shared by the Vite dev/preview server and bin/squero-mx.
 // It removes the folder-permission prompt for `~/Documents/paperboat/squero-studio/mx`;
 // the browser picker still opens any other folder.
+import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -42,6 +43,33 @@ async function readTree(root, dir = root, prefix = "") {
   return { files, folders: folders.sort() };
 }
 
+/** `git <args>` in the workspace: stdout, or null when git is missing, it is no repo, or the call fails. */
+const git = (root, args) =>
+  new Promise((resolve) => {
+    execFile("git", args, { cwd: root, maxBuffer: 32 << 20, env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" } },
+      (error, stdout) => resolve(error ? null : stdout));
+  });
+const paths = (z) => (z ?? "").split("\0").filter(Boolean);
+
+/**
+ * The editor's git gutter: each tracked .jl at HEAD (`head`), and the .jl files HEAD lacks
+ * (`untracked`: untracked, or staged but not committed). Paths are workspace-relative.
+ * null when the workspace is not inside a git repository.
+ */
+async function gitState(root) {
+  const tracked = await git(root, ["ls-files", "-z", "--", "*.jl"]);
+  if (tracked === null) return null;
+  const untracked = paths(await git(root, ["ls-files", "-z", "--others", "--exclude-standard", "--", "*.jl"]));
+  const head = {};
+  // ponytail: one `git show` per tracked file; batch through `git cat-file --batch` if workspaces grow to hundreds of scripts.
+  await Promise.all(paths(tracked).map(async (file) => {
+    const text = await git(root, ["show", `HEAD:./${file}`]);
+    if (text === null) untracked.push(file);
+    else head[file] = text;
+  }));
+  return { head, untracked };
+}
+
 const body = (req) =>
   new Promise((resolve, reject) => {
     let data = "";
@@ -68,6 +96,7 @@ export function workspaceMiddleware(root = DEFAULT_WORKSPACE) {
         const tree = await readTree(root);
         return reply(200, { root: shortRoot(root), path: root, ...tree });
       }
+      if (req.method === "GET" && pathname === "/git") return reply(200, await gitState(root));
       if (req.method === "PUT" && pathname === "/file") {
         const target = inside(root, url.searchParams.get("path") ?? "");
         if (!target || !target.endsWith(".jl")) return reply(400, { error: "a .jl path inside the workspace is required" });

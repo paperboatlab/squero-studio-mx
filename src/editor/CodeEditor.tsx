@@ -22,6 +22,7 @@ import { tags } from "@lezer/highlight";
 import type { FunctionTable } from "../kernel/localEval.ts";
 import { computeLineAnswers, type AnswerSpec, type AnswerVariable } from "./answers.ts";
 import { LATEX_SYMBOLS } from "./unicode.ts";
+import { gitGutter } from "./gitGutter.ts";
 
 export type EditorSettings = {
   theme: "ui" | "dark" | "light";
@@ -382,7 +383,7 @@ const answerGutter = (
 };
 
 export function CodeEditor({
-  value, file, onChange, settings, appTheme, variables, functions, onFigure, onRunSelection, onPos,
+  value, file, onChange, settings, appTheme, variables, functions, onFigure, onRunSelection, onPos, base,
 }: {
   value: string;
   file: string;
@@ -394,6 +395,8 @@ export function CodeEditor({
   onFigure?: OnFigure;
   onRunSelection?: (code: string, mode: "cell" | "line" | "selection") => void;
   onPos?: (pos: { line: number; col: number; selected: number }) => void;
+  /** HEAD's copy of this file for the git gutter; null when it is untracked or not in a repository. */
+  base?: string | null;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
@@ -416,7 +419,7 @@ export function CodeEditor({
   const compartments = useRef({
     theme: new Compartment(), font: new Compartment(), wrap: new Compartment(),
     tab: new Compartment(), auto: new Compartment(), brackets: new Compartment(), lint: new Compartment(),
-    answers: new Compartment(),
+    answers: new Compartment(), git: new Compartment(),
   }).current;
 
   const runAt = (mode: "cell" | "line"): boolean => {
@@ -530,6 +533,7 @@ export function CodeEditor({
           compartments.auto.of(settings.autocomplete ? autocompleteExt() : []),
           compartments.brackets.of(settings.brackets ? bracketExt() : []),
           compartments.lint.of(settings.lint ? lintExt() : []),
+          compartments.git.of(base != null ? gitGutter(base) : []),
           compartments.answers.of(answersExtension(initialFolded)),
           cellSections,
           EditorView.updateListener.of((u) => {
@@ -586,6 +590,10 @@ export function CodeEditor({
       effects: compartments.answers.reconfigure(answersExtension(answersFolded.current)),
     });
   }, [variables, functions]);
+
+  useEffect(() => {
+    view.current?.dispatch({ effects: compartments.git.reconfigure(base != null ? gitGutter(base) : []) });
+  }, [base]);
 
   return <div className="cm-host" ref={host} aria-label={`${file} editor`} />;
 }

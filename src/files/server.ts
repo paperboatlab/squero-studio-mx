@@ -32,3 +32,15 @@ export function serverStorage(): Storage {
     copy: (from, to, folder) => op("POST", "/copy", { from, to, folder: folder ? "1" : "0" }),
   };
 }
+
+/** HEAD's copy of each tracked script, and the scripts HEAD lacks; null outside a git repository. */
+export type GitState = { head: Record<string, string>; untracked: string[] };
+
+export async function loadGit(): Promise<GitState | null> {
+  try {
+    const res = await fetch(`${BASE}/git`, { headers: { accept: "application/json" } });
+    return res.ok ? ((await res.json()) as GitState | null) : null;
+  } catch {
+    return null;
+  }
+}

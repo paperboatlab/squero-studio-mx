@@ -63,6 +63,7 @@ src/
   chart/surface.ts        the peaks surface + the origin axes as Station entities
   chart/samples.ts        demo workspaces and run samples
   editor/CodeEditor.tsx   CodeMirror 6, Julia language, completions, settings, answer tokens
+  editor/gitGutter.ts     the git gutter: lines added/changed/deleted since HEAD
   editor/julia.ts         the Julia stream parser (macros, types, symbols, interpolation)
   editor/unicode.ts       the `\pi` + Tab symbol map shared by the editor and console
   files/FilePanel.tsx     the MX mutations around the shared FileTree
@@ -183,6 +184,14 @@ picker, which is also how another folder is opened. The chosen handle is remembe
 IndexedDB and restored when its permission is still granted. `Save` / `Ctrl+S` writes the current
 file; an edited file shows `•`. Double-click the project title in the top bar to rename it in
 place. The topbar menus also expose find, clear, chart visibility and run.
+
+When the workspace is inside a git repository, `/__mx/workspace/git` returns HEAD's copy of each
+tracked `.jl` and the ones HEAD lacks. The rail marks files `M` (differs from HEAD, unsaved edits
+included) or `U` (untracked), and the editor's git gutter diffs the live buffer against HEAD: a
+signal bar for added lines, a half-tone bar for changed ones, a wedge where lines were deleted.
+It reloads when files come or go and when the window regains focus (after a commit elsewhere).
+Read-only by design: stage and commit in a terminal or another client. A folder opened through the
+browser picker has no git.
 
 ### About and dismissal
 

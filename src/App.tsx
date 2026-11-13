@@ -20,7 +20,7 @@ import { FRONTEND_VERSION, JULIA_VERSION, KERNEL_PROTOCOL, KERNEL_VERSION, PAPER
 import { FilePanel, type FilePanelHandle } from "./files/FilePanel.tsx";
 import { KernelPanel } from "./shell/KernelPanel.tsx";
 import { askWrite, canWrite, loadDirHandle, readTree, saveDirHandle, storageOf } from "./files/storage.ts";
-import { loadServerWorkspace, serverStorage, type ServerWorkspace } from "./files/server.ts";
+import { loadGit, loadServerWorkspace, serverStorage, type GitState, type ServerWorkspace } from "./files/server.ts";
 import { downloadMat } from "./workspace/mat.ts";
 import { defineFunction, evaluate, variableFrom, varsOf, type FunctionTable } from "./kernel/localEval.ts";
 import { replaceLatexAtCaret } from "./editor/unicode.ts";
@@ -186,6 +186,34 @@ export function App() {
   };
 
   const storage = useMemo(() => (dir ? storageOf(dir) : serverRoot ? serverStorage() : undefined), [dir, serverRoot]);
+
+  // Git, for the server workspace only (a picked folder has no process to run git in). Reloaded
+  // when files come or go and when the window regains focus (a commit in a terminal, say).
+  const [git, setGit] = useState<GitState | null>(null);
+  const [gitTick, setGitTick] = useState(0);
+  const fileKeys = Object.keys(files).join("\n");
+  useEffect(() => {
+    if (!serverRoot || dir) { setGit(null); return; }
+    let live = true;
+    void loadGit().then((next) => { if (live) setGit(next); });
+    return () => { live = false; };
+  }, [serverRoot, dir, fileKeys, gitTick]);
+  useEffect(() => {
+    const bump = () => setGitTick((n) => n + 1);
+    window.addEventListener("focus", bump);
+    return () => window.removeEventListener("focus", bump);
+  }, []);
+  const gitMarks = useMemo(() => {
+    const marks: Record<string, string> = {};
+    if (!git) return marks;
+    const lf = (s: string) => s.replace(/\r\n/g, "\n");
+    for (const [path, text] of Object.entries(files)) {
+      const head = git.head[path];
+      if (head !== undefined) { if (lf(head) !== lf(text)) marks[path] = "M"; }
+      else if (git.untracked.includes(path)) marks[path] = "U";
+    }
+    return marks;
+  }, [files, git]);
 
   const currentVars = workspace;
   const rows = useMemo(() => mergeShared(currentVars, paperboat), [currentVars, paperboat]);
@@ -917,6 +945,7 @@ export function App() {
         root={workspaceRoot}
         files={files}
         folders={folders}
+        gitMarks={gitMarks}
         active={selectedFile}
         onOpen={setSelectedFile}
         onChange={({ files: nextFiles, folders: nextFolders }) => { setFiles(nextFiles); setFolders(nextFolders); }}
@@ -948,6 +977,7 @@ export function App() {
         onFigure={focusLine}
         onRunSelection={runCode}
         lastRun={lastRun}
+        base={git?.head[selectedFile] ?? null}
       />
 
       <div
