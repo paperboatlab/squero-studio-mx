@@ -649,3 +649,9 @@ body.resizing .app.split { transition: none; }
 .console-settings { position: fixed; top: auto; right: 14px; bottom: calc(var(--console-h) + 12px); z-index: 40; }
 /* 3D figures: the foot's ⌂ resets the camera, so the view cube's own Home key is redundant. */
 .fig-ax3-stage .key.small.view-cube-home { display: none; }
+/* Git gutter beside the line numbers: added lines signal, changed lines half signal, a danger wedge where lines went. */
+.cm-git-gutter { width: 3px; }
+.cm-git-gutter .cm-gutterElement { position: relative; padding: 0; }
+.cm-git-add, .cm-git-mod { position: absolute; inset: 0 1px 0 0; background: var(--signal); }
+.cm-git-mod { opacity: .5; }
+.cm-git-del { position: absolute; left: 0; top: -3px; border: 3px solid transparent; border-left: 4px solid var(--danger); }

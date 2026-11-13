@@ -11,6 +11,8 @@ export type FilePanelProps = {
   root: string;
   files: Readonly<Record<string, string>>;
   folders: readonly string[];
+  /** Git status per file: "M" modified since HEAD, "U" not in HEAD. */
+  gitMarks?: Readonly<Record<string, string>>;
   active: string;
   onOpen: (path: string) => void;
   onChange: (next: { files: Record<string, string>; folders: string[] }) => void;
@@ -33,7 +35,7 @@ const under = (path: string, dir: string) => path === dir || path.startsWith(`${
 const reparent = (path: string, from: string, to: string) => (path === from ? to : path.startsWith(`${from}/`) ? `${to}${path.slice(from.length)}` : path);
 
 /** Every folder plus every file, as flat rows in tree order (folders before files). */
-export function entriesOf(files: Readonly<Record<string, string>>, folders: readonly string[]): FileEntry[] {
+export function entriesOf(files: Readonly<Record<string, string>>, folders: readonly string[], marks: Readonly<Record<string, string>> = {}): FileEntry[] {
   const allFolders = new Set(folders);
   for (const path of Object.keys(files)) {
     const parts = path.split("/");
@@ -60,6 +62,7 @@ export function entriesOf(files: Readonly<Record<string, string>>, folders: read
         path, name: nameOf(path), depth, kind: "file",
         icon: path.endsWith(".jl") ? "function" : "file",
         glyph: path.endsWith(".jl") ? <JuliaGlyph /> : undefined,
+        badge: marks[path],
       });
     }
   };
@@ -67,9 +70,9 @@ export function entriesOf(files: Readonly<Record<string, string>>, folders: read
   return out;
 }
 
-export const FilePanel = forwardRef<FilePanelHandle, FilePanelProps>(function FilePanel({ root, files, folders, active, onOpen, onChange, onPathChange, onDeletePath, onOpenFolder, rootBadge, offline, collapsed, onToggle, storage, onSay }, ref) {
+export const FilePanel = forwardRef<FilePanelHandle, FilePanelProps>(function FilePanel({ root, files, folders, gitMarks, active, onOpen, onChange, onPathChange, onDeletePath, onOpenFolder, rootBadge, offline, collapsed, onToggle, storage, onSay }, ref) {
   const tree = useRef<FileTreeHandle>(null);
-  const entries = useMemo(() => entriesOf(files, folders), [files, folders]);
+  const entries = useMemo(() => entriesOf(files, folders, gitMarks), [files, folders, gitMarks]);
   const exists = (path: string) => path in files || folders.includes(path);
   const mirror = (work?: Promise<void>) => { void work?.catch((error: unknown) => onSay(`disk: ${error instanceof Error ? error.message : String(error)}`, "warn")); };
   const copyThenRemove = (from: string, to: string, folder: boolean) => {

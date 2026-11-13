@@ -6,7 +6,7 @@ import type { FunctionTable } from "../kernel/localEval.ts";
 import type { AnswerVariable } from "./answers.ts";
 
 export function Script({
-  running, file, code, onChange, onRun, dirty, onSave, settings, onSettings, appTheme, variables, functions, onFigure, onRunSelection, lastRun,
+  running, file, code, onChange, onRun, dirty, onSave, settings, onSettings, appTheme, variables, functions, onFigure, onRunSelection, lastRun, base,
 }: {
   /** The kernel is compiling or running something. */
   running?: boolean;
@@ -25,6 +25,8 @@ export function Script({
   onFigure?: (line: number) => void;
   onRunSelection?: (code: string, mode: "cell" | "line" | "selection") => void;
   lastRun?: { time: number; ms: number; lines: number; mode: string } | null;
+  /** HEAD's copy of the file, for the git gutter. */
+  base?: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ line: 1, col: 1, selected: 0 });
@@ -91,7 +93,7 @@ export function Script({
       )}
 
       <div className="code">
-        <CodeEditor key={file} value={code} file={file} onChange={onChange} settings={settings} appTheme={appTheme} variables={variables} functions={functions} onFigure={onFigure} onRunSelection={onRunSelection} onPos={setPos} />
+        <CodeEditor key={file} value={code} file={file} onChange={onChange} settings={settings} appTheme={appTheme} variables={variables} functions={functions} onFigure={onFigure} onRunSelection={onRunSelection} onPos={setPos} base={base} />
       </div>
       {!file && <div className="editor-empty">Open the workspace folder, or create a script with +.</div>}
       <div className="runstrip">
