@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { GlideBrackets, MenuBar } from "@paperboat/shared/components";
+import { GlideBrackets, MenuBar, useDismiss } from "@paperboat/shared/components";
 import type { Command } from "@paperboat/shared";
 import type { ClientMsg, Variable } from "@paperboat/shared/protocol";
 import { bufferOf } from "./plot/export.ts";
@@ -54,12 +54,15 @@ function TypeIcon({ type }: { type: string }) {
   return <span className="typeicon t-scalar" title={type} aria-label="scalar"><span className="hash">#</span></span>;
 }
 
+/** What the console prints and how it scrolls; kept in localStorage like the editor's settings. */
+type ConsoleSettings = { echoCommands: boolean; echoValues: boolean; follow: boolean; fontSize: number };
+const DEFAULT_CONSOLE: ConsoleSettings = { echoCommands: true, echoValues: true, follow: true, fontSize: 11 };
+
 export function App() {
   const [figures, setFigures] = useState<FigureEntry[]>([]);
   const [activeFigureId, setActiveFigureId] = useState<string | null>(null);
   const [figureSel, setFigureSel] = useState<string[]>([]);
   const [figureAnchor, setFigureAnchor] = useState<string | null>(null);
-  const [exportFormat, setExportFormat] = useState<FigureFormat>("svg");
   const [exportOpen, setExportOpen] = useState(false);
   const [viewStates, setViewStates] = useState<Record<string, { state: ViewState; modified: boolean }>>({});
   const [resetSeq, setResetSeq] = useState(0);
@@ -92,6 +95,21 @@ export function App() {
   const [stageW, setStageW] = useState(540);
   const [consoleH, setConsoleH] = useState(154);
   const [consoleHidden, setConsoleHidden] = useState(false);
+  /** Kernel work in flight (a run or a console command): compiling, running, drawing. */
+  const [running, setRunning] = useState(0);
+  const busy = async <T,>(work: Promise<T>): Promise<T> => {
+    setRunning((n) => n + 1);
+    try { return await work; } finally { setRunning((n) => n - 1); }
+  };
+  const [consoleOpts, setConsoleOpts] = useState<ConsoleSettings>(() => {
+    try { return { ...DEFAULT_CONSOLE, ...JSON.parse(localStorage.getItem("mx.console") ?? "{}") }; }
+    catch { return DEFAULT_CONSOLE; }
+  });
+  const [consoleSettingsOpen, setConsoleSettingsOpen] = useState(false);
+  const consoleSettingsRef = useRef<HTMLDivElement>(null);
+  const consoleGear = useRef<HTMLButtonElement>(null);
+  useDismiss(consoleSettingsRef, () => setConsoleSettingsOpen(false), { enabled: consoleSettingsOpen, triggerRef: consoleGear });
+  useEffect(() => { localStorage.setItem("mx.console", JSON.stringify(consoleOpts)); }, [consoleOpts]);
   const [chartHidden, setChartHidden] = useState(false);
   const drag = useRef<{ x: number; w: number } | null>(null);
   const [status, setStatus] = useState<LinkStatus>("idle");
@@ -138,7 +156,7 @@ export function App() {
     if (name && name !== baseName(selectedFile)) filePanel.current?.rename(selectedFile, name);
     setRenamingTitle(false);
   };
-  useEffect(() => { consoleEnd.current?.scrollIntoView({ block: "nearest" }); }, [lines, consoleHidden]);
+  useEffect(() => { if (consoleOpts.follow) consoleEnd.current?.scrollIntoView({ block: "nearest" }); }, [lines, consoleHidden, consoleOpts.follow]);
   useEffect(() => {
     if (!(selectedFile in files)) {
       const first = Object.keys(files).sort()[0];
@@ -251,7 +269,8 @@ export function App() {
   }, [currentVars, status, pbLoaded, pbCount]);
 
   /** The console is the kernel's REPL: stdout and the value come back from the same session. */
-  const consoleEval = async (code: string) => {
+  const consoleEval = (code: string) => busy(consoleEvalNow(code));
+  const consoleEvalNow = async (code: string) => {
     const info = kernelInfo ?? await probeKernel(60000);
     if (!info) {
       say("kernel unavailable · install Julia or start the kernel container", "warn");
@@ -271,10 +290,10 @@ export function App() {
     }
     // The kernel prints the value as Julia's REPL would; an older kernel sends only a description.
     if (reply.text !== undefined) {
-      for (const line of reply.text.split("\n")) if (line.trim()) say(line, "ok");
+      if (consoleOpts.echoValues) for (const line of reply.text.split("\n")) if (line.trim()) say(line, "ok");
     }
     const value = reply.value as { type?: string; shape?: string; value?: number | boolean | string; preview?: number[] } | undefined;
-    if (reply.text === undefined && value && value.type !== "Nothing") {
+    if (consoleOpts.echoValues && reply.text === undefined && value && value.type !== "Nothing") {
       if (value.value !== undefined) {
         say(typeof value.value === "string" ? JSON.stringify(value.value) : String(value.value), "ok");
       } else if (value.preview?.length) {
@@ -295,7 +314,7 @@ export function App() {
   const run = (raw: string) => {
     const cmd = raw.trim();
     if (!cmd) return;
-    say(cmd, "info", true);
+    if (consoleOpts.echoCommands) say(cmd, "info", true);
     const call = /^([A-Za-z_]\w*)\s*\(\s*([^)]*)\s*\)$/.exec(cmd);
     if (call) {
       const arg = call[2].replace(/^["']|["']$/g, "").trim();
@@ -594,7 +613,8 @@ export function App() {
    * the changed ones; SqueroBase queues problems and runs, which Paperboat solves and simulates.
    * Nothing here parses the source, draws or solves.
    */
-  const runCodeViaKernel = async (code: string, mode: "cell" | "line" | "selection" | "file") => {
+  const runCodeViaKernel = (code: string, mode: "cell" | "line" | "selection" | "file") => busy(runCodeViaKernelNow(code, mode));
+  const runCodeViaKernelNow = async (code: string, mode: "cell" | "line" | "selection" | "file") => {
     const startedAt = performance.now();
     const source = selectedFile;
     const count = code.split("\n").filter((line) => line.trim()).length;
@@ -877,7 +897,6 @@ export function App() {
         >
           <span className="pip" />
           {kernelInfo ? `julia ${kernelInfo.julia} · kernel` : kernelProbed ? "julia · unavailable" : "julia · starting"}
-          <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5 6 7.5l3-3" /></svg>
         </button>
         <div className="keys">
           <button
@@ -911,6 +930,7 @@ export function App() {
       />
 
       <Script
+        running={running > 0}
         file={selectedFile}
         code={files[selectedFile] ?? ""}
         onChange={(code) => {
@@ -1033,7 +1053,6 @@ export function App() {
                     <div className="sh">{typeLabel(v.type)} · {v.shape}</div>
                   </div>
                   <span className={`vval${v.type === "Float64" ? " scalar" : ""}`} title={valueOf(v)}>{valueOf(v)}</span>
-                  <span className={`tie ${v.shared ? "on" : ""}`} title={v.shared ? "Broadcast to Paperboat" : "Stays in MX: not a number, text or array"} />
                 </div>
               ))}
               {currentVars.length === 0 && (
@@ -1087,13 +1106,11 @@ export function App() {
             }}
           >
             <div className="figtools">
-              <div className="seg figfmt" role="group" aria-label="Export format">
-                {FIGURE_FORMATS.map((format) => (
-                  <button key={format} className={exportFormat === format ? "on" : ""} onClick={() => setExportFormat(format)} aria-pressed={exportFormat === format}>{format}</button>
-                ))}
-              </div>
               <button className="key small" onClick={exportFigures} disabled={selectedExportEntries.length === 0}>
                 Export…
+              </button>
+              <button className="key small" onClick={removeSelectedFigures} disabled={figureSel.length === 0} title="Close the selected figures (Delete)">
+                Delete
               </button>
               <span className="sp" />
               <span className="tag">{figureSel.length ? `${figureSel.length} selected` : "no selection"}</span>
@@ -1147,6 +1164,21 @@ export function App() {
           <span className="on">console</span><span>repl</span><span className="sp" />
           <span className="tag">julia {JULIA_VERSION} · frontend {FRONTEND_VERSION}</span>
           <button
+            ref={consoleGear}
+            type="button"
+            className={`key small settings-key ${consoleSettingsOpen ? "on" : ""}`}
+            onClick={() => setConsoleSettingsOpen((v) => !v)}
+            title="Console settings"
+            aria-label="Console settings"
+            aria-expanded={consoleSettingsOpen}
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M2.5 5.25h2.1M6.8 5.25h6.7M2.5 10.75h4M9.8 10.75h3.7" />
+              <circle cx="5.6" cy="5.25" r="1.5" />
+              <circle cx="8.1" cy="10.75" r="1.5" />
+            </svg>
+          </button>
+          <button
             type="button"
             className={`panel-toggle console-toggle${consoleHidden ? "" : " open"}`}
             onClick={() => setConsoleHidden((v) => {
@@ -1160,7 +1192,20 @@ export function App() {
             <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M3 9l4-4 4 4" /></svg>
           </button>
         </div>
-        <div className="lines" aria-hidden={consoleHidden}>
+        {consoleSettingsOpen && (
+          <div ref={consoleSettingsRef} className="editor-settings console-settings" role="dialog" aria-label="Console settings" data-own-keys>
+            <div className="es-head"><b>console</b><span className="sp" /><button className="plain tag" onClick={() => setConsoleSettingsOpen(false)}>close</button></div>
+            <label className="es-check"><input type="checkbox" checked={consoleOpts.echoCommands} onChange={(e) => setConsoleOpts({ ...consoleOpts, echoCommands: e.target.checked })} /> echo typed commands</label>
+            <label className="es-check"><input type="checkbox" checked={consoleOpts.echoValues} onChange={(e) => setConsoleOpts({ ...consoleOpts, echoValues: e.target.checked })} /> echo results <span className="tag">like the REPL</span></label>
+            <label className="es-check"><input type="checkbox" checked={consoleOpts.follow} onChange={(e) => setConsoleOpts({ ...consoleOpts, follow: e.target.checked })} /> scroll to newest</label>
+            <label className="es-row"><span>size</span>
+              <select value={consoleOpts.fontSize} onChange={(e) => setConsoleOpts({ ...consoleOpts, fontSize: Number(e.target.value) })}>
+                {[10, 11, 12, 13, 14].map((n) => <option key={n} value={n}>{n} px</option>)}
+              </select>
+            </label>
+          </div>
+        )}
+        <div className="lines" aria-hidden={consoleHidden} style={{ fontSize: consoleOpts.fontSize }}>
           {lines.map((l, i) => (
             <div key={i} className={l.level}>{l.cmd ? <span className="prompt">julia&gt; </span> : null}{l.text}</div>
           ))}
@@ -1190,7 +1235,7 @@ export function App() {
       {exportOpen && selectedExportEntries.length > 0 && (
         <ExportModal
           entries={selectedExportEntries}
-          initialFormat={exportFormat}
+          initialFormat="svg"
           viewStates={viewStates}
           onSaveArtifacts={saveEntryArtifacts}
           onSay={say}
