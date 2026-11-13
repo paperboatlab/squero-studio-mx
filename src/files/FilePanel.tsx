@@ -1,7 +1,7 @@
-// The MX file rail: the shared FileTree (same code as Squero OM) plus the Julia workspace
+// The MX file rail: the shared FileRail and FileTree (same as Squero OM) plus the Julia workspace
 // mutations: new file/folder, rename, duplicate, delete, copy path, and drag-to-move.
 import { forwardRef, useImperativeHandle, useMemo, useRef } from "react";
-import { FileTree, type FileEntry, type FileTreeHandle } from "@paperboat/shared/files";
+import { FileRail, FileTree, type FileEntry, type FileTreeHandle } from "@paperboat/shared/files";
 import type { Storage } from "./storage.ts";
 import { JuliaGlyph } from "./JuliaGlyph.tsx";
 
@@ -204,54 +204,37 @@ export const FilePanel = forwardRef<FilePanelHandle, FilePanelProps>(function Fi
   };
 
   return (
-    <aside className="rail panel files" aria-label="Files">
-      <div className="rail-tabs" role="tablist" aria-label="Files">
-        <span className="rail-tab on" role="tab" aria-selected>files</span>
-        <button
-          type="button"
-          className="key small rail-add"
-          title="New file or folder"
-          onClick={(e) => {
-            const r = e.currentTarget.getBoundingClientRect();
-            tree.current?.openNewMenu(r.left, r.bottom + 4);
-          }}
-        >+</button>
-        <button type="button" className="panel-toggle" onClick={onToggle} title="Hide files" aria-label="Hide files" aria-expanded={!collapsed}>
-          <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M9 3 5 7l4 4" /></svg>
+    <FileRail
+      label="Files"
+      className="panel files"
+      onAdd={(x, y) => tree.current?.openNewMenu(x, y)}
+      name={root}
+      nameTitle={root}
+      badge={rootBadge ?? "folder"}
+      headKeys={onOpenFolder && (
+        <button type="button" className="folder-key" title="Open workspace folder" aria-label="Open workspace folder" onClick={onOpenFolder}>
+          <svg viewBox="0 0 16 16" aria-hidden><path d="M1.5 4.5h4.7l1.3 1.8h7v7.2h-13z" /></svg>
         </button>
-      </div>
-      <div className="files-panel">
-        <div className="files-head">
-          <span className="nm" title={root}>{root}</span>
-          {onOpenFolder && (
-            <button type="button" className="folder-key" title="Open workspace folder" aria-label="Open workspace folder" onClick={onOpenFolder}>
-              <svg viewBox="0 0 16 16" aria-hidden><path d="M1.5 4.5h4.7l1.3 1.8h7v7.2h-13z" /></svg>
-            </button>
-          )}
-          <span className="lbl">{rootBadge ?? "folder"}</span>
+      )}
+      foot={`${entries.filter((e) => e.kind === "file").length} files · ${active ? "1 open" : "none open"}`}
+      collapsed={collapsed}
+      onToggle={onToggle}
+      tree={offline ? (
+        <div className="files-offline">
+          <p>Workspace not open.</p>
+          <span>{root}</span>
+          <button type="button" className="key small" onClick={onOpenFolder}>Open folder</button>
         </div>
-        {offline ? (
-          <div className="files-offline">
-            <p>Workspace not open.</p>
-            <span>{root}</span>
-            <button type="button" className="key small" onClick={onOpenFolder}>Open folder</button>
-          </div>
-        ) : (
-          <FileTree
-            ref={tree}
-            entries={entries}
-            active={active}
-            ariaLabel="MX workspace"
-            labels={{ newFile: "New script…", newFolder: "New folder…", empty: "No .jl files yet. Create one with +." }}
-            actions={{ onOpen: open, onNewFile: newFile, onNewFolder: newFolder, onRename: rename, onDuplicate: duplicate, onDelete: remove, onCopyPath: (e) => { void navigator.clipboard?.writeText(e.path); onSay(`copied ${e.path}`, "ok"); }, onMove: move }}
-          />
-        )}
-      </div>
-      <div className="foot">{entries.filter((e) => e.kind === "file").length} files · {active ? "1 open" : "none open"}</div>
-      <button type="button" className="panel-stand" onClick={onToggle} title="Show files" aria-label="Show files">
-        <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M5 3l4 4-4 4" /></svg>
-        <span>files</span>
-      </button>
-    </aside>
+      ) : (
+        <FileTree
+          ref={tree}
+          entries={entries}
+          active={active}
+          ariaLabel="MX workspace"
+          labels={{ newFile: "New script…", newFolder: "New folder…", empty: "No .jl files yet. Create one with +." }}
+          actions={{ onOpen: open, onNewFile: newFile, onNewFolder: newFolder, onRename: rename, onDuplicate: duplicate, onDelete: remove, onCopyPath: (e) => { void navigator.clipboard?.writeText(e.path); onSay(`copied ${e.path}`, "ok"); }, onMove: move }}
+        />
+      )}
+    />
   );
 });

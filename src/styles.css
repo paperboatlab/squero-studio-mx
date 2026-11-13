@@ -218,38 +218,18 @@ body.resizing .app.split { transition: none; }
 .app.split.right-hidden .rightpane { padding: 4px; }
 
 /* The inside fades against the slide; the standing tab fades in over it. */
-.files .rail-tabs, .files .files-panel, .files .foot,
 .rightpane .head, .rightpane .tabbody { transition: opacity var(--motion); }
-.app.split.files-hidden .files .rail-tabs,
-.app.split.files-hidden .files .files-panel,
-.app.split.files-hidden .files .foot,
 .app.split.right-hidden .rightpane .head,
 .app.split.right-hidden .rightpane .tabbody {
   opacity: 0; visibility: hidden; pointer-events: none;
   transition: opacity var(--motion), visibility 0s linear 150ms;
 }
-.panel-toggle { flex: none; width: 18px; height: 18px; padding: 0; border: 0; background: none; color: var(--text-muted); display: inline-grid; place-items: center; cursor: pointer; }
-.panel-toggle:hover { color: var(--text); }
-.panel-toggle svg { transition: transform var(--motion); }
-.panel-toggle svg, .panel-stand svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
-.panel-stand {
-  position: absolute; inset: 4px; z-index: 2;
-  display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 7px 0;
-  border: 0; border-radius: var(--radius-md); background: var(--surface-raised);
-  color: var(--text-muted); cursor: pointer; font: inherit;
-  opacity: 0; visibility: hidden;
-  transition: opacity var(--motion), visibility 0s linear 150ms;
-}
-.panel-stand:hover { color: var(--text); }
-.panel-stand span { writing-mode: vertical-rl; font: 400 10.5px var(--font-mono); letter-spacing: .04em; text-transform: lowercase; }
-.app.split.files-hidden .files .panel-stand,
 .app.split.right-hidden .rightpane .panel-stand {
   opacity: 1; visibility: visible; pointer-events: auto;
   transition: opacity var(--motion), visibility 0s;
 }
-.files .rail-tabs .panel-toggle { margin-left: 2px; }
 @media (prefers-reduced-motion: reduce) {
-  .app.split, .files .rail-tabs, .files .files-panel, .files .foot,
+  .app.split,
   .rightpane .head, .rightpane .tabbody, .console .lines, .console .cin, .panel-stand, .panel-toggle svg { transition: none !important; }
 }
 .app.split .splitter { grid-column: 3; grid-row: 2; position: relative; cursor: col-resize; background: transparent; touch-action: none; }
@@ -262,16 +242,7 @@ body.resizing .app.split { transition: none; }
 /* The two empty tracks still carry the grid gap; let the editor take both gaps so its sides match. */
 .app.split.chart-hidden .editor { margin-right: -28px; }
 
-/* The Files panel around the shared FileTree (styles from @paperboat/shared/files.css). */
-.files .rail-tabs { display: flex; align-items: center; gap: 12px; min-height: 36px; padding: 0 12px; border-bottom: 1px solid var(--line); background: var(--surface-raised); }
-.files .rail-tab { font: 400 12px var(--font-mono); color: var(--text-muted); }
-.files .rail-tab.on { color: var(--text); font-weight: 500; }
-.files .rail-tab.on::before { content: "[ "; } .files .rail-tab.on::after { content: " ]"; }
-.files .rail-add { margin-left: auto; height: 20px; padding: 0 6px; }
-.files .files-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; width: 100%; }
-.files .files-head { display: flex; align-items: baseline; gap: 8px; padding: 8px 12px 4px; border-bottom: 1px solid var(--line); }
-.files .files-head .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 12px var(--font-mono); }
-.files .files-head .lbl { margin-left: auto; white-space: nowrap; }
+/* The Files rail is @paperboat/shared FileRail (files.css); MX only places it. */
 
 /* Workspace: per-script variables, a filter and the chart pill. */
 .varsearch { display: flex; align-items: center; gap: 6px; padding: 5px 7px; background: var(--surface-well); border-radius: var(--radius-md); box-shadow: var(--well-shadow); }
