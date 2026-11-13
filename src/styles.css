@@ -168,8 +168,6 @@ h2, p { margin: 0; }
 .rtabs button::after { content: "]"; margin-left: 3px; }
 .rtabs button:not(.on)::before, .rtabs button:not(.on)::after { visibility: hidden; }
 .rtabs button.on { color: var(--text); font-weight: 500; }
-.glide .opt::before, .glide .opt::after { visibility: hidden !important; }
-.glide-bracket { position: absolute; display: flex; align-items: center; pointer-events: none; opacity: 0; white-space: pre; }
 .tabbody { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; padding: 9px 10px; overflow: auto; }
 .tabbody .vars { padding: 0; }
 .tabbody .scratch { margin-top: auto; border-top: 1px solid var(--line); padding: 9px 0 0; }
@@ -429,30 +427,6 @@ body.resizing .app.split { transition: none; }
 .console-toggle svg { transform: rotate(0deg); }
 .console-toggle.open svg { transform: rotate(180deg); }
 
-/* The Squero Studio logo, shared with OM; only the product badge differs. */
-.wordmark { display: inline-flex; align-items: center; }
-.squero-logo { display: block; overflow: visible; }
-.squero-logo-ink { fill: var(--text); }
-.squero-logo-muted { fill: var(--text-muted); }
-.squero-logo-water { fill: var(--signal); }
-.squero-logo-tile { fill: var(--text); }
-.squero-logo-code { fill: var(--surface-panel); }
-.squero-logo .w { transform-box: fill-box; transform-origin: center; }
-.squero-logo.logo-idle .squero-logo-water .w { animation: squero-ripple-idle 5s var(--ease) infinite; }
-.squero-logo.logo-idle .squero-logo-water .w1 { animation-delay: 0s; }
-.squero-logo.logo-idle .squero-logo-water .w2 { animation-delay: 0.2s; }
-.squero-logo.logo-idle .squero-logo-water .w3 { animation-delay: 0.4s; }
-.squero-logo.logo-idle .squero-logo-water .w4 { animation-delay: 0.6s; }
-.squero-logo.logo-idle .squero-logo-water .w5 { animation-delay: 0.8s; }
-@keyframes squero-ripple-idle { 0%, 25%, 100% { transform: translateY(0); } 12.5% { transform: translateY(calc(var(--lr, 19.5px) * -0.67)); } }
-.squero-logo.logo-live .squero-logo-water .w { animation: squero-ripple-live 1.4s var(--ease) infinite; }
-.squero-logo.logo-live .squero-logo-water .w1 { animation-delay: 0s; }
-.squero-logo.logo-live .squero-logo-water .w2 { animation-delay: 0.12s; }
-.squero-logo.logo-live .squero-logo-water .w3 { animation-delay: 0.24s; }
-.squero-logo.logo-live .squero-logo-water .w4 { animation-delay: 0.36s; }
-.squero-logo.logo-live .squero-logo-water .w5 { animation-delay: 0.48s; }
-@keyframes squero-ripple-live { 0% { transform: translateY(0); } 30% { transform: translateY(calc(var(--lr, 19.5px) * -1)); } 60% { transform: translateY(calc(var(--lr, 19.5px) * 0.33)); } 100% { transform: translateY(0); } }
-@media (prefers-reduced-motion: reduce) { .squero-logo .w { animation: none !important; } }
 
 /* Double-click the project title to rename it in place, as in Paperboat. */
 .proj .proj-name { cursor: text; }
@@ -544,27 +518,7 @@ body.resizing .app.split { transition: none; }
 /* Editor with no script open. */
 .editor-empty { position: absolute; inset: 36px 0 28px; display: grid; place-items: center; pointer-events: none; color: var(--text-muted); font: 400 11px var(--font-mono); background: var(--surface-screen); }
 
-/* ---- Dialogs & modals (same shape as OM) -------------------------------------------- */
-.modal-overlay { position: fixed; inset: 0; z-index: 100; background: rgb(0 0 0 / 0.45); display: flex; align-items: center; justify-content: center; backdrop-filter: blur(2px); }
-.modal-dialog { width: min(480px, calc(100vw - 32px)); background: var(--surface-panel); border: 1.5px solid var(--line-ink); border-radius: var(--radius-lg); box-shadow: 0 16px 36px rgb(0 0 0 / 0.25); overflow: hidden; display: flex; flex-direction: column; }
-.modal-head { display: flex; align-items: center; justify-content: space-between; padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--line); }
-.modal-head h3 { margin: 0; font: 600 var(--size-sm) var(--font-sans); }
-.modal-close { background: none; border: 0; font-size: var(--size-md); color: var(--text-muted); cursor: pointer; padding: 0 4px; }
-.modal-close:hover { color: var(--text); }
-.modal-actions { display: flex; justify-content: flex-end; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-top: 1px solid var(--line); background: var(--surface-sunken); }
-.about-dialog { width: min(680px, calc(100vw - 32px)); }
-.about-body { display: grid; grid-template-columns: minmax(220px, 260px) minmax(0, 1fr); gap: var(--space-5); padding: var(--space-4); }
-.about-mark { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-3); padding: var(--space-5) var(--space-3); text-align: center; background: var(--surface-raised); border: 1px solid var(--line); border-radius: var(--radius-lg); }
-.about-mark .squero-logo { max-width: 100%; height: auto; }
-.about-info { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
-.about-facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px var(--space-4); margin: 0; }
-.about-facts dt, .about-section h3 { font: 600 var(--size-2xs) var(--font-sans); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; }
-.about-facts dd { margin: 0; font: 400 var(--size-xs) var(--font-mono); color: var(--text); }
-.about-facts a, .about-section a { color: var(--text); text-decoration-color: var(--line-strong); text-underline-offset: 2px; }
-.about-section { padding-top: var(--space-3); border-top: 1px solid var(--line); }
-.about-section h3 { margin: 0 0 var(--space-2); }
-.about-section p { margin: 0 0 var(--space-1); font: 400 var(--size-xs) var(--font-sans); color: var(--text-muted); }
-@media (max-width: 640px) { .about-body { grid-template-columns: 1fr; } }
+/* Dialogs, modals, About, the logo and the busy wave: @paperboat/shared/squero.css. */
 
 .rightpane .head .tag { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -637,14 +591,6 @@ body.resizing .app.split { transition: none; }
 .kernel-dialog .modal-head h3 { margin-right: 2px; }
 .kernel-dialog .modal-head .tag { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* Busy feedback: the Paperboat logo's water (Spinner.tsx): five square signal dots, gap ≈ 1.33 dot, rippling on squero-ripple-live. */
-.wave { --lr: 2.5px; display: inline-flex; gap: 5px; height: 12px; align-items: center; flex: none; vertical-align: middle; }
-.wave i { width: 4px; height: 4px; background: var(--signal); animation: squero-ripple-live 1.4s var(--ease) infinite; }
-.wave i:nth-child(2) { animation-delay: .12s; }
-.wave i:nth-child(3) { animation-delay: .24s; }
-.wave i:nth-child(4) { animation-delay: .36s; }
-.wave i:nth-child(5) { animation-delay: .48s; }
-@media (prefers-reduced-motion: reduce) { .wave i { animation: none; } }
 /* The console clips its children, so its settings float above it. */
 .console-settings { position: fixed; top: auto; right: 14px; bottom: calc(var(--console-h) + 12px); z-index: 40; }
 /* 3D figures: the foot's ⌂ resets the camera, so the view cube's own Home key is redundant. */

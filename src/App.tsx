@@ -11,7 +11,7 @@ import { FIGURE_FORMATS, type FigureFormat, type FigureMeta, type ViewState } fr
 import type { WorkspaceVariable } from "./workspace/samples.ts";
 import { Script } from "./editor/Script.tsx";
 import { DEFAULT_EDITOR_SETTINGS, type EditorSettings } from "./editor/CodeEditor.tsx";
-import { SqueroLogo } from "./shell/SqueroLogo.tsx";
+import { SqueroLogo } from "@paperboat/shared/squero";
 import { AboutModal } from "./shell/AboutModal.tsx";
 import { probeKernel, type KernelInfo } from "./kernel/probe.ts";
 import { evalCode, figureArtifact, figureScene, plotOptimum, resetKernel, whois, withArrays } from "./kernel/client.ts";
@@ -883,7 +883,7 @@ export function App() {
     <div className={`app split${chartHidden ? " chart-hidden" : ""}${consoleHidden ? " console-hidden" : ""}${filesHidden ? " files-hidden" : ""}${rightHidden ? " right-hidden" : ""}`} style={{ "--stage-w": `${stageW}px`, "--console-h": `${consoleH}px` } as CSSProperties}>
       <header className="topbar">
         <span className="wordmark" aria-label="Squero Studio: MX">
-          <SqueroLogo product="MX" height={20} running />
+          <SqueroLogo product="MX" height={20} running={running > 0} />
         </span>
         <div className="menus">
           <MenuBar commands={commands} />
