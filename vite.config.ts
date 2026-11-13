@@ -32,7 +32,14 @@ function mxServer(): Plugin {
 
 export default defineConfig({
   plugins: [react(), mxServer()],
-  resolve: { dedupe: ["react", "react-dom", "three", "uplot"] },
+  resolve: {
+    dedupe: [
+      "react", "react-dom", "three", "uplot",
+      // The shared editor is CodeMirror too: one copy of each, or its extensions do not match.
+      "@codemirror/state", "@codemirror/view", "@codemirror/language", "@codemirror/commands",
+      "@codemirror/autocomplete", "@codemirror/lint", "@codemirror/merge", "@lezer/highlight",
+    ],
+  },
   build: { chunkSizeWarningLimit: 900 },
   server: { port: 3049, fs: { allow: [".."] } },
   preview: { port: 3049 },

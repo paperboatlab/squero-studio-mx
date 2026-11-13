@@ -186,8 +186,6 @@ h2, p { margin: 0; }
 .varc:focus-visible, .shared-row:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 @media (prefers-reduced-motion: reduce) { .varc { transition: none; } }
 .shared-row { cursor: pointer; }
-.cm-host { height: 100%; }
-.cm-editor { height: 100%; }
 .editor .code { padding: 0; }
 
 /* The Scope's frame: the app owns .instrument/.screen/figcaption (scope.css says so). */
@@ -314,18 +312,8 @@ body.resizing .app.split { transition: none; }
 .files-head .edit-root { border: 0; background: none; padding: 0; color: var(--text-muted); font: 400 9.5px var(--font-mono); cursor: pointer; }
 .files-head .edit-root:hover { color: var(--text); }
 
-/* Editor settings, answer-token clicks and the fixed-size hide key. */
+/* Answer-token clicks and the fixed-size hide key (the editor settings are @paperboat/shared/editor.css). */
 .editor { position: relative; }
-.settings-key.on { border-color: var(--line-ink); color: var(--text); }
-.settings-key svg { width: 14px; height: 14px; display: block; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
-.settings-key svg circle { fill: var(--surface-raised); }
-.settings-key.on svg circle { fill: var(--text); }
-.editor-settings { position: absolute; top: 42px; right: 10px; z-index: 30; width: 262px; padding: 10px; display: flex; flex-direction: column; gap: 7px; background: var(--surface-raised); border: 1px solid var(--line-ink); border-radius: var(--radius-md); box-shadow: var(--shadow-1); }
-.es-head { display: flex; align-items: center; gap: 6px; padding-bottom: 5px; border-bottom: 1px solid var(--line); }
-.es-head b { font: 500 11px var(--font-mono); }
-.es-head .plain { border: 0; background: none; color: var(--text-muted); cursor: pointer; }
-.es-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font: 400 10.5px var(--font-mono); color: var(--text-muted); }
-.es-row select { height: 22px; min-width: 96px; padding: 0 5px; font: 400 10.5px var(--font-mono); }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
 .seg button { border: 0; border-radius: 0; height: 22px; padding: 0 8px; background: none; color: var(--text-muted); font: 400 10px var(--font-mono); }
 /* A chosen option is bold ink in brackets, never a fill (DESIGN.md); every option keeps the room. */
@@ -333,30 +321,10 @@ body.resizing .app.split { transition: none; }
 .seg button::after { content: "]"; margin-left: 2px; }
 .seg button:not(.on)::before, .seg button:not(.on)::after { visibility: hidden; }
 .seg button.on { color: var(--text); font-weight: 600; }
-.es-check { display: flex; align-items: center; gap: 6px; font: 400 10.5px var(--font-mono); color: var(--text); }
-.es-check input { accent-color: var(--text); }
 .stage-hide { width: 22px; height: 22px; padding: 0; display: inline-grid; place-items: center; font-size: 13px; line-height: 1; }
 .cm-answer.click { cursor: pointer; }
 .cm-answer.click:hover { color: var(--signal); border-color: color-mix(in srgb, var(--signal) 50%, transparent); }
 
-/* Completion kinds are words, not emoji: short mono tags that read at 10px. */
-.cm-tooltip-autocomplete .cm-completionIcon { width: 20px; padding-right: 6px; opacity: .7; font: 500 8px var(--font-mono); text-transform: lowercase; }
-.cm-tooltip-autocomplete .cm-completionIcon:after { font-size: 8px; }
-.cm-tooltip-autocomplete > ul > li[aria-selected] .cm-completionIcon { opacity: 1; }
-.cm-tooltip-autocomplete .cm-completionIcon-function:after,
-.cm-tooltip-autocomplete .cm-completionIcon-method:after { content: "fn"; }
-.cm-tooltip-autocomplete .cm-completionIcon-variable:after { content: "var"; }
-.cm-tooltip-autocomplete .cm-completionIcon-keyword:after { content: "kw"; }
-.cm-tooltip-autocomplete .cm-completionIcon-type:after,
-.cm-tooltip-autocomplete .cm-completionIcon-class:after,
-.cm-tooltip-autocomplete .cm-completionIcon-interface:after { content: "typ"; }
-.cm-tooltip-autocomplete .cm-completionIcon-snippet:after { content: "snp"; }
-.cm-tooltip-autocomplete .cm-completionIcon-property:after { content: "prop"; }
-.cm-tooltip-autocomplete .cm-completionIcon-constant:after { content: "const"; }
-.cm-tooltip-autocomplete .cm-completionIcon-namespace:after { content: "ns"; }
-.cm-tooltip-autocomplete .cm-completionIcon-enum:after { content: "enum"; }
-.cm-tooltip-autocomplete .cm-completionIcon-text:after { content: "txt"; font-size: 8px; }
-.cm-tooltip-autocomplete .cm-completionIcon-unicode:after { content: "λ"; font-size: 9px; }
 
 /* A drag bar for the console. */
 .app.split { grid-template-rows: 56px minmax(0, 1fr) 6px var(--console-h, 154px); }
@@ -595,9 +563,3 @@ body.resizing .app.split { transition: none; }
 .console-settings { position: fixed; top: auto; right: 14px; bottom: calc(var(--console-h) + 12px); z-index: 40; }
 /* 3D figures: the foot's ⌂ resets the camera, so the view cube's own Home key is redundant. */
 .fig-ax3-stage .key.small.view-cube-home { display: none; }
-/* Git gutter beside the line numbers: added lines signal, changed lines half signal, a danger wedge where lines went. */
-.cm-git-gutter { width: 3px; }
-.cm-git-gutter .cm-gutterElement { position: relative; padding: 0; }
-.cm-git-add, .cm-git-mod { position: absolute; inset: 0 1px 0 0; background: var(--signal); }
-.cm-git-mod { opacity: .5; }
-.cm-git-del { position: absolute; left: 0; top: -3px; border: 3px solid transparent; border-left: 4px solid var(--danger); }
