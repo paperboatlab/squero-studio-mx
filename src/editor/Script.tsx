@@ -6,8 +6,10 @@ import type { FunctionTable } from "../kernel/localEval.ts";
 import type { AnswerVariable } from "./answers.ts";
 
 export function Script({
-  file, code, onChange, onRun, dirty, onSave, settings, onSettings, appTheme, variables, functions, onFigure, onRunSelection, lastRun,
+  running, file, code, onChange, onRun, dirty, onSave, settings, onSettings, appTheme, variables, functions, onFigure, onRunSelection, lastRun,
 }: {
+  /** The kernel is compiling or running something. */
+  running?: boolean;
   file: string;
   code: string;
   onChange: (code: string) => void;
@@ -41,7 +43,7 @@ export function Script({
         <b>{file}{dirty ? " •" : ""}</b>
         <span className="sp" />
         <button className="key small" onClick={onSave} disabled={!dirty} title="Save (Ctrl+S)">Save</button>
-        <button className="key small" onClick={onRun}>Run</button>
+        <button className="key small" onClick={onRun} disabled={running} aria-busy={running}>{running ? <><span className="spinner" aria-hidden="true" /> Running</> : "Run"}</button>
         <button ref={gear} className={`key small settings-key ${open ? "on" : ""}`} onClick={() => setOpen((v) => !v)} title="Editor settings" aria-label="Editor settings" aria-expanded={open}>
           <svg viewBox="0 0 16 16" aria-hidden="true">
             <path d="M2.5 5.25h2.1M6.8 5.25h6.7M2.5 10.75h4M9.8 10.75h3.7" />
@@ -97,7 +99,9 @@ export function Script({
         {pos.selected > 0 && <span className="sel">{pos.selected} selected</span>}
         <span className="sp" />
         <span className="runstat">
-          {lastRun
+          {running
+            ? "compiling and running…"
+            : lastRun
             ? `run ${modeLabel(lastRun.mode)} · ${clock(lastRun.time)} · ${lastRun.lines} line${lastRun.lines === 1 ? "" : "s"} · ${lastRun.ms} ms`
             : "not run yet"}
         </span>

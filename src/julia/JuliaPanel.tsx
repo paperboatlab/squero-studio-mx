@@ -203,7 +203,7 @@ export function JuliaPanel({ onSay }: { onSay?: (text: string, level: Level) => 
 
       {view === "environment" ? (
         !status ? (
-          <div className="jl-loading">{loadingStatus ? "Reading the Julia kernel, workspace and packages…" : "The launcher did not report a Julia runtime."}</div>
+          <div className="jl-loading">{loadingStatus ? <><span className="spinner" aria-hidden="true" /> Reading the Julia kernel, workspace and packages…</> : "The launcher did not report a Julia runtime."}</div>
         ) : (
         <>
           <div className="jl-head">
@@ -273,7 +273,7 @@ export function JuliaPanel({ onSay }: { onSay?: (text: string, level: Level) => 
             <span className="tag">General{registrySource ? ` · ${registrySource}` : ""}</span>
             <span className="tag">{searching ? `${registryTotal} match${registryTotal === 1 ? "" : "es"}` : "popular"}</span>
           </div>
-          {busy && <div className="jl-busy">{busy}…</div>}
+          {busy && <div className="jl-busy"><span className="spinner" aria-hidden="true" /> {busy}…</div>}
 
           {detail ? (
             <div className="jr-card">
@@ -328,7 +328,7 @@ export function JuliaPanel({ onSay }: { onSay?: (text: string, level: Level) => 
               )}
             </div>
           )}
-          {shownBusy && <div className="jl-busy">{shownBusy}…</div>}
+          {shownBusy && <div className="jl-busy"><span className="spinner" aria-hidden="true" /> {shownBusy}…</div>}
           {registryError && (
             <div className="jl-error">
               {registryError}
@@ -338,7 +338,7 @@ export function JuliaPanel({ onSay }: { onSay?: (text: string, level: Level) => 
         </>
       )}
 
-      {busy && !loadingStatus && view === "environment" && <div className="jl-busy">{busy}…</div>}
+      {busy && !loadingStatus && view === "environment" && <div className="jl-busy"><span className="spinner" aria-hidden="true" /> {busy}…</div>}
       {error && <div className="jl-error">{error}</div>}
       {output && <pre className="jl-log" aria-label="Last julia command output">{output.slice(-2400)}</pre>}
     </div>
