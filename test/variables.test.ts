@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { demoWorkspaces, type WorkspaceVariable } from "../src/chart/samples.ts";
+import { demoWorkspaces, type WorkspaceVariable } from "../src/workspace/samples.ts";
 import { mergeShared, setMessage, toPaperboat } from "../src/paperboat/variables.ts";
 
 test("every variable is broadcast by default", () => {

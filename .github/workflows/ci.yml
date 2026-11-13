@@ -51,7 +51,7 @@ jobs:
       run:
         shell: bash
     env:
-      # the kernel and SqueroBase are private: without the token (a fork's PR) the job says so and stops
+      # the kernel, SqueroBase and SqueroPlot are private: without the token (a fork's PR) the job says so and stops
       HAS_TOKEN: ${{ secrets.DOWNSTREAM_TOKEN != '' }}
     steps:
       - if: env.HAS_TOKEN != 'true'
@@ -82,7 +82,13 @@ jobs:
         if: env.HAS_TOKEN == 'true'
         with:
           repository: paperboatlab/squero-mx-base
-          path: squero-mx-base
+          path: SqueroBase.jl
+          token: ${{ secrets.DOWNSTREAM_TOKEN }}
+      - uses: actions/checkout@v4
+        if: env.HAS_TOKEN == 'true'
+        with:
+          repository: paperboatlab/SqueroPlot.jl
+          path: SqueroPlot.jl
           token: ${{ secrets.DOWNSTREAM_TOKEN }}
       - uses: actions/setup-node@v4
         if: env.HAS_TOKEN == 'true'

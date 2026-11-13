@@ -5,7 +5,7 @@
 // `matrix` carrying its whole rows ("1 2; 3 4", what the matrix blocks parse), or, past
 // LIVE_LIMIT values, no value and a note saying why. A run puts the value where it is bound.
 import type { Variable, Variables } from "@paperboat/shared/protocol";
-import type { WorkspaceVariable } from "../chart/samples.ts";
+import type { WorkspaceVariable } from "../workspace/samples.ts";
 
 export type Source = "mx" | "paperboat";
 

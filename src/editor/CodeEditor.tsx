@@ -19,7 +19,8 @@ import {
   snippetCompletion, type Completion, type CompletionSource,
 } from "@codemirror/autocomplete";
 import { tags } from "@lezer/highlight";
-import { defineFunction, evaluate, variableFrom, type FunctionTable, type NumValue } from "../kernel/localEval.ts";
+import type { FunctionTable } from "../kernel/localEval.ts";
+import { computeLineAnswers, type AnswerSpec, type AnswerVariable } from "./answers.ts";
 import { LATEX_SYMBOLS } from "./unicode.ts";
 
 export type EditorSettings = {
@@ -210,44 +211,124 @@ const habitLint = linter((view): Diagnostic[] => {
   return out;
 });
 
-type AnswerKind = "heat" | "spark" | "dots" | "chart" | "ok" | "run" | "type";
+const FOLD_ANSWERS_WIDTH = 376;
+const UNFOLD_ANSWERS_WIDTH = 396;
 
-/** A right-hand token: the shape/value a line produced, as in the design study. */
+function foldedForWidth(width: number, prev: boolean): boolean {
+  if (width <= 0) return prev;
+  return prev ? width < UNFOLD_ANSWERS_WIDTH : width < FOLD_ANSWERS_WIDTH;
+}
+
+function sameData(a: number[] | number[][] | undefined, b: number[] | number[][] | undefined): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  if (Array.isArray(a[0]) || Array.isArray(b[0])) {
+    const ma = a as number[][];
+    const mb = b as number[][];
+    const cols = ma[0]?.length ?? 0;
+    if (cols !== (mb[0]?.length ?? 0)) return false;
+    for (let k = 0; k < 8; k++) {
+      const r = Math.min(ma.length - 1, Math.floor((k / 7) * (ma.length - 1)));
+      const c = Math.min(Math.max(0, cols - 1), Math.floor((k / 7) * Math.max(0, cols - 1)));
+      if (ma[r]?.[c] !== mb[r]?.[c]) return false;
+    }
+    return true;
+  }
+  const va = a as number[];
+  const vb = b as number[];
+  for (let k = 0; k < 8; k++) {
+    const idx = Math.min(va.length - 1, Math.floor((k / 7) * (va.length - 1)));
+    if (va[idx] !== vb[idx]) return false;
+  }
+  return true;
+}
+
+/** A right-hand token: the accurate shape, value, or figure link for a line. */
 class AnswerMarker extends GutterMarker {
   constructor(
-    private readonly text: string,
-    private readonly kind: AnswerKind,
+    private readonly spec: AnswerSpec,
     private readonly onClick?: () => void,
   ) { super(); }
-  eq(other: AnswerMarker) { return this.text === other.text && this.kind === other.kind; }
+  eq(other: AnswerMarker) {
+    return this.spec.text === other.spec.text
+      && this.spec.kind === other.spec.kind
+      && this.spec.title === other.spec.title
+      && this.spec.figureLine === other.spec.figureLine
+      && sameData(this.spec.data, other.spec.data);
+  }
   toDOM() {
     const el = document.createElement("span");
-    el.className = `cm-answer k-${this.kind}${this.onClick ? " click" : ""}`;
-    if (this.kind === "heat" || this.kind === "spark" || this.kind === "dots") {
-      const canvas = document.createElement("canvas");
-      canvas.width = 48; canvas.height = 20;
-      const g = canvas.getContext("2d")!;
-      if (this.kind === "heat") {
-        for (let x = 0; x < 24; x++) for (let y = 0; y < 10; y++) {
-          const v = (Math.sin(x * 0.6) * Math.cos(y * 0.7) + 1) / 2;
-          g.fillStyle = `hsl(${250 - v * 190}, ${60 + v * 20}%, ${20 + v * 45}%)`;
-          g.fillRect(x * 2, y * 2, 2, 2);
+    el.className = `cm-answer k-${this.spec.kind}${this.onClick ? " click" : ""}`;
+    if (this.spec.title) el.title = this.spec.title;
+
+    if (this.spec.kind === "heat" && Array.isArray(this.spec.data) && Array.isArray(this.spec.data[0])) {
+      const mat = this.spec.data as number[][];
+      const rows = mat.length;
+      const cols = mat[0]?.length ?? 0;
+      if (rows > 0 && cols > 0) {
+        let min = Infinity;
+        let max = -Infinity;
+        const rStep = Math.max(1, Math.floor(rows / 24));
+        const cStep = Math.max(1, Math.floor(cols / 24));
+        for (let r = 0; r < rows; r += rStep) {
+          for (let c = 0; c < cols; c += cStep) {
+            const v = mat[r][c];
+            if (Number.isFinite(v)) {
+              if (v < min) min = v;
+              if (v > max) max = v;
+            }
+          }
         }
-      } else if (this.kind === "spark") {
-        g.strokeStyle = "#ff5a1f"; g.lineWidth = 2;
+        if (Number.isFinite(min) && Number.isFinite(max)) {
+          const canvas = document.createElement("canvas");
+          canvas.width = 48; canvas.height = 20;
+          const g = canvas.getContext("2d")!;
+          const span = max - min;
+          for (let x = 0; x < 24; x++) {
+            const c = Math.min(cols - 1, Math.floor((x / 24) * cols));
+            for (let y = 0; y < 10; y++) {
+              const r = Math.min(rows - 1, Math.floor((y / 10) * rows));
+              const raw = mat[r]?.[c];
+              const v = Number.isFinite(raw) && span > 0 ? (raw - min) / span : 0.5;
+              g.fillStyle = `hsl(${250 - v * 190}, ${60 + v * 20}%, ${20 + v * 45}%)`;
+              g.fillRect(x * 2, y * 2, 2, 2);
+            }
+          }
+          el.append(canvas);
+        }
+      }
+    } else if (this.spec.kind === "spark" && Array.isArray(this.spec.data) && typeof this.spec.data[0] === "number") {
+      const vec = (this.spec.data as number[]).filter((v) => Number.isFinite(v));
+      if (vec.length >= 2) {
+        let min = Infinity;
+        let max = -Infinity;
+        for (const v of vec) {
+          if (v < min) min = v;
+          if (v > max) max = v;
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = 48; canvas.height = 20;
+        const g = canvas.getContext("2d")!;
+        g.strokeStyle = "#ff5a1f";
+        g.lineWidth = 2;
         g.beginPath();
+        const span = max - min;
         for (let x = 0; x < 48; x++) {
-          const y = 10 - Math.sin(x * 0.25) * 7;
+          const idx = Math.min(vec.length - 1, Math.floor((x / 47) * (vec.length - 1)));
+          const norm = span > 0 ? (vec[idx] - min) / span : 0.5;
+          const y = 17 - norm * 14;
           x ? g.lineTo(x, y) : g.moveTo(x, y);
         }
         g.stroke();
-      } else {
-        g.fillStyle = "rgba(255,90,31,.85)";
-        for (let i = 0; i < 70; i++) g.fillRect((i * 37) % 48, (i * 13) % 20, 1.5, 1.5);
+        el.append(canvas);
       }
-      el.append(canvas);
     }
-    el.append(document.createTextNode(this.text));
+
+    const label = document.createElement("span");
+    label.className = "cm-answer-text";
+    label.textContent = this.spec.text;
+    el.append(label);
+
     if (this.onClick) {
       el.style.pointerEvents = "auto";
       el.addEventListener("pointerdown", (e) => e.stopPropagation());
@@ -257,96 +338,75 @@ class AnswerMarker extends GutterMarker {
   }
 }
 
-type ChartKind = "3d" | "2d";
+/** Show the figure an editor line drew into (1-based line number). */
+type OnFigure = (line: number) => void;
 
-type OnChart = (kind: ChartKind, line: string) => void;
+const answerGutter = (
+  getVars: () => readonly AnswerVariable[],
+  getFunctions: () => FunctionTable,
+  onFigure?: OnFigure,
+) => {
+  let cache: {
+    doc: EditorView["state"]["doc"];
+    vars: readonly AnswerVariable[];
+    fns: FunctionTable;
+    answers: (AnswerSpec | null)[];
+  } | null = null;
 
-const dims = (vars: Record<string, NumValue>) => {
-  const n = vars["n"];
-  return typeof n === "number" && Number.isFinite(n) ? `${n} × ${n}` : "grid";
+  const answersFor = (view: EditorView) => {
+    const doc = view.state.doc;
+    const vars = getVars();
+    const fns = getFunctions();
+    if (cache && cache.doc === doc && cache.vars === vars && cache.fns === fns) {
+      return cache.answers;
+    }
+    const lines = Array.from({ length: doc.lines }, (_, i) => doc.line(i + 1).text);
+    const answers = computeLineAnswers(lines, vars, fns);
+    cache = { doc, vars, fns, answers };
+    return answers;
+  };
+
+  return gutter({
+    class: "cm-answer-gutter",
+    side: "after",
+    lineMarker(view, line) {
+      const lineNum = view.state.doc.lineAt(line.from).number;
+      const spec = answersFor(view)[lineNum - 1];
+      if (!spec) return null;
+      const figLine = spec.figureLine;
+      return new AnswerMarker(spec, figLine !== undefined ? () => onFigure?.(figLine) : undefined);
+    },
+    initialSpacer: () => new AnswerMarker({ text: "60 × 60", kind: "heat" }),
+  });
 };
 
-/** Values and functions in scope at a line: the session plus everything above it. */
-function scopeAt(view: EditorView, from: number, base: Record<string, NumValue>, baseFunctions: FunctionTable) {
-  const vars = { ...base };
-  let functions = { ...baseFunctions };
-  const here = view.state.doc.lineAt(from).number;
-  for (let i = 1; i <= here; i++) {
-    const text = view.state.doc.line(i).text.trim();
-    const definition = defineFunction(text, functions);
-    if (definition) { functions = definition; continue; }
-    const assign = /^([A-Za-z_]\w*)\s*=\s*([\s\S]+)$/.exec(text);
-    if (!assign) continue;
-    const res = evaluate(assign[2], vars, functions);
-    if (res.ok) vars[assign[1]] = res.value;
-  }
-  return { vars, functions };
-}
-
-function answerFor(text: string, vars: Record<string, NumValue>, functions: FunctionTable, onChart?: OnChart): AnswerMarker | null {
-  const t = text.trim();
-  if (!t || t.startsWith("#")) return null;
-  if (defineFunction(t)) return new AnswerMarker("function", "type");
-  const assign = /^([A-Za-z_]\w*)\s*=\s*([\s\S]+)$/.exec(t);
-  if (assign) {
-    const res = evaluate(assign[2], vars, functions);
-    if (res.ok) {
-      const v = variableFrom(assign[1], res.value);
-      if (v.type === "Float64") return new AnswerMarker(Number.isInteger(v.value) ? "Int64" : "Float64", "type");
-      return new AnswerMarker(v.shape, v.type.startsWith("Matrix") ? "heat" : "spark");
-    }
-  }
-  if (/^sel\s*=/.test(t)) return new AnswerMarker("selection", "dots");
-  const peak = /^A\s*=\s*peaks\s*\(\s*(\d+)\s*\)/.exec(t);
-  if (peak) return new AnswerMarker(`${peak[1]} × ${peak[1]}`, "heat");
-  if (/\b(surf|mesh|imagesc)\b/.test(t)) return new AnswerMarker("→ chart", "chart", () => onChart?.("3d", t));
-  if (/\bplot\b/.test(t)) return new AnswerMarker("→ chart", "chart", () => onChart?.("2d", t));
-  if (/\bsubplot\b/.test(t)) return new AnswerMarker("subplot", "type");
-  if (/\boptimize\s*\(/.test(t)) return new AnswerMarker("→ optimize", "run");
-  if (/\bstate_space\b/.test(t)) return new AnswerMarker("→ run", "run");
-  if (/\b(colormap|view|clim)\b/.test(t)) return new AnswerMarker("ok", "ok");
-  if (/\bhypot\b/.test(t)) return new AnswerMarker(dims(vars), "spark");
-  if (/\bmeshgrid\b/.test(t)) return new AnswerMarker(dims(vars), "heat");
-  if (/^A\s*=/.test(t)) return new AnswerMarker(dims(vars), "heat");
-  return null;
-}
-
-const answerGutter = (getVars: () => Record<string, NumValue>, getFunctions: () => FunctionTable, onChart?: OnChart) => gutter({
-  class: "cm-answer-gutter",
-  side: "after",
-  lineMarker(view, line) {
-    const scope = scopeAt(view, line.from, getVars(), getFunctions());
-    return answerFor(view.state.doc.lineAt(line.from).text, scope.vars, scope.functions, onChart);
-  },
-  initialSpacer: () => new AnswerMarker("512 × 512", "heat"),
-});
-
 export function CodeEditor({
-  value, file, onChange, settings, appTheme, variables, functions, onChart, onRunSelection, onPos,
+  value, file, onChange, settings, appTheme, variables, functions, onFigure, onRunSelection, onPos,
 }: {
   value: string;
   file: string;
   onChange: (value: string) => void;
   settings: EditorSettings;
   appTheme: "light" | "dark";
-  variables: readonly { name: string; type: string; value?: NumValue }[];
+  variables: readonly AnswerVariable[];
   functions?: FunctionTable;
-  onChart?: OnChart;
+  onFigure?: OnFigure;
   onRunSelection?: (code: string, mode: "cell" | "line" | "selection") => void;
   onPos?: (pos: { line: number; col: number; selected: number }) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
+  const answersFolded = useRef(false);
   const change = useRef(onChange);
   change.current = onChange;
   const vars = useRef(variables);
   vars.current = variables;
   const fns = useRef(functions ?? {});
   fns.current = functions ?? {};
-  const varMap = () => Object.fromEntries(vars.current.map((v) => [v.name, v.value ?? 0]));
+  const varList = () => vars.current;
   const fnMap = () => fns.current;
-  const chart = useRef(onChart);
-  chart.current = onChart;
+  const figureLink = useRef(onFigure);
+  figureLink.current = onFigure;
   const runSelection = useRef(onRunSelection);
   runSelection.current = onRunSelection;
   const pos = useRef(onPos);
@@ -432,7 +492,16 @@ export function CodeEditor({
   const resolvedTheme = settings.theme === "ui" ? appTheme : settings.theme;
   const themeExt = () => [resolvedTheme === "dark" ? darkTheme : lightTheme, syntaxHighlighting(resolvedTheme === "dark" ? darkHighlight : lightHighlight)];
 
+  const answersExtension = (folded: boolean) => (
+    folded ? [] : answerGutter(varList, fnMap, (line) => figureLink.current?.(line))
+  );
+
   useEffect(() => {
+    const container = host.current!;
+    const initialFolded = foldedForWidth(container.clientWidth, false);
+    answersFolded.current = initialFolded;
+    container.dataset.answersFolded = String(initialFolded);
+
     const instance = new EditorView({
       state: EditorState.create({
         doc: value,
@@ -460,7 +529,7 @@ export function CodeEditor({
           compartments.auto.of(settings.autocomplete ? autocompleteExt() : []),
           compartments.brackets.of(settings.brackets ? bracketExt() : []),
           compartments.lint.of(settings.lint ? lintExt() : []),
-          compartments.answers.of(answerGutter(varMap, fnMap, (kind, line) => chart.current?.(kind, line))),
+          compartments.answers.of(answersExtension(initialFolded)),
           cellSections,
           EditorView.updateListener.of((u) => {
             if (u.docChanged) change.current(u.state.doc.toString());
@@ -472,13 +541,28 @@ export function CodeEditor({
           }),
         ],
       }),
-      parent: host.current!,
+      parent: container,
     });
     view.current = instance;
+
+    const resize = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width ?? container.clientWidth;
+      const next = foldedForWidth(width, answersFolded.current);
+      if (next === answersFolded.current) return;
+      answersFolded.current = next;
+      container.dataset.answersFolded = String(next);
+      instance.dispatch({ effects: compartments.answers.reconfigure(answersExtension(next)) });
+    });
+    resize.observe(container);
+
     const first = instance.state.selection.main;
     const firstLine = instance.state.doc.lineAt(first.head);
     pos.current?.({ line: firstLine.number, col: first.head - firstLine.from + 1, selected: first.to - first.from });
-    return () => { instance.destroy(); view.current = null; };
+    return () => {
+      resize.disconnect();
+      instance.destroy();
+      view.current = null;
+    };
     // `key={file}` in the parent remounts for another document.
   }, []);
 
@@ -498,7 +582,7 @@ export function CodeEditor({
 
   useEffect(() => {
     view.current?.dispatch({
-      effects: compartments.answers.reconfigure(answerGutter(varMap, fnMap, (kind, line) => chart.current?.(kind, line))),
+      effects: compartments.answers.reconfigure(answersExtension(answersFolded.current)),
     });
   }, [variables, functions]);
 

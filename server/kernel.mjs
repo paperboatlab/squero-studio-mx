@@ -2,18 +2,16 @@
 // stdio. The kernel normally runs in the pinned container with --network=none; SQUERO_JULIA=native
 // runs a local checkout instead. Shared by the Vite dev server and bin/squero-mx.
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
 
-export const KERNEL_IMAGE = process.env.SQUERO_KERNEL_IMAGE ?? "squero-julia-kernel:1.11.6-r1";
+export const KERNEL_IMAGE = process.env.SQUERO_KERNEL_IMAGE ?? "squero-julia-kernel:1.11.6-r2";
 export const KERNEL_PROTOCOL = 0;
 
-// SqueroBase is the verbs' only definition; the kernel loads this checkout. It is mounted read
-// only into the container, or passed as SQUERO_BASE to a native julia.
+// SqueroBase (session, Paperboat bridges) and SqueroPlot (figures) are the kernel project's own
+// dependencies: path deps of the sibling checkouts natively, baked into the image otherwise.
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-export const SQUERO_BASE = process.env.SQUERO_BASE ?? path.resolve(HERE, "../../squero-mx-base");
 // The kernel checkout beside this app (a sibling checkout, or the pkg store's), not beside
 // whatever folder the launcher was started from.
 const KERNEL_REPO = process.env.SQUERO_KERNEL_REPO ?? path.resolve(HERE, "../../squero-julia-kernel");
@@ -35,7 +33,7 @@ export function kernelRuntime() {
 export function kernelCommand({ workspace, image = KERNEL_IMAGE, runtime = kernelRuntime() } = {}) {
   if (runtime === "native") {
     const repo = KERNEL_REPO;
-    const env = { SQUERO_BASE };
+    const env = {};
     if (workspace) {
       // The workspace project is a secondary environment: scripts can `using` a package the
       // julia up panel added, while the kernel's own dependencies still come from its repo.
@@ -57,11 +55,6 @@ export function kernelCommand({ workspace, image = KERNEL_IMAGE, runtime = kerne
       // packages the user adds. The second load path entry makes those packages visible.
       args.push("-e", "JULIA_DEPOT_PATH=/workspace/.julia:/home/kernel/.julia");
       args.push("-e", "JULIA_LOAD_PATH=@:/workspace:@stdlib");
-    }
-    if (existsSync(SQUERO_BASE)) {
-      // `:z` relabels the read-only mount for SELinux hosts; docker ignores the extra option.
-      const mount = runtime === "podman" ? `${SQUERO_BASE}:/opt/squero-mx-base:ro,z` : `${SQUERO_BASE}:/opt/squero-mx-base:ro`;
-      args.push("-v", mount, "-e", "SQUERO_BASE=/opt/squero-mx-base");
     }
     args.push(image);
     return { cmd: runtime, args, runtime };
@@ -97,7 +90,8 @@ function bridge(socket, options) {
         socket.send(line);
         let message;
         try { message = JSON.parse(line); } catch { continue; }
-        const bytes = Number(message?.array?.bytes ?? 0);
+        // A matrix (`array`) or a figure artifact (`artifact`) is followed by its raw frame.
+        const bytes = Number(message?.array?.bytes ?? message?.artifact?.bytes ?? 0);
         if (bytes > 0) { mode = "frame"; need = bytes; }
         continue;
       }

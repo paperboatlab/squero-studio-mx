@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { demoWorkspaces } from "../src/chart/samples.ts";
+import { demoWorkspaces } from "../src/workspace/samples.ts";
 import { workspaceMat } from "../src/workspace/mat.ts";
 
 test("MAT v4 has a double header, a NUL name and column-major data", async () => {

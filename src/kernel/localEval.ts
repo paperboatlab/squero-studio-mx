@@ -1,7 +1,7 @@
 // A small, local Julia-like evaluator for the console before the kernel is attached.
 // It handles numbers, vectors, matrices, arithmetic, ranges, common math functions and the
 // MATLAB-style builders; anything else is clearly queued for squero-kernel/0.
-import type { WorkspaceVariable } from "../chart/samples.ts";
+import type { WorkspaceVariable } from "../workspace/samples.ts";
 
 export type NumValue = number | number[] | number[][];
 

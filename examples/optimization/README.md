@@ -20,5 +20,6 @@ options = (display = "iter", tol = 1e-8, max_iter = 500)
 - `"final"` prints one summary line with the objective, iterations and `x`
 - `"off"` prints nothing
 
-Each script also plots its objective (`surf`) and its optimum (`scatter`), and keeps the result
-in `x_opt`/`f_opt`.
+When a problem has two variables, the app asks the kernel to draw Paperboat's grid of the objective as a SqueroPlot
+3D surface with the optimum marked, and keeps it in the figure history. Each script also draws its own
+view of the problem with SqueroPlot (constraints, levels, the answer), and the app binds `x_opt`/`f_opt`.

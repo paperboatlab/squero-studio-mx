@@ -32,7 +32,7 @@ function mxServer(): Plugin {
 
 export default defineConfig({
   plugins: [react(), mxServer()],
-  resolve: { dedupe: ["react", "react-dom", "three"] },
+  resolve: { dedupe: ["react", "react-dom", "three", "uplot"] },
   build: { chunkSizeWarningLimit: 900 },
   server: { port: 3049, fs: { allow: [".."] } },
   preview: { port: 3049 },
