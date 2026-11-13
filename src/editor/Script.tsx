@@ -3,9 +3,10 @@ import { useRef, useState } from "react";
 import { useDismiss, useFocusReturn } from "@paperboat/shared/components";
 import { CodeEditor, type EditorSettings } from "./CodeEditor.tsx";
 import type { FunctionTable } from "../kernel/localEval.ts";
+import type { AnswerVariable } from "./answers.ts";
 
 export function Script({
-  file, code, onChange, onRun, dirty, onSave, settings, onSettings, appTheme, variables, functions, onChart, onRunSelection, lastRun,
+  file, code, onChange, onRun, dirty, onSave, settings, onSettings, appTheme, variables, functions, onFigure, onRunSelection, lastRun,
 }: {
   file: string;
   code: string;
@@ -16,9 +17,10 @@ export function Script({
   settings: EditorSettings;
   onSettings: (settings: EditorSettings) => void;
   appTheme: "light" | "dark";
-  variables: readonly { name: string; type: string }[];
+  variables: readonly AnswerVariable[];
   functions?: FunctionTable;
-  onChart?: (kind: "3d" | "2d", line: string) => void;
+  /** `→ figure`: show the figure this line (1-based) drew into. */
+  onFigure?: (line: number) => void;
   onRunSelection?: (code: string, mode: "cell" | "line" | "selection") => void;
   lastRun?: { time: number; ms: number; lines: number; mode: string } | null;
 }) {
@@ -87,7 +89,7 @@ export function Script({
       )}
 
       <div className="code">
-        <CodeEditor key={file} value={code} file={file} onChange={onChange} settings={settings} appTheme={appTheme} variables={variables} functions={functions} onChart={onChart} onRunSelection={onRunSelection} onPos={setPos} />
+        <CodeEditor key={file} value={code} file={file} onChange={onChange} settings={settings} appTheme={appTheme} variables={variables} functions={functions} onFigure={onFigure} onRunSelection={onRunSelection} onPos={setPos} />
       </div>
       {!file && <div className="editor-empty">Open the workspace folder, or create a script with +.</div>}
       <div className="runstrip">

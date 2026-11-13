@@ -1,6 +1,6 @@
 // A tiny MAT v4 writer for the numeric workspace. MATLAB and Octave open v4 files directly;
 // no kernel round trip and no library. Only double matrices, which is what the workspace has.
-import type { WorkspaceVariable } from "../chart/samples.ts";
+import type { WorkspaceVariable } from "../workspace/samples.ts";
 
 const enc = new TextEncoder();
 

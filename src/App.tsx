@@ -1,18 +1,21 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { GlideBrackets, MenuBar } from "@paperboat/shared/components";
 import type { Command } from "@paperboat/shared";
-import type { Variable } from "@paperboat/shared/protocol";
+import type { ClientMsg, Variable } from "@paperboat/shared/protocol";
+import { bufferOf } from "./plot/export.ts";
+import { addEntries, entryForLine, entryFrom, entryLabel, MIME, type FigureEntry } from "./plot/history.ts";
+import { unpackScene } from "./plot/scene.ts";
 import { FigureView } from "./plot/FigureView.tsx";
-import type { Figure } from "./plot/figure.ts";
-import { captureFigure, downloadBlob, encodeFigure, figureFileBase, zipFiles, type FigureFormat, FIGURE_FORMATS } from "./plot/export.ts";
-import type { WorkspaceVariable } from "./chart/samples.ts";
+import { ExportModal } from "./plot/ExportModal.tsx";
+import { FIGURE_FORMATS, type FigureFormat, type FigureMeta, type ViewState } from "./kernel/protocol.ts";
+import type { WorkspaceVariable } from "./workspace/samples.ts";
 import { Script } from "./editor/Script.tsx";
 import { DEFAULT_EDITOR_SETTINGS, type EditorSettings } from "./editor/CodeEditor.tsx";
 import { SqueroLogo } from "./shell/SqueroLogo.tsx";
 import { AboutModal } from "./shell/AboutModal.tsx";
 import { probeKernel, type KernelInfo } from "./kernel/probe.ts";
-import { evalCode, resetKernel, whois, withArrays } from "./kernel/client.ts";
-import { figureFromCharts, figureFromOptimization, type ChartSpec, type OptimizationResult } from "./plot/spec.ts";
+import { evalCode, figureArtifact, figureScene, plotOptimum, resetKernel, whois, withArrays } from "./kernel/client.ts";
+import { solveProblem } from "./paperboat/optimize.ts";
 import { FRONTEND_VERSION, JULIA_VERSION, KERNEL_PROTOCOL, KERNEL_VERSION, PAPERBOAT_PROTOCOL } from "./version.ts";
 import { FilePanel, type FilePanelHandle } from "./files/FilePanel.tsx";
 import { KernelPanel } from "./shell/KernelPanel.tsx";
@@ -30,7 +33,6 @@ type RightTab = "workspace" | "figures";
 
 /** The workspace lives on disk; this is the folder the picker starts from and the default. */
 export const DEFAULT_WORKSPACE = "~/Documents/paperboat/squero-studio/mx";
-type FigureEntry = { id: string; source: string; time: number; figure: Figure };
 type Line = { level: "info" | "ok" | "warn" | "err"; text: string; cmd?: boolean };
 
 function TypeIcon({ type }: { type: string }) {
@@ -57,7 +59,10 @@ export function App() {
   const [activeFigureId, setActiveFigureId] = useState<string | null>(null);
   const [figureSel, setFigureSel] = useState<string[]>([]);
   const [figureAnchor, setFigureAnchor] = useState<string | null>(null);
-  const [exportFormat, setExportFormat] = useState<FigureFormat>("png");
+  const [exportFormat, setExportFormat] = useState<FigureFormat>("svg");
+  const [exportOpen, setExportOpen] = useState(false);
+  const [viewStates, setViewStates] = useState<Record<string, { state: ViewState; modified: boolean }>>({});
+  const [resetSeq, setResetSeq] = useState(0);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [kernelOpen, setKernelOpen] = useState(false);
   const [kernelInfo, setKernelInfo] = useState<KernelInfo | null>(null);
@@ -66,8 +71,7 @@ export function App() {
   const [filesHidden, setFilesHidden] = useState(false);
   const [rightHidden, setRightHidden] = useState(false);
   const [figureFocus, setFigureFocus] = useState<string | null>(null);
-  const stageRef = useRef<HTMLDivElement>(null);
-  const [rightTab, setRightTab] = useState<RightTab>("workspace");
+    const [rightTab, setRightTab] = useState<RightTab>("workspace");
   const [files, setFiles] = useState<Record<string, string>>({});
   const [folders, setFolders] = useState<string[]>([]);
   const [selectedFile, setSelectedFile] = useState("");
@@ -375,44 +379,108 @@ export function App() {
 
   const timeOf = (time: number) => new Date(time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
-  const addFigure = (figure: Figure, source: string) => {
-    const entry: FigureEntry = {
-      id: typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
-      source,
-      time: Date.now(),
-      figure,
-    };
-    setFigures((prev) => [entry, ...prev]);
-    setActiveFigureId(entry.id);
-    setFigureSel([entry.id]);
-    setFigureAnchor(entry.id);
+  /** The stored artifacts of one figure version, copied out of the kernel into the history. */
+  const fetchArtifacts = async (entry: FigureEntry, formats: readonly FigureFormat[]) => {
+    const got: Partial<Record<FigureFormat, Uint8Array>> = {};
+    for (const format of formats) {
+      if (entry.artifacts[format]) continue;
+      const reply = await figureArtifact(entry.figure, entry.version, format, format === "svg" || format === "png");
+      if (reply.ok && reply.bytes) got[format] = reply.bytes;
+    }
+    return got;
+  };
+
+  const handleViewStateChange = useCallback((key: string, state: ViewState | null, modified: boolean) => {
+    setViewStates((prev) => {
+      if (!state || !modified) {
+        if (!(key in prev)) return prev;
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      }
+      const cur = prev[key];
+      if (cur && cur.modified === modified && cur.state === state) return prev;
+      return { ...prev, [key]: { state, modified } };
+    });
+  }, []);
+
+  const saveEntryArtifacts = useCallback((key: string, got: Partial<Record<FigureFormat, Uint8Array>>) => {
+    setFigures((prev) => prev.map((one) => (one.key === key ? { ...one, artifacts: { ...one.artifacts, ...got } } : one)));
+  }, []);
+
+  /** New history entries for the figures a run (or the optimizer) drew: scene + SVG preview first, then all export formats. */
+  const addFigures = async (metas: FigureMeta[], source: string) => {
+    for (const meta of metas) if (meta.error) say(`figure ${meta.id}: ${meta.error}`, "warn");
+    const fresh = metas.filter((meta) => !meta.error && meta.version).map((meta) => entryFrom(meta, source));
+    if (fresh.length === 0) return;
+    for (const entry of fresh) {
+      const [got, scReply] = await Promise.all([
+        fetchArtifacts(entry, ["svg"]),
+        figureScene(entry.figure, entry.version),
+      ]);
+      entry.artifacts = got;
+      if (got.svg) entry.preview = URL.createObjectURL(new Blob([bufferOf(got.svg)], { type: MIME.svg }));
+      if (scReply.ok && scReply.scene) entry.scene = unpackScene(scReply.scene, scReply.bytes);
+    }
+    setFigures((prev) => addEntries(prev, fresh));
+    const shown = fresh[fresh.length - 1].key;
+    setActiveFigureId(shown);
+    setFigureSel([shown]);
+    setFigureAnchor(shown);
     setFigureFocus(null);
     setChartHidden(false);
+    // The rest of the formats, so history exports without the kernel (a reset, a restart).
+    for (const entry of fresh) {
+      const got = await fetchArtifacts(entry, FIGURE_FORMATS);
+      setFigures((prev) => prev.map((one) => (one.key === entry.key ? { ...one, artifacts: { ...one.artifacts, ...got } } : one)));
+    }
+  };
+
+  const dropPreviews = (gone: FigureEntry[]) => {
+    for (const entry of gone) if (entry.preview) URL.revokeObjectURL(entry.preview);
   };
 
   const removeFigure = (id: string) => {
-    const next = figures.filter((f) => f.id !== id);
+    const next = figures.filter((f) => f.key !== id);
+    dropPreviews(figures.filter((f) => f.key === id));
     setFigures(next);
     setFigureSel((prev) => prev.filter((one) => one !== id));
-    if (activeFigureId === id) setActiveFigureId(next[0]?.id ?? null);
+    setViewStates((prev) => {
+      if (!(id in prev)) return prev;
+      const copy = { ...prev };
+      delete copy[id];
+      return copy;
+    });
+    if (activeFigureId === id) setActiveFigureId(next[0]?.key ?? null);
     setFigureAnchor(null);
   };
 
   const removeSelectedFigures = () => {
     if (figureSel.length === 0) return;
     const gone = new Set(figureSel);
-    const next = figures.filter((f) => !gone.has(f.id));
+    const next = figures.filter((f) => !gone.has(f.key));
+    dropPreviews(figures.filter((f) => gone.has(f.key)));
     setFigures(next);
     setFigureSel([]);
+    setViewStates((prev) => {
+      const copy = { ...prev };
+      let changed = false;
+      for (const k of gone) {
+        if (k in copy) { delete copy[k]; changed = true; }
+      }
+      return changed ? copy : prev;
+    });
     setFigureAnchor(null);
-    if (activeFigureId && gone.has(activeFigureId)) setActiveFigureId(next[0]?.id ?? null);
+    if (activeFigureId && gone.has(activeFigureId)) setActiveFigureId(next[0]?.key ?? null);
     say(`closed ${gone.size} figure${gone.size === 1 ? "" : "s"}`, "warn");
   };
 
   const clearFigures = () => {
     if (figures.length === 0) return;
+    dropPreviews(figures);
     setFigures([]);
     setFigureSel([]);
+    setViewStates({});
     setFigureAnchor(null);
     setActiveFigureId(null);
     setFigureFocus(null);
@@ -423,11 +491,11 @@ export function App() {
     setChartHidden(false);
     if (range) {
       const from = figureAnchor ?? activeFigureId ?? id;
-      const a = figures.findIndex((f) => f.id === from);
-      const b = figures.findIndex((f) => f.id === id);
+      const a = figures.findIndex((f) => f.key === from);
+      const b = figures.findIndex((f) => f.key === id);
       if (a >= 0 && b >= 0) {
         const [lo, hi] = a < b ? [a, b] : [b, a];
-        setFigureSel(figures.slice(lo, hi + 1).map((f) => f.id));
+        setFigureSel(figures.slice(lo, hi + 1).map((f) => f.key));
       } else {
         setFigureSel([id]);
       }
@@ -451,43 +519,27 @@ export function App() {
     setActiveFigureId(id);
   };
 
-  const settle = () => new Promise<void>((resolve) => {
-    requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 80)));
-  });
-
-  /** Export the selected figures; switching the stage lets each one render before capture. */
-  const exportFigures = async () => {
+  const selectedExportEntries = useMemo(() => {
     const ids = figureSel.length ? figureSel : activeFigureId ? [activeFigureId] : [];
-    if (ids.length === 0 || !stageRef.current) return;
-    const before = activeFigureId;
-    const files: { name: string; blob: Blob }[] = [];
-    for (const id of ids) {
-      const entry = figures.find((f) => f.id === id);
-      if (!entry) continue;
-      setActiveFigureId(id);
-      await settle();
-      const host = stageRef.current;
-      const canvas = host ? captureFigure(host) : null;
-      if (!canvas) continue;
-      const title = `${baseName(entry.source)} · ${entry.figure.rows}×${entry.figure.cols}`;
-      files.push({ name: `${figureFileBase(entry.source, files.length, ids.length)}.${exportFormat}`, blob: encodeFigure(canvas, exportFormat, title) });
-    }
-    setActiveFigureId(before);
-    if (files.length === 0) { say("nothing to export", "warn"); return; }
-    if (files.length === 1) downloadBlob(files[0].blob, files[0].name);
-    else downloadBlob(await zipFiles(files), "mx-figures.zip");
-    say(`exported ${files.length} figure${files.length === 1 ? "" : "s"} · ${exportFormat.toUpperCase()}`, "ok");
+    return ids.map((id) => figures.find((f) => f.key === id)).filter((f): f is FigureEntry => !!f);
+  }, [activeFigureId, figureSel, figures]);
+
+  /** Open the Export preview dialog (defaults to scripted framing & script size). */
+  const exportFigures = () => {
+    if (selectedExportEntries.length === 0) return;
+    setExportOpen(true);
   };
 
-  const focusLine = (line: string) => {
-    const match = figures.find((f) => f.figure.tiles.some((t) => t.title === line));
+  /** `→ figure` in the editor: show the figure that line drew into. */
+  const focusLine = (line: number) => {
+    const match = entryForLine(figures, selectedFile, line);
     if (!match) { say("run the script to create this figure", "warn"); return; }
-    setActiveFigureId(match.id);
-    setFigureSel([match.id]);
-    setFigureAnchor(match.id);
-    setFigureFocus(line);
+    setActiveFigureId(match.key);
+    setFigureSel([match.key]);
+    setFigureAnchor(match.key);
+    setFigureFocus(match.key);
     setChartHidden(false);
-    say(`chart → ${line}`, "ok");
+    say(`figure → ${entryLabel(match)}`, "ok");
   };
 
   const clearWorkspace = () => {
@@ -537,41 +589,29 @@ export function App() {
     setScratch("");
   };
 
-  /** One problem to the Paperboat solver, over the launcher's bridge. */
-  const solveProblem = async (problem: unknown): Promise<OptimizationResult> => {
-    try {
-      const response = await fetch("/__mx/optimize", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ problem, grid: 41 }),
-      });
-      return (await response.json()) as OptimizationResult;
-    } catch (error) {
-      return { ok: false, error: `optimize bridge: ${String((error as Error).message ?? error)}` };
-    }
-  };
-
   /**
-   * The kernel path: Julia evaluates the script, SqueroBase records the specs, the app renders
-   * them, and Paperboat solves the problems. Nothing here parses the source or solves.
+   * The kernel path: Julia evaluates the script; SqueroPlot draws its figures and the kernel stores
+   * the changed ones; SqueroBase queues problems and runs, which Paperboat solves and simulates.
+   * Nothing here parses the source, draws or solves.
    */
   const runCodeViaKernel = async (code: string, mode: "cell" | "line" | "selection" | "file") => {
     const startedAt = performance.now();
+    const source = selectedFile;
     const count = code.split("\n").filter((line) => line.trim()).length;
-    say(mode === "file" ? `run ${selectedFile || "script"}` : `run ${mode} · ${count} line${count === 1 ? "" : "s"}`, "info");
+    say(mode === "file" ? `run ${source || "script"}` : `run ${mode} · ${count} line${count === 1 ? "" : "s"}`, "info");
     const reply = await evalCode(code);
     for (const line of (reply.stdout ?? "").split("\n")) {
       if (line.trim()) say(line);
     }
     // The kernel already applied `clear` between statements; the workspace follows `whos`.
+    // Neither `clear` nor `clc` touches the figure history.
     for (const event of reply.events ?? []) {
       if (event.type === "clc") setLines([]);
       else if (event.type === "clear" && !event.names?.length) setFunctions({});
     }
     if (!reply.ok) say(reply.error ?? "kernel error", "err");
 
-    const charts = figureFromCharts(reply.charts as ChartSpec[]);
-    if (charts) addFigure(charts, selectedFile);
+    if (reply.figures?.length) await addFigures(reply.figures, source);
 
     let results: WorkspaceVariable[] = [];
     for (const problem of reply.problems ?? []) {
@@ -584,11 +624,19 @@ export function App() {
       const values = (solved.x ?? []).map((value) => value.toFixed(4)).join(", ");
       const level = solved.status === "solved" ? "ok" : "warn";
       say(`optimization: ${solved.kind} ${solved.status} · objective ${(solved.objective ?? 0).toFixed(6)} · x = [${values}]`, level);
-      if (solved.x?.length === 2) {
-        results = [variableFrom("x_opt", solved.x), variableFrom("f_opt", solved.objective ?? 0)];
-        const figure = figureFromOptimization(solved);
-        if (figure) addFigure(figure, selectedFile);
+      if (solved.x?.length) results = [variableFrom("x_opt", solved.x), variableFrom("f_opt", solved.objective ?? 0)];
+      if (solved.x?.length === 2 && solved.grid) {
+        // A normal SqueroPlot 3D surface with the optimum marked, registered in the history.
+        const drawn = await plotOptimum(solved, `${solved.kind ?? "opt"} optimum (${solved.x.map((v) => v.toFixed(3)).join(", ")})`);
+        if (drawn.ok && drawn.figure) await addFigures([drawn.figure], source);
+        else say(drawn.error ?? "could not draw the optimum", "warn");
       }
+    }
+
+    // Simulation requests go to every attached Paperboat backend; the run happens there.
+    for (const run of reply.runs ?? []) {
+      const sent = link.current?.send(run as ClientMsg) ?? 0;
+      say(sent ? `simulate → ${sent} Paperboat backend${sent === 1 ? "" : "s"}` : "simulate: no Paperboat backend is attached", sent ? "ok" : "warn");
     }
 
     const after = await whois();
@@ -732,7 +780,7 @@ export function App() {
     if (!currentVars.some((v) => v.name === selectedVar)) setSelectedVar(currentVars[0]?.name ?? "");
   }, [currentVars, selectedVar]);
 
-  const activeFigure = figures.find((f) => f.id === activeFigureId) ?? figures[0] ?? null;
+  const activeFigure = figures.find((f) => f.key === activeFigureId) ?? figures[0] ?? null;
   const shownVars = rows.filter((r) => r.source === "mx" && `${r.name} ${r.shape} ${r.type}`.toLowerCase().includes(varQuery.toLowerCase()));
   const active = rows.filter((r) => r.shared).length;
 
@@ -875,9 +923,9 @@ export function App() {
         settings={editor}
         onSettings={setEditor}
         appTheme={appTheme}
-        variables={workspace.map((v) => ({ name: v.name, type: v.type, value: v.value ?? v.preview }))}
+        variables={workspace}
         functions={functions}
-        onChart={(_kind, line) => focusLine(line)}
+        onFigure={focusLine}
         onRunSelection={runCode}
         lastRun={lastRun}
       />
@@ -894,29 +942,54 @@ export function App() {
 
       <main className="stage">
         <div className="tabs">
-          <b>{activeFigure ? baseName(activeFigure.source) : "figures"}</b>
+          <b>{activeFigure ? entryLabel(activeFigure) : "figures"}</b>
           <span className="tag">
             {activeFigure
-              ? `${timeOf(activeFigure.time)} · ${activeFigure.figure.rows === 1 && activeFigure.figure.cols === 1 ? "" : `${activeFigure.figure.rows}×${activeFigure.figure.cols} · `}${activeFigure.figure.tiles.length} plot${activeFigure.figure.tiles.length === 1 ? "" : "s"}`
+              ? `${baseName(activeFigure.source)} · ${timeOf(activeFigure.time)} · ${activeFigure.width}×${activeFigure.height} · ${activeFigure.plots} plot${activeFigure.plots === 1 ? "" : "s"}`
               : "run a script or open a figure"}
           </span>
+          {activeFigure && viewStates[activeFigure.key]?.modified ? (
+            <>
+              <span className="tag stage-mod">modified</span>
+              <button
+                type="button"
+                className="key small stage-btn"
+                onClick={() => setResetSeq((n) => n + 1)}
+                title="Reset interactive stage back to scripted view"
+              >
+                Reset view
+              </button>
+            </>
+          ) : null}
           <span className="sp" />
+          {activeFigure ? (
+            <button
+              type="button"
+              className="key small stage-btn"
+              onClick={() => setExportOpen(true)}
+              title="Export figure with preview (SVG, PDF, EPS, PNG, HTML)"
+            >
+              Export…
+            </button>
+          ) : null}
           <button
             className="key small stage-hide"
-            onClick={() => (activeFigure ? removeFigure(activeFigure.id) : setChartHidden(true))}
+            onClick={() => (activeFigure ? removeFigure(activeFigure.key) : setChartHidden(true))}
             title={activeFigure ? "Close figure" : "Hide chart"}
             aria-label={activeFigure ? "Close figure" : "Hide chart"}
           >
             ×
           </button>
         </div>
-        <div className={`stage-body${activeFigure ? "" : " empty"}`} ref={stageRef}>
+        <div className={`stage-body${activeFigure ? "" : " empty"}`}>
           {activeFigure ? (
-            <FigureView figure={activeFigure.figure} focus={figureFocus} />
+            <div className={`figure-stage-wrap${figureFocus === activeFigure.key ? " focus" : ""}`}>
+              <FigureView entry={activeFigure} resetSeq={resetSeq} onViewStateChange={handleViewStateChange} />
+            </div>
           ) : (
             <div className="stage-empty">
               <p>No figure yet.</p>
-              <span>Run a script with <span className="mono">plot</span> or <span className="mono">surf</span>, or open the Figures tab.</span>
+              <span>Run a script that makes a <span className="mono">Figure</span> (SqueroPlot), or open the Figures tab.</span>
             </div>
           )}
         </div>
@@ -1009,7 +1082,7 @@ export function App() {
             className="tabbody figtab"
             onKeyDown={(e) => {
               if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); removeSelectedFigures(); }
-              else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") { e.preventDefault(); setFigureSel(figures.map((f) => f.id)); }
+              else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") { e.preventDefault(); setFigureSel(figures.map((f) => f.key)); }
               else if (e.key === "Escape") { setFigureSel(activeFigureId ? [activeFigureId] : []); }
             }}
           >
@@ -1019,8 +1092,8 @@ export function App() {
                   <button key={format} className={exportFormat === format ? "on" : ""} onClick={() => setExportFormat(format)} aria-pressed={exportFormat === format}>{format}</button>
                 ))}
               </div>
-              <button className="key small" onClick={() => void exportFigures()} disabled={figureSel.length === 0 && !activeFigureId}>
-                Export
+              <button className="key small" onClick={exportFigures} disabled={selectedExportEntries.length === 0}>
+                Export…
               </button>
               <span className="sp" />
               <span className="tag">{figureSel.length ? `${figureSel.length} selected` : "no selection"}</span>
@@ -1028,33 +1101,33 @@ export function App() {
             <div className="figlist" role="listbox" aria-multiselectable="true" aria-label="Figures">
               {figures.map((f) => (
                 <div
-                  className={`figrow${f.id === activeFigureId ? " on" : ""}${figureSel.includes(f.id) ? " sel" : ""}`}
-                  key={f.id}
+                  className={`figrow${f.key === activeFigureId ? " on" : ""}${figureSel.includes(f.key) ? " sel" : ""}`}
+                  key={f.key}
                   role="option"
-                  aria-selected={figureSel.includes(f.id)}
+                  aria-selected={figureSel.includes(f.key)}
                   tabIndex={0}
-                  title={f.source}
-                  onClick={(e) => selectFigure(f.id, e.metaKey || e.ctrlKey, e.shiftKey)}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectFigure(f.id, e.metaKey || e.ctrlKey, e.shiftKey); } }}
+                  title={`${f.source} · ${f.figure}@${f.version}`}
+                  onClick={(e) => selectFigure(f.key, e.metaKey || e.ctrlKey, e.shiftKey)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectFigure(f.key, e.metaKey || e.ctrlKey, e.shiftKey); } }}
                 >
-                  <span className="figmark">{f.figure.rows === 1 && f.figure.cols === 1 ? "plot" : `${f.figure.rows}×${f.figure.cols}`}</span>
+                  {f.preview ? <img className="figthumb" src={f.preview} alt="" /> : <span className="figmark">plot</span>}
                   <div className="figmeta">
-                    <b>{baseName(f.source)}</b>
-                    <span>{timeOf(f.time)} · {f.figure.tiles.length} plot{f.figure.tiles.length === 1 ? "" : "s"}</span>
+                    <b>{entryLabel(f)}</b>
+                    <span>{baseName(f.source)} · {timeOf(f.time)} · {f.plots} plot{f.plots === 1 ? "" : "s"}</span>
                   </div>
                   <button
                     className="figx"
                     type="button"
-                    aria-label={`Close ${f.source}`}
+                    aria-label={`Close ${entryLabel(f)}`}
                     title="Close figure"
                     onPointerDown={(e) => e.stopPropagation()}
-                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); removeFigure(f.id); }}
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); removeFigure(f.key); }}
                   >
                     <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M4 4l6 6M10 4l-6 6" /></svg>
                   </button>
                 </div>
               ))}
-              {figures.length === 0 && <p className="hint">Run a script with <span className="mono">plot</span> or <span className="mono">surf</span>; each run adds a figure here.</p>}
+              {figures.length === 0 && <p className="hint">Run a script that draws with SqueroPlot; each figure that changed adds an entry here.</p>}
             </div>
             {figures.length > 0 && <p className="hint">Ctrl/⌘ click adds · Shift selects a range · Delete closes · exports the selection, or the shown figure.</p>}
           </div>
@@ -1114,6 +1187,16 @@ export function App() {
 
       {aboutOpen && <AboutModal status={status} onClose={() => setAboutOpen(false)} />}
       {kernelOpen && <KernelPanel kernel={kernelInfo} onClose={() => setKernelOpen(false)} onSay={say} />}
+      {exportOpen && selectedExportEntries.length > 0 && (
+        <ExportModal
+          entries={selectedExportEntries}
+          initialFormat={exportFormat}
+          viewStates={viewStates}
+          onSaveArtifacts={saveEntryArtifacts}
+          onSay={say}
+          onClose={() => setExportOpen(false)}
+        />
+      )}
     </div>
   );
 }

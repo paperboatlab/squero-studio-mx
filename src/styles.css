@@ -211,8 +211,9 @@ h2, p { margin: 0; }
 /* The right-hand answer tokens from the design study. */
 .cm-answer-gutter { border-left: 1px solid rgb(255 255 255 / .06); }
 .cm-answer-gutter .cm-gutterElement { display: flex; align-items: center; justify-content: flex-end; padding: 0 8px 0 10px; }
-.cm-answer { display: inline-flex; align-items: center; gap: 5px; height: 16px; padding: 0 5px; border: 1px solid rgb(255 255 255 / .14); border-radius: 3px; background: rgb(255 255 255 / .04); color: #9d9d97; font: 400 9.5px / 16px var(--font-mono); white-space: nowrap; }
-.cm-answer canvas { width: 24px; height: 10px; display: block; }
+.cm-answer { display: inline-flex; align-items: center; gap: 5px; height: 16px; max-width: 118px; padding: 0 5px; border: 1px solid rgb(255 255 255 / .14); border-radius: 3px; background: rgb(255 255 255 / .04); color: #9d9d97; font: 400 9.5px / 16px var(--font-mono); white-space: nowrap; overflow: hidden; }
+.cm-answer canvas { flex: none; width: 24px; height: 10px; display: block; }
+.cm-answer-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cm-answer.k-chart { color: var(--signal); border-color: color-mix(in srgb, var(--signal) 45%, transparent); }
 .cm-answer.k-run { color: var(--signal); border-color: color-mix(in srgb, var(--signal) 45%, transparent); }
 
@@ -372,26 +373,27 @@ body.resizing .app.split { transition: none; }
 .app.split .console-splitter:hover::after { height: 2px; top: calc(50% - .5px); background: var(--line-strong); }
 .app.split .console { grid-row: 4; }
 
-/* A subplot page: a grid of the shared tiles. */
-.figure-grid { flex: 1; min-width: 0; min-height: 0; display: grid; gap: 8px; padding: 8px; overflow: auto; background: var(--surface-screen); }
-.figure-tile { display: flex; flex-direction: column; min-width: 0; min-height: 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--surface-panel); }
-.figure-tile.empty { place-items: center; border-style: dashed; background: transparent; color: var(--text-on-screen-muted); display: grid; font: 400 10px var(--font-mono); }
-.figure-head { flex: none; height: 26px; display: flex; align-items: center; gap: 8px; padding: 0 8px; border-bottom: 1px solid var(--line); background: var(--surface-raised); font: 400 9.5px var(--font-mono); color: var(--text-muted); }
-.figure-head b { color: var(--text); font-weight: 500; }
-.figure-body { flex: 1; min-height: 0; position: relative; display: flex; background: var(--surface-screen); }
-.figure-body .instrument { flex: 1; min-height: 0; }
-.stage-body.empty { background: var(--surface-panel); }
-.figure-body .scene { position: absolute; inset: 0; }
-.figure-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+/* The stage shows one SqueroPlot snapshot: the figure's own white paper, fitted to the stage. */
+/* The figure is drawn at the panel's size, so it fills the stage; drag/wheel change its view. */
+.figure-stage { position: relative; flex: 1; min-width: 0; min-height: 0; display: grid; place-items: center; background: #fff; overflow: hidden; cursor: grab; touch-action: none; user-select: none; }
+.figure-stage.dragging { cursor: grabbing; }
+.figure-stage img { display: block; width: 100%; height: 100%; object-fit: contain; background: #fff; pointer-events: none; }
+.figure-stage img.pending { opacity: .85; }
+.figure-stage.focus { box-shadow: inset 0 0 0 2px var(--signal); }
+.figure-stage .figure-wait { color: var(--text-muted); font: 400 11px var(--font-mono); }
+.figure-stage .figure-error { position: absolute; left: 8px; bottom: 8px; padding: 4px 8px; border-radius: 4px; background: var(--surface-raised); color: var(--text-muted); font: 400 10.5px var(--font-mono); }
+.stage .tabs .view-reset { height: 22px; padding: 0 8px; font-size: 10px; }
 
-.figure-tile.focus { outline: 2px solid var(--signal); outline-offset: -2px; }
-/* A Scope's floating menu must clear the tile, the grid and the stage frame. */
-.figure-tile:has(.scope-pop),
-.figure-grid:has(.scope-pop),
-.stage-body:has(.scope-pop),
-.stage:has(.scope-pop) { overflow: visible; }
-.app.split .stage:has(.scope-pop) { overflow: visible; z-index: 6; }
-.figure-grid:has(.scope-pop) { position: relative; z-index: 6; }
+/* Export: format, size preset (or custom), and whether the stage's pan/zoom goes with it. */
+.figexport { position: absolute; right: 8px; top: 40px; z-index: 20; width: 260px; display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--surface-raised); box-shadow: 0 8px 24px rgba(0, 0, 0, .18); font: 400 11px var(--font-mono); color: var(--text); }
+.figexport label { display: grid; gap: 4px; color: var(--text-muted); }
+.figexport select, .figexport input[type=number] { height: 24px; padding: 0 6px; border: 1px solid var(--line); border-radius: 3px; background: var(--surface-panel); color: var(--text); font: inherit; }
+.figexport .wh { display: grid; grid-template-columns: 1fr auto 1fr; gap: 6px; align-items: center; }
+.figexport .check { display: flex; align-items: center; gap: 6px; color: var(--text); }
+.figexport .row { display: flex; justify-content: flex-end; gap: 6px; }
+.figtab { position: relative; }
+.stage-body.empty { background: var(--surface-panel); }
+.figrow .figthumb { flex: none; width: 44px; height: 33px; object-fit: contain; background: #fff; border: 1px solid var(--line); border-radius: 3px; }
 .editor .head .key { white-space: nowrap; }
 
 /* The explicit folder picker in the Files rail. */
@@ -415,12 +417,6 @@ body.resizing .app.split { transition: none; }
 .app.split .stage { gap: 0; background: var(--surface-panel); border: 1px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; }
 .app.split .stage .tabs { flex: none; height: 36px; min-height: 36px; padding: 0 12px; background: var(--surface-raised); border-bottom: 1px solid var(--line); }
 .app.split .stage .stage-body { border: 0; border-radius: 0; }
-
-/* A figure page is part of the app, not a black canvas. */
-.figure-grid { background: var(--surface-ground); }
-.figure-tile { background: var(--surface-panel); border-color: var(--line); }
-.figure-tile.empty { color: var(--text-muted); }
-.figure-body { background: var(--surface-screen); }
 
 /* Console hide/show: collapsed to its 28px head, restored from the head or View ▸ Console. */
 .app.split.console-hidden { grid-template-rows: 56px minmax(0, 1fr) 0 28px; }
@@ -467,10 +463,6 @@ body.resizing .app.split { transition: none; }
 .proj .proj-name { cursor: text; }
 .proj-input { width: 180px; height: 22px; padding: 0 6px; border: 1px solid var(--line-ink); border-radius: 3px; background: var(--surface-raised); color: var(--text); font: 400 12px var(--font-mono); }
 
-/* A single plot fills the stage: no 1,1 subplot header, no grid gutter. */
-.figure-grid.single { grid-template-columns: 1fr; grid-template-rows: 1fr; padding: 0; gap: 0; }
-.figure-grid.single .figure-tile { border: 0; border-radius: 0; }
-
 /* #%% sections read as cells: a rule above the header, the header in the signal colour. */
 .cm-line.cm-cell-line { background: color-mix(in srgb, var(--signal) 6%, transparent); border-top: 1px solid var(--line-strong); }
 .cm-cell-tag { color: var(--signal-text); font-weight: 600; }
@@ -490,6 +482,54 @@ body.resizing .app.split { transition: none; }
 .stage-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--text-muted); font: 400 12px var(--font-sans); }
 .stage-empty p { font: 500 13px var(--font-mono); color: var(--text); }
 .stage .tabs b { font: 500 12px var(--font-mono); color: var(--text); }
+.stage .tabs .stage-mod { color: var(--signal-text); font-weight: 500; }
+.stage .tabs .key.stage-btn { height: 22px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-raised); color: var(--text); font: 400 10.5px var(--font-mono); cursor: pointer; }
+.stage .tabs .key.stage-btn:hover { border-color: var(--line-ink); }
+
+/* Interactive 2D/3D multi-panel stage (@paperboat/shared Plot2D & SceneView). */
+.figure-stage-wrap { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; padding: 8px; background: var(--surface-ground); overflow: hidden; }
+.figure-interactive-stage { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; padding: 4px 6px; background: #fff; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; color: #262626; }
+.figure-stage-wrap.focus .figure-interactive-stage { box-shadow: 0 0 0 2px var(--signal); }
+.fig-grid { flex: 1; min-width: 0; min-height: 0; width: 100%; height: 100%; display: grid; }
+.fig-grid-cell { min-width: 0; min-height: 0; display: flex; }
+.fig-axis-cell { flex: 1; min-width: 0; min-height: 0; display: flex; }
+.fig-ax3-cell { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: transparent; }
+.fig-ax3-title { flex: none; padding: 2px 6px 0; text-align: center; font: 600 12px Helvetica, Arial, sans-serif; color: inherit; }
+.fig-ax3-stage { position: relative; flex: 1; min-width: 0; min-height: 0; border-radius: 4px 4px 0 0; overflow: hidden; }
+.fig-ax3-tools { flex: none; display: inline-flex; align-items: center; gap: 2px; }
+.fig-ax3-angles { font: 400 10px var(--font-mono); color: #555; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fig-ax3-pick { display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 2px 6px; font-variant-numeric: tabular-nums; }
+.fig-colorbar-cell { flex: 1; display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 0; padding: 4px 2px; }
+.fig-colorbar-cell.vert { align-items: stretch; justify-content: flex-start; padding: 24px 2px 28px 0; }
+.fig-colorbar-cell.horiz { justify-content: stretch; padding: 2px 12px; }
+.fig-label-cell { flex: 1; display: flex; align-items: center; justify-content: center; text-align: center; font-family: Helvetica, Arial, sans-serif; padding: 2px 4px; }
+.fig-label-cell.rotated { writing-mode: vertical-rl; transform: rotate(180deg); }
+.fig-legend-cell { align-self: center; padding: 6px 8px; display: flex; flex-direction: column; gap: 4px; font: 10.5px Helvetica, Arial, sans-serif; color: #262626; }
+.fig-legend-cell.framed { border: 1px solid #d4d4d4; border-radius: 3px; }
+.fig-legend-title { font-weight: 600; font-size: 10.5px; }
+.fig-legend-items { display: flex; flex-direction: column; gap: 3px; }
+.fig-legend-cell.horiz .fig-legend-items { flex-direction: row; flex-wrap: wrap; gap: 8px; }
+.fig-legend-entry { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+
+/* Export modal with live vector SVG preview. */
+.export-dialog { width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 48px); }
+.export-body { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(220px, 1fr); gap: var(--space-4); padding: var(--space-4); min-height: 0; overflow: auto; }
+@media (max-width: 680px) { .export-body { grid-template-columns: 1fr; } }
+.export-preview-pane { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.export-preview-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.export-preview-frame { position: relative; min-height: 240px; max-height: 360px; flex: 1; display: grid; place-items: center; padding: 12px; background: var(--surface-ground); border: 1px solid var(--line); border-radius: var(--radius-md); overflow: hidden; }
+.export-preview-frame img { display: block; max-width: 100%; max-height: 330px; width: auto; height: auto; object-fit: contain; background: #fff; box-shadow: 0 0 0 1px var(--line); }
+.export-preview-busy { position: absolute; right: 8px; bottom: 8px; padding: 2px 6px; border-radius: 3px; background: rgba(0, 0, 0, 0.72); color: #fff; font: 400 9.5px var(--font-mono); }
+.export-err { margin: 0; color: var(--danger-text); font: 400 10.5px var(--font-mono); }
+.export-controls { display: flex; flex-direction: column; gap: 14px; }
+.export-field { display: flex; flex-direction: column; gap: 5px; }
+.export-field label { font: 600 10px var(--font-sans); text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
+.export-hint { font: 400 10.5px var(--font-mono); color: var(--text-muted); }
+.export-select { height: 26px; padding: 0 7px; font: 400 11px var(--font-mono); background: var(--surface-raised); color: var(--text); border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.export-dims { display: flex; align-items: center; gap: 6px; margin-top: 2px; font: 400 11px var(--font-mono); color: var(--text-muted); }
+.export-dims input { width: 76px; height: 24px; padding: 0 6px; font: 400 11px var(--font-mono); background: var(--surface-raised); color: var(--text); border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.key.primary { background: var(--signal); border-color: var(--signal); color: #fff; }
+.key.primary:hover:not(:disabled) { filter: brightness(1.06); }
 
 /* The Julia marks in the file rail: the shared tree pads glyphs to 13 px, the dots read better at 14. */
 .file-row .file-icon .jl-dots { width: 14px; height: 14px; }
