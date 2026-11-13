@@ -43,7 +43,7 @@ export function Script({
         <b>{file}{dirty ? " •" : ""}</b>
         <span className="sp" />
         <button className="key small" onClick={onSave} disabled={!dirty} title="Save (Ctrl+S)">Save</button>
-        <button className="key small" onClick={onRun} disabled={running} aria-busy={running}>{running ? <><span className="spinner" aria-hidden="true" /> Running</> : "Run"}</button>
+        <button className="key small" onClick={onRun} disabled={running} aria-busy={running}>{running ? "Running" : "Run"}</button>
         <button ref={gear} className={`key small settings-key ${open ? "on" : ""}`} onClick={() => setOpen((v) => !v)} title="Editor settings" aria-label="Editor settings" aria-expanded={open}>
           <svg viewBox="0 0 16 16" aria-hidden="true">
             <path d="M2.5 5.25h2.1M6.8 5.25h6.7M2.5 10.75h4M9.8 10.75h3.7" />
@@ -98,7 +98,8 @@ export function Script({
         <span className="pos">Ln {pos.line}, Col {pos.col}</span>
         {pos.selected > 0 && <span className="sel">{pos.selected} selected</span>}
         <span className="sp" />
-        <span className="runstat">
+        {running && <span className="wave" aria-hidden="true"><i /><i /><i /><i /><i /></span>}
+        <span className="runstat" role="status">
           {running
             ? "compiling and running…"
             : lastRun

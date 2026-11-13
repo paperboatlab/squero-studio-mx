@@ -962,8 +962,7 @@ export function App() {
         onDoubleClick={() => setStageW(540)}
       />
 
-      <main className="stage" aria-busy={running > 0}>
-        {running > 0 && <div className="progress" role="progressbar" aria-label="Running" />}
+      <main className="stage">
         <div className="tabs">
           <b>{activeFigure ? entryLabel(activeFigure) : "figures"}</b>
           <span className="tag">
