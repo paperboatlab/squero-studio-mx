@@ -93,7 +93,8 @@ const lightHighlight = HighlightStyle.define([
 const darkTheme = EditorView.theme({
   "&": { height: "100%", backgroundColor: "transparent", color: "#d6d6d0" },
   ".cm-content": { caretColor: "var(--signal)" },
-  ".cm-gutters": { backgroundColor: "transparent", border: "none", color: "#4f4f4a" },
+  // Opaque: the sticky gutters (line numbers, answers) sit over text scrolled sideways when wrap is off.
+  ".cm-gutters": { backgroundColor: "var(--surface-screen)", border: "none", color: "#4f4f4a" },
   ".cm-activeLine": { backgroundColor: "rgba(255,255,255,.045)" },
   ".cm-activeLineGutter": { backgroundColor: "transparent", color: "#f2f2ee" },
   ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--signal)" },
