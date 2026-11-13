@@ -1,150 +1,17 @@
-// The script editor: CodeMirror 6 with two themes, Julia completions (keywords, builtins and
-// the live workspace), bracket matching/closing, a lint gutter and clickable answer tokens.
-// The settings are the caller's; this file only maps them to extensions.
-import { useEffect, useRef } from "react";
-import { Compartment, EditorState, Prec } from "@codemirror/state";
+// The script editor: the shared Studio editor (@paperboat/shared/editor) with Julia: the stream
+// parser, `#%%` cells, completions (keywords, builtins, the live workspace, `\\pi` symbols), the
+// `%`-comment lint, run-cell keys and the clickable answer tokens on the right.
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter,
-  drawSelection, dropCursor, rectangularSelection, crosshairCursor, gutter, GutterMarker,
-  Decoration, ViewPlugin, type DecorationSet, type ViewUpdate,
+  EditorView, gutter, GutterMarker, Decoration, ViewPlugin, type DecorationSet, type KeyBinding, type ViewUpdate,
 } from "@codemirror/view";
-import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import {
-  HighlightStyle, syntaxHighlighting, bracketMatching, indentOnInput,
-} from "@codemirror/language";
+import { CodeEditor as StudioEditor, type EditorPos, type EditorSettings } from "@paperboat/shared/editor";
 import { julia } from "./julia.ts";
-import { linter, lintGutter, type Diagnostic } from "@codemirror/lint";
-import {
-  autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap,
-  snippetCompletion, type Completion, type CompletionSource,
-} from "@codemirror/autocomplete";
-import { tags } from "@lezer/highlight";
+import { linter, type Diagnostic } from "@codemirror/lint";
+import { snippetCompletion, type Completion, type CompletionSource } from "@codemirror/autocomplete";
 import type { FunctionTable } from "../kernel/localEval.ts";
 import { computeLineAnswers, type AnswerSpec, type AnswerVariable } from "./answers.ts";
 import { LATEX_SYMBOLS } from "./unicode.ts";
-import { gitGutter } from "./gitGutter.ts";
-
-export type EditorSettings = {
-  theme: "ui" | "dark" | "light";
-  fontSize: number;
-  font: "geist" | "system" | "serif";
-  lineHeight: number;
-  tabSize: number;
-  wrap: boolean;
-  autocomplete: boolean;
-  brackets: boolean;
-  lint: boolean;
-};
-
-export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
-  theme: "ui", fontSize: 12, font: "geist", lineHeight: 22,
-  tabSize: 2, wrap: true, autocomplete: true, brackets: true, lint: true,
-};
-
-const FONTS: Record<EditorSettings["font"], string> = {
-  geist: "var(--font-mono)",
-  system: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-  serif: "ui-serif, Georgia, Cambria, serif",
-};
-
-const darkHighlight = HighlightStyle.define([
-  { tag: [tags.comment, tags.lineComment, tags.blockComment, tags.docComment], color: "#6f737a", fontStyle: "italic" },
-  { tag: [tags.keyword, tags.operatorKeyword, tags.typeOperator], color: "#c792ea" },
-  { tag: tags.string, color: "#98c379" },
-  { tag: tags.special(tags.string), color: "#56b6c2" },
-  { tag: tags.escape, color: "#d19a66" },
-  { tag: [tags.number, tags.bool, tags.null], color: "#e5c07b" },
-  { tag: tags.atom, color: "#56b6c2" },
-  { tag: tags.operator, color: "#a6adc8" },
-  { tag: tags.punctuation, color: "#7f848e" },
-  { tag: tags.variableName, color: "#d6d6d0" },
-  { tag: tags.propertyName, color: "#61afef" },
-  { tag: [tags.function(tags.variableName), tags.function(tags.propertyName)], color: "#61afef" },
-  { tag: tags.standard(tags.variableName), color: "#56b6c2" },
-  { tag: tags.typeName, color: "#e5c07b" },
-  { tag: tags.macroName, color: "#c678dd" },
-  { tag: tags.definition(tags.variableName), color: "#f2f2ee", fontWeight: "600" },
-  { tag: tags.definition(tags.typeName), color: "#f2f2ee", fontWeight: "600" },
-  { tag: tags.special(tags.variableName), color: "#e06c75" },
-  { tag: tags.invalid, color: "#e06c75", textDecoration: "underline wavy" },
-]);
-
-const lightHighlight = HighlightStyle.define([
-  { tag: [tags.comment, tags.lineComment, tags.blockComment, tags.docComment], color: "#7a7a73", fontStyle: "italic" },
-  { tag: [tags.keyword, tags.operatorKeyword, tags.typeOperator], color: "#7c3aed" },
-  { tag: tags.string, color: "#15803d" },
-  { tag: tags.special(tags.string), color: "#0f766e" },
-  { tag: tags.escape, color: "#b45309" },
-  { tag: [tags.number, tags.bool, tags.null], color: "#b45309" },
-  { tag: tags.atom, color: "#0f766e" },
-  { tag: tags.operator, color: "#55554f" },
-  { tag: tags.punctuation, color: "#8a8a84" },
-  { tag: tags.variableName, color: "#161616" },
-  { tag: tags.propertyName, color: "#1d4ed8" },
-  { tag: [tags.function(tags.variableName), tags.function(tags.propertyName)], color: "#1d4ed8" },
-  { tag: tags.standard(tags.variableName), color: "#0f766e" },
-  { tag: tags.typeName, color: "#a16207" },
-  { tag: tags.macroName, color: "#9333ea" },
-  { tag: tags.definition(tags.variableName), color: "#000000", fontWeight: "600" },
-  { tag: tags.definition(tags.typeName), color: "#000000", fontWeight: "600" },
-  { tag: tags.special(tags.variableName), color: "#b42318" },
-  { tag: tags.invalid, color: "#b42318", textDecoration: "underline wavy" },
-]);
-
-const darkTheme = EditorView.theme({
-  "&": { height: "100%", backgroundColor: "transparent", color: "#d6d6d0" },
-  ".cm-content": { caretColor: "var(--signal)" },
-  // Opaque: the sticky gutters (line numbers, answers) sit over text scrolled sideways when wrap is off.
-  ".cm-gutters": { backgroundColor: "var(--surface-screen)", border: "none", color: "#4f4f4a" },
-  ".cm-activeLine": { backgroundColor: "rgba(255,255,255,.045)" },
-  ".cm-activeLineGutter": { backgroundColor: "transparent", color: "#f2f2ee" },
-  ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--signal)" },
-  "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": { backgroundColor: "rgba(255,255,255,.18)" },
-  ".cm-selectionMatch": { backgroundColor: "rgba(255,255,255,.08)" },
-  ".cm-matchingBracket, .cm-nonmatchingBracket": { backgroundColor: "rgba(255,255,255,.1)", outline: "1px solid #4a4a4a" },
-  ".cm-tooltip": { backgroundColor: "#191919", border: "1px solid #3a3a3a", color: "#d6d6d0", fontFamily: "var(--font-mono)", fontSize: "10px", borderRadius: "5px", boxShadow: "0 8px 22px rgb(0 0 0 / .5)" },
-  ".cm-tooltip.cm-tooltip-autocomplete": { overflow: "hidden" },
-  ".cm-tooltip-autocomplete > ul": { fontFamily: "var(--font-mono)", fontSize: "11px", maxHeight: "16em", padding: "3px" },
-  ".cm-tooltip-autocomplete > ul > li": { padding: "3px 7px", lineHeight: "1.5", borderLeft: "2px solid transparent" },
-  ".cm-tooltip-autocomplete > ul > li[aria-selected]": { backgroundColor: "transparent", color: "#f2f2ee", borderLeftColor: "var(--signal)" },
-  ".cm-completionDetail": { color: "#8a8a84", fontStyle: "normal", fontSize: "9.5px", marginLeft: "8px" },
-  ".cm-completionMatchedText": { color: "var(--signal)", textDecoration: "none" },
-  ".cm-completionInfo": { backgroundColor: "#191919", border: "1px solid #3a3a3a", color: "#d6d6d0", padding: "6px 8px", fontFamily: "var(--font-mono)", fontSize: "10px" },
-  ".cm-lintRange-warning": { textDecorationColor: "var(--signal)" },
-  ".cm-lint-marker-warning": { color: "var(--signal)" },
-  ".cm-answer-gutter": { borderLeftColor: "rgba(255,255,255,.06)" },
-  ".cm-answer": { borderColor: "rgba(255,255,255,.14)", backgroundColor: "rgba(255,255,255,.04)", color: "#9d9d97" },
-}, { dark: true });
-
-const lightTheme = EditorView.theme({
-  "&": { height: "100%", backgroundColor: "#f2f2ef", color: "#161616" },
-  ".cm-content": { caretColor: "#b03d0a" },
-  ".cm-gutters": { backgroundColor: "#eaeae6", border: "none", color: "#9d9d97" },
-  ".cm-activeLine": { backgroundColor: "rgba(0,0,0,.045)" },
-  ".cm-activeLineGutter": { backgroundColor: "transparent", color: "#161616" },
-  ".cm-cursor, .cm-dropCursor": { borderLeftColor: "#b03d0a" },
-  "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": { backgroundColor: "rgba(0,0,0,.13)" },
-  ".cm-selectionMatch": { backgroundColor: "rgba(0,0,0,.06)" },
-  ".cm-matchingBracket, .cm-nonmatchingBracket": { backgroundColor: "rgba(0,0,0,.08)", outline: "1px solid #9d9d97" },
-  ".cm-tooltip": { backgroundColor: "#f2f2ef", border: "1px solid #161616", color: "#161616", fontFamily: "var(--font-mono)", fontSize: "10px", borderRadius: "5px", boxShadow: "0 8px 22px rgb(0 0 0 / .16)" },
-  ".cm-tooltip.cm-tooltip-autocomplete": { overflow: "hidden" },
-  ".cm-tooltip-autocomplete > ul": { fontFamily: "var(--font-mono)", fontSize: "11px", maxHeight: "16em", padding: "3px" },
-  ".cm-tooltip-autocomplete > ul > li": { padding: "3px 7px", lineHeight: "1.5", borderLeft: "2px solid transparent" },
-  ".cm-tooltip-autocomplete > ul > li[aria-selected]": { backgroundColor: "transparent", color: "#161616", borderLeftColor: "#b03d0a" },
-  ".cm-completionDetail": { color: "#6f6f69", fontStyle: "normal", fontSize: "9.5px", marginLeft: "8px" },
-  ".cm-completionMatchedText": { color: "#b03d0a", textDecoration: "none" },
-  ".cm-completionInfo": { backgroundColor: "#f2f2ef", border: "1px solid #161616", color: "#161616", padding: "6px 8px", fontFamily: "var(--font-mono)", fontSize: "10px" },
-  ".cm-lintRange-warning": { textDecorationColor: "#b03d0a" },
-  ".cm-lint-marker-warning": { color: "#b03d0a" },
-  ".cm-answer-gutter": { borderLeftColor: "rgba(0,0,0,.1)" },
-  ".cm-answer": { borderColor: "rgba(0,0,0,.18)", backgroundColor: "rgba(0,0,0,.035)", color: "#55554f" },
-}, { dark: false });
-
-const geometry = (s: EditorSettings) => EditorView.theme({
-  ".cm-scroller": { fontFamily: FONTS[s.font], fontSize: `${s.fontSize}px`, lineHeight: `${s.lineHeight}px` },
-  ".cm-content": { padding: "8px 0" },
-  ".cm-lineNumbers .cm-gutterElement": { padding: "0 10px 0 12px" },
-});
 
 /** `#%%` sections: a rule above the header and the header itself in the signal colour. */
 const cellRule = Decoration.line({ class: "cm-cell-line" });
@@ -382,6 +249,18 @@ const answerGutter = (
   });
 };
 
+/** The answer tokens follow the editor's own theme, which can differ from the app's. */
+const answerTheme = {
+  dark: EditorView.theme({
+    ".cm-answer-gutter": { borderLeftColor: "rgba(255,255,255,.06)" },
+    ".cm-answer": { borderColor: "rgba(255,255,255,.14)", backgroundColor: "rgba(255,255,255,.04)", color: "#9d9d97" },
+  }, { dark: true }),
+  light: EditorView.theme({
+    ".cm-answer-gutter": { borderLeftColor: "rgba(0,0,0,.1)" },
+    ".cm-answer": { borderColor: "rgba(0,0,0,.18)", backgroundColor: "rgba(0,0,0,.035)", color: "#55554f" },
+  }, { dark: false }),
+};
+
 export function CodeEditor({
   value, file, onChange, settings, appTheme, variables, functions, onFigure, onRunSelection, onPos, base,
 }: {
@@ -394,15 +273,10 @@ export function CodeEditor({
   functions?: FunctionTable;
   onFigure?: OnFigure;
   onRunSelection?: (code: string, mode: "cell" | "line" | "selection") => void;
-  onPos?: (pos: { line: number; col: number; selected: number }) => void;
+  onPos?: (pos: EditorPos) => void;
   /** HEAD's copy of this file for the git gutter; null when it is untracked or not in a repository. */
   base?: string | null;
 }) {
-  const host = useRef<HTMLDivElement>(null);
-  const view = useRef<EditorView | null>(null);
-  const answersFolded = useRef(false);
-  const change = useRef(onChange);
-  change.current = onChange;
   const vars = useRef(variables);
   vars.current = variables;
   const fns = useRef(functions ?? {});
@@ -413,18 +287,9 @@ export function CodeEditor({
   figureLink.current = onFigure;
   const runSelection = useRef(onRunSelection);
   runSelection.current = onRunSelection;
-  const pos = useRef(onPos);
-  pos.current = onPos;
 
-  const compartments = useRef({
-    theme: new Compartment(), font: new Compartment(), wrap: new Compartment(),
-    tab: new Compartment(), auto: new Compartment(), brackets: new Compartment(), lint: new Compartment(),
-    answers: new Compartment(), git: new Compartment(),
-  }).current;
-
-  const runAt = (mode: "cell" | "line"): boolean => {
-    const instance = view.current;
-    if (!instance || !runSelection.current) return false;
+  const runAt = (instance: EditorView, mode: "cell" | "line"): boolean => {
+    if (!runSelection.current) return false;
     const sel = instance.state.selection.main;
     if (!sel.empty) {
       runSelection.current(instance.state.sliceDoc(sel.from, sel.to), "selection");
@@ -490,110 +355,53 @@ export function CodeEditor({
     return options.length ? { from: word.from, options } : null;
   };
 
-  const autocompleteExt = () => autocompletion({ override: [source, latexSource], activateOnTyping: true, icons: true });
-  const bracketExt = () => [bracketMatching(), closeBrackets()];
-  const lintExt = () => [lintGutter(), habitLint];
-  const resolvedTheme = settings.theme === "ui" ? appTheme : settings.theme;
-  const themeExt = () => [resolvedTheme === "dark" ? darkTheme : lightTheme, syntaxHighlighting(resolvedTheme === "dark" ? darkHighlight : lightHighlight)];
+  // Read once at mount by the shared editor; they reach the live props through the refs above.
+  const statics = useRef({
+    language: [julia, cellSections],
+    keys: [
+      { key: "Mod-Enter", run: (v) => runAt(v, "cell") },
+      { key: "Shift-Enter", run: (v) => runAt(v, "line") },
+      { key: "Tab", run: insertLatex },
+    ] as KeyBinding[],
+    completions: [source, latexSource],
+  }).current;
 
-  const answersExtension = (folded: boolean) => (
-    folded ? [] : answerGutter(varList, fnMap, (line) => figureLink.current?.(line))
+  // The answer tokens fold away when the editor gets narrow (with a little hysteresis).
+  const [view, setView] = useState<EditorView | null>(null);
+  const [folded, setFolded] = useState(false);
+  useEffect(() => {
+    if (!view) return;
+    let prev = foldedForWidth(view.dom.clientWidth, false);
+    setFolded(prev);
+    const resize = new ResizeObserver((entries) => {
+      const next = foldedForWidth(entries[0]?.contentRect.width ?? view.dom.clientWidth, prev);
+      if (next !== prev) { prev = next; setFolded(next); }
+    });
+    resize.observe(view.dom);
+    return () => resize.disconnect();
+  }, [view]);
+
+  const resolved = settings.theme === "ui" ? appTheme : settings.theme;
+  const extra = useMemo(
+    () => [answerTheme[resolved], folded ? [] : answerGutter(varList, fnMap, (line) => figureLink.current?.(line))],
+    [resolved, folded, variables, functions],
   );
 
-  useEffect(() => {
-    const container = host.current!;
-    const initialFolded = foldedForWidth(container.clientWidth, false);
-    answersFolded.current = initialFolded;
-    container.dataset.answersFolded = String(initialFolded);
-
-    const instance = new EditorView({
-      state: EditorState.create({
-        doc: value,
-        extensions: [
-          lineNumbers(),
-          highlightActiveLineGutter(),
-          highlightActiveLine(),
-          history(),
-          drawSelection(),
-          dropCursor(),
-          rectangularSelection(),
-          crosshairCursor(),
-          indentOnInput(),
-          Prec.high(keymap.of([
-            { key: "Mod-Enter", run: () => runAt("cell") },
-            { key: "Shift-Enter", run: () => runAt("line") },
-            { key: "Tab", run: insertLatex },
-          ])),
-          keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab, ...closeBracketsKeymap, ...completionKeymap]),
-          julia,
-          compartments.theme.of(themeExt()),
-          compartments.font.of(geometry(settings)),
-          compartments.wrap.of(settings.wrap ? EditorView.lineWrapping : []),
-          compartments.tab.of(EditorState.tabSize.of(settings.tabSize)),
-          compartments.auto.of(settings.autocomplete ? autocompleteExt() : []),
-          compartments.brackets.of(settings.brackets ? bracketExt() : []),
-          compartments.lint.of(settings.lint ? lintExt() : []),
-          compartments.git.of(base != null ? gitGutter(base) : []),
-          compartments.answers.of(answersExtension(initialFolded)),
-          cellSections,
-          EditorView.updateListener.of((u) => {
-            if (u.docChanged) change.current(u.state.doc.toString());
-            if (u.docChanged || u.selectionSet) {
-              const sel = u.state.selection.main;
-              const line = u.state.doc.lineAt(sel.head);
-              pos.current?.({ line: line.number, col: sel.head - line.from + 1, selected: sel.to - sel.from });
-            }
-          }),
-        ],
-      }),
-      parent: container,
-    });
-    view.current = instance;
-
-    const resize = new ResizeObserver((entries) => {
-      const width = entries[0]?.contentRect.width ?? container.clientWidth;
-      const next = foldedForWidth(width, answersFolded.current);
-      if (next === answersFolded.current) return;
-      answersFolded.current = next;
-      container.dataset.answersFolded = String(next);
-      instance.dispatch({ effects: compartments.answers.reconfigure(answersExtension(next)) });
-    });
-    resize.observe(container);
-
-    const first = instance.state.selection.main;
-    const firstLine = instance.state.doc.lineAt(first.head);
-    pos.current?.({ line: firstLine.number, col: first.head - firstLine.from + 1, selected: first.to - first.from });
-    return () => {
-      resize.disconnect();
-      instance.destroy();
-      view.current = null;
-    };
-    // `key={file}` in the parent remounts for another document.
-  }, []);
-
-  useEffect(() => {
-    view.current?.dispatch({
-      effects: [
-        compartments.theme.reconfigure(themeExt()),
-        compartments.font.reconfigure(geometry(settings)),
-        compartments.wrap.reconfigure(settings.wrap ? EditorView.lineWrapping : []),
-        compartments.tab.reconfigure(EditorState.tabSize.of(settings.tabSize)),
-        compartments.auto.reconfigure(settings.autocomplete ? autocompleteExt() : []),
-        compartments.brackets.reconfigure(settings.brackets ? bracketExt() : []),
-        compartments.lint.reconfigure(settings.lint ? lintExt() : []),
-      ],
-    });
-  }, [settings, appTheme]);
-
-  useEffect(() => {
-    view.current?.dispatch({
-      effects: compartments.answers.reconfigure(answersExtension(answersFolded.current)),
-    });
-  }, [variables, functions]);
-
-  useEffect(() => {
-    view.current?.dispatch({ effects: compartments.git.reconfigure(base != null ? gitGutter(base) : []) });
-  }, [base]);
-
-  return <div className="cm-host" ref={host} aria-label={`${file} editor`} />;
+  return (
+    <StudioEditor
+      value={value}
+      onChange={onChange}
+      settings={settings}
+      appTheme={appTheme}
+      ariaLabel={`${file} editor`}
+      language={statics.language}
+      keys={statics.keys}
+      completions={statics.completions}
+      lint={habitLint}
+      extra={extra}
+      base={base}
+      onPos={onPos}
+      onView={setView}
+    />
+  );
 }

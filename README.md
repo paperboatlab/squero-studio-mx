@@ -62,8 +62,7 @@ src/
   App.tsx                 the shell: files, workspace, stage, kernel panel, console
   chart/surface.ts        the peaks surface + the origin axes as Station entities
   chart/samples.ts        demo workspaces and run samples
-  editor/CodeEditor.tsx   CodeMirror 6, Julia language, completions, settings, answer tokens
-  editor/gitGutter.ts     the git gutter: lines added/changed/deleted since HEAD
+  editor/CodeEditor.tsx   Julia on the shared editor: language, completions, lint, keys, answer tokens
   editor/julia.ts         the Julia stream parser (macros, types, symbols, interpolation)
   editor/unicode.ts       the `\pi` + Tab symbol map shared by the editor and console
   files/FilePanel.tsx     the MX mutations around the shared FileTree
@@ -102,7 +101,8 @@ first if needed.
 
 ### Editor
 
-The script surface is CodeMirror 6 (`src/editor/CodeEditor.tsx`): the local Julia stream parser
+The script surface is the shared Studio editor (`@paperboat/shared/editor`, CodeMirror 6: themes,
+settings, git gutter), with Julia added in `src/editor/CodeEditor.tsx`: the local Julia stream parser
 (`editor/julia.ts`), line numbers, history, rectangular selection, bracket matching/closing, lint
 gutter, and a light/dark palette that also themes the answer gutter and the completion popup. The
 parser separates macros, symbols, type annotations and types, standard calls, definitions,

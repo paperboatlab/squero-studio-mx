@@ -10,7 +10,7 @@ import { ExportModal } from "./plot/ExportModal.tsx";
 import { FIGURE_FORMATS, type FigureFormat, type FigureMeta, type ViewState } from "./kernel/protocol.ts";
 import type { WorkspaceVariable } from "./workspace/samples.ts";
 import { Script } from "./editor/Script.tsx";
-import { DEFAULT_EDITOR_SETTINGS, type EditorSettings } from "./editor/CodeEditor.tsx";
+import { DEFAULT_EDITOR_SETTINGS, type EditorSettings } from "@paperboat/shared/editor";
 import { SqueroLogo } from "@paperboat/shared/squero";
 import { AboutModal } from "./shell/AboutModal.tsx";
 import { probeKernel, type KernelInfo } from "./kernel/probe.ts";

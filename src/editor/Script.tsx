@@ -1,7 +1,7 @@
 // The script panel: document header, editable CodeMirror body, run strip and editor settings.
-import { useRef, useState } from "react";
-import { useDismiss, useFocusReturn } from "@paperboat/shared/components";
-import { CodeEditor, type EditorSettings } from "./CodeEditor.tsx";
+import { useState } from "react";
+import { EditorSettingsKey, type EditorSettings } from "@paperboat/shared/editor";
+import { CodeEditor } from "./CodeEditor.tsx";
 import type { FunctionTable } from "../kernel/localEval.ts";
 import type { AnswerVariable } from "./answers.ts";
 
@@ -28,14 +28,7 @@ export function Script({
   /** HEAD's copy of the file, for the git gutter. */
   base?: string | null;
 }) {
-  const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ line: 1, col: 1, selected: 0 });
-  const settingsRef = useRef<HTMLDivElement>(null);
-  const gear = useRef<HTMLButtonElement>(null);
-  // The same dismissal rule as the menus: a press outside or Escape closes; focus goes back.
-  useDismiss(settingsRef, () => setOpen(false), { enabled: open, triggerRef: gear });
-  useFocusReturn(open ? settingsRef : undefined);
-  const set = <K extends keyof EditorSettings>(key: K, value: EditorSettings[K]) => onSettings({ ...settings, [key]: value });
   const clock = (time: number) => new Date(time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
   const modeLabel = (mode: string) => (mode === "file" ? "script" : mode);
 
@@ -46,51 +39,9 @@ export function Script({
         <span className="sp" />
         <button className="key small" onClick={onSave} disabled={!dirty} title="Save (Ctrl+S)">Save</button>
         <button className="key small" onClick={onRun} disabled={running} aria-busy={running}>{running ? "Running" : "Run"}</button>
-        <button ref={gear} className={`key small settings-key ${open ? "on" : ""}`} onClick={() => setOpen((v) => !v)} title="Editor settings" aria-label="Editor settings" aria-expanded={open}>
-          <svg viewBox="0 0 16 16" aria-hidden="true">
-            <path d="M2.5 5.25h2.1M6.8 5.25h6.7M2.5 10.75h4M9.8 10.75h3.7" />
-            <circle cx="5.6" cy="5.25" r="1.5" />
-            <circle cx="8.1" cy="10.75" r="1.5" />
-          </svg>
-        </button>
+        <EditorSettingsKey settings={settings} onSettings={onSettings} lintNote="% comments" />
       </div>
 
-      {open && (
-        <div ref={settingsRef} className="editor-settings" role="dialog" aria-label="Editor settings" data-own-keys>
-          <div className="es-head"><b>editor</b><span className="sp" /><button className="plain tag" onClick={() => setOpen(false)}>close</button></div>
-          <div className="es-row"><span>theme</span><span className="seg">
-            <button className={settings.theme === "ui" ? "on" : ""} onClick={() => set("theme", "ui")} title="Follow the main UI theme">ui</button>
-            <button className={settings.theme === "light" ? "on" : ""} onClick={() => set("theme", "light")}>light</button>
-            <button className={settings.theme === "dark" ? "on" : ""} onClick={() => set("theme", "dark")}>dark</button>
-          </span></div>
-          <label className="es-row"><span>font</span>
-            <select value={settings.font} onChange={(e) => set("font", e.target.value as EditorSettings["font"])}>
-              <option value="geist">Geist Mono</option>
-              <option value="system">System mono</option>
-              <option value="serif">Serif</option>
-            </select>
-          </label>
-          <label className="es-row"><span>size</span>
-            <select value={settings.fontSize} onChange={(e) => set("fontSize", Number(e.target.value))}>
-              {[11, 12, 13, 14, 15, 16].map((n) => <option key={n} value={n}>{n} px</option>)}
-            </select>
-          </label>
-          <label className="es-row"><span>line height</span>
-            <select value={settings.lineHeight} onChange={(e) => set("lineHeight", Number(e.target.value))}>
-              {[20, 22, 24, 26, 28].map((n) => <option key={n} value={n}>{n} px</option>)}
-            </select>
-          </label>
-          <label className="es-row"><span>tab</span>
-            <select value={settings.tabSize} onChange={(e) => set("tabSize", Number(e.target.value))}>
-              {[2, 4, 8].map((n) => <option key={n} value={n}>{n}</option>)}
-            </select>
-          </label>
-          <label className="es-check"><input type="checkbox" checked={settings.wrap} onChange={(e) => set("wrap", e.target.checked)} /> wrap lines</label>
-          <label className="es-check"><input type="checkbox" checked={settings.autocomplete} onChange={(e) => set("autocomplete", e.target.checked)} /> autocomplete</label>
-          <label className="es-check"><input type="checkbox" checked={settings.brackets} onChange={(e) => set("brackets", e.target.checked)} /> close brackets</label>
-          <label className="es-check"><input type="checkbox" checked={settings.lint} onChange={(e) => set("lint", e.target.checked)} /> lint <span className="tag">% comments</span></label>
-        </div>
-      )}
 
       <div className="code">
         <CodeEditor key={file} value={code} file={file} onChange={onChange} settings={settings} appTheme={appTheme} variables={variables} functions={functions} onFigure={onFigure} onRunSelection={onRunSelection} onPos={setPos} base={base} />
