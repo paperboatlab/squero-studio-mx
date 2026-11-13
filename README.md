@@ -195,7 +195,7 @@ browser picker has no git.
 
 ### About and dismissal
 
-`About` opens the same dialog as OM: the rippling wordmark, the frontend, Julia, kernel, Paperboat
+`About` opens the dialog shared with OM (`AboutSquero` in `@paperboat/shared/squero`, which also holds the logo and the busy wave): the rippling wordmark, the frontend, Julia, kernel, Paperboat
 and license facts, and the credits. Floating surfaces follow one rule (shared `useDismiss`): a
 press outside or Escape closes them, the trigger does not immediately reopen them, and focus
 returns to where it was — menus, the About dialog and the editor settings all use it.
