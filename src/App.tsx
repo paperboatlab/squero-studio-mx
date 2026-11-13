@@ -63,7 +63,6 @@ export function App() {
   const [activeFigureId, setActiveFigureId] = useState<string | null>(null);
   const [figureSel, setFigureSel] = useState<string[]>([]);
   const [figureAnchor, setFigureAnchor] = useState<string | null>(null);
-  const [exportFormat, setExportFormat] = useState<FigureFormat>("svg");
   const [exportOpen, setExportOpen] = useState(false);
   const [viewStates, setViewStates] = useState<Record<string, { state: ViewState; modified: boolean }>>({});
   const [resetSeq, setResetSeq] = useState(0);
@@ -898,7 +897,6 @@ export function App() {
         >
           <span className="pip" />
           {kernelInfo ? `julia ${kernelInfo.julia} · kernel` : kernelProbed ? "julia · unavailable" : "julia · starting"}
-          <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5 6 7.5l3-3" /></svg>
         </button>
         <div className="keys">
           <button
@@ -1108,13 +1106,11 @@ export function App() {
             }}
           >
             <div className="figtools">
-              <div className="seg figfmt" role="group" aria-label="Export format">
-                {FIGURE_FORMATS.map((format) => (
-                  <button key={format} className={exportFormat === format ? "on" : ""} onClick={() => setExportFormat(format)} aria-pressed={exportFormat === format}>{format}</button>
-                ))}
-              </div>
               <button className="key small" onClick={exportFigures} disabled={selectedExportEntries.length === 0}>
                 Export…
+              </button>
+              <button className="key small" onClick={removeSelectedFigures} disabled={figureSel.length === 0} title="Close the selected figures (Delete)">
+                Delete
               </button>
               <span className="sp" />
               <span className="tag">{figureSel.length ? `${figureSel.length} selected` : "no selection"}</span>
@@ -1239,7 +1235,7 @@ export function App() {
       {exportOpen && selectedExportEntries.length > 0 && (
         <ExportModal
           entries={selectedExportEntries}
-          initialFormat={exportFormat}
+          initialFormat="svg"
           viewStates={viewStates}
           onSaveArtifacts={saveEntryArtifacts}
           onSay={say}

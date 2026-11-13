@@ -31,9 +31,6 @@ h2, p { margin: 0; }
 .brand { display: flex; align-items: baseline; gap: 3px; font: 600 16px var(--font-sans); letter-spacing: -.01em; }
 .brand .studio { font: 400 13px var(--font-sans); color: var(--text-muted); }
 .badge { margin-left: 8px; align-self: center; display: inline-grid; place-items: center; width: 26px; height: 20px; background: var(--text); color: var(--surface-panel); border-radius: 3px; font: 500 10.5px var(--font-mono); }
-.wave { display: inline-flex; gap: 1.5px; align-items: flex-end; height: 13px; }
-.wave i { width: 3px; height: 3px; border-radius: 50%; background: var(--signal); }
-.wave i:nth-child(2) { height: 5px; } .wave i:nth-child(3) { height: 7px; } .wave i:nth-child(4) { height: 5px; } .wave i:nth-child(5) { height: 3px; }
 .proj { display: flex; align-items: center; gap: 7px; margin: 0 auto; font: 400 12px var(--font-mono); color: var(--text-muted); }
 .proj .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--signal); }
 .status { display: inline-flex; align-items: center; gap: 7px; font: 400 11.5px var(--font-mono); color: var(--text-muted); }
@@ -266,6 +263,8 @@ body.resizing .app.split { transition: none; }
 .app.split .rightpane { grid-column: 5; }
 .app.split.chart-hidden { grid-template-columns: var(--files-w) minmax(320px, 1fr) 0 0 var(--right-w); }
 .app.split.chart-hidden .splitter, .app.split.chart-hidden .stage { display: none; }
+/* The two empty tracks still carry the grid gap; let the editor take both gaps so its sides match. */
+.app.split.chart-hidden .editor { margin-right: -28px; }
 
 /* The Files panel around the shared FileTree (styles from @paperboat/shared/files.css). */
 .files .rail-tabs { display: flex; align-items: center; gap: 12px; min-height: 36px; padding: 0 12px; border-bottom: 1px solid var(--line); background: var(--surface-raised); }
@@ -310,9 +309,8 @@ body.resizing .app.split { transition: none; }
 .topbar .menubar { margin-left: 4px; }
 .topbar .menus { display: flex; align-items: center; gap: 2px; }
 .topbar .menus .menubar { margin-left: 0; }
-.status-button { border: 0; background: none; padding: 0; cursor: pointer; font: 400 11.5px var(--font-mono); }
+.status-button { height: 24px; padding: 0 9px; cursor: pointer; font: 400 11px var(--font-mono); color: var(--text-muted); }
 .status-button:hover { color: var(--text); }
-.status-button svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
 .status.ready .pip { background: var(--signal); box-shadow: 0 0 0 3px color-mix(in srgb, var(--signal) 14%, transparent); }
 .topbar .menu-title { height: 26px; padding: 0 8px; }
 .files-head .edit-root { border: 0; background: none; padding: 0; color: var(--text-muted); font: 400 9.5px var(--font-mono); cursor: pointer; }
@@ -534,7 +532,6 @@ body.resizing .app.split { transition: none; }
 
 /* Figures: selection and export tools. */
 .figtools { flex: none; display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
-.figtools .figfmt button { min-width: 29px; padding: 0 5px; text-transform: lowercase; }
 .figrow.sel { background: color-mix(in srgb, var(--signal) 9%, var(--surface-raised)); border-color: color-mix(in srgb, var(--signal) 42%, var(--line)); }
 .figrow.on.sel { box-shadow: 0 0 0 1px var(--line-ink), inset 2px 0 0 var(--signal); }
 
@@ -640,9 +637,9 @@ body.resizing .app.split { transition: none; }
 .kernel-dialog .modal-head h3 { margin-right: 2px; }
 .kernel-dialog .modal-head .tag { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* Busy feedback: the OM loading wave (five signal dots on squero-ripple-live), small, in the run strip and the Julia panel. */
-.wave { --lr: 3px; display: inline-flex; gap: 2px; height: 9px; align-items: flex-end; flex: none; vertical-align: -1px; }
-.wave i { width: 3px; height: 3px; background: var(--signal); animation: squero-ripple-live 1.4s var(--ease) infinite; }
+/* Busy feedback: the Paperboat logo's water (Spinner.tsx): five square signal dots, gap ≈ 1.33 dot, rippling on squero-ripple-live. */
+.wave { --lr: 2.5px; display: inline-flex; gap: 5px; height: 12px; align-items: center; flex: none; vertical-align: middle; }
+.wave i { width: 4px; height: 4px; background: var(--signal); animation: squero-ripple-live 1.4s var(--ease) infinite; }
 .wave i:nth-child(2) { animation-delay: .12s; }
 .wave i:nth-child(3) { animation-delay: .24s; }
 .wave i:nth-child(4) { animation-delay: .36s; }
@@ -650,3 +647,5 @@ body.resizing .app.split { transition: none; }
 @media (prefers-reduced-motion: reduce) { .wave i { animation: none; } }
 /* The console clips its children, so its settings float above it. */
 .console-settings { position: fixed; top: auto; right: 14px; bottom: calc(var(--console-h) + 12px); z-index: 40; }
+/* 3D figures: the foot's ⌂ resets the camera, so the view cube's own Home key is redundant. */
+.fig-ax3-stage .key.small.view-cube-home { display: none; }
