@@ -1,44 +1,22 @@
 /* Squero Studio MX scaffold. The flat-mono look, tokens and plates come from @paperboat/shared;
    only the MX shell is here. */
-* { box-sizing: border-box; }
-html, body, #root { margin: 0; height: 100%; }
-body {
-  font: 400 var(--size-sm) / 1.45 var(--font-sans);
-  color: var(--text);
-  background: var(--surface-ground);
-  -webkit-font-smoothing: antialiased;
-  overflow: hidden;
-}
-button { font: 500 var(--size-xs) var(--font-sans); color: var(--text); background: var(--surface-raised); border: 1px solid var(--line-strong); border-radius: var(--radius-md); padding: 4px 10px; cursor: pointer; }
-button:hover:not(:disabled) { border-color: var(--line-ink); }
-button:disabled { color: var(--text-muted); opacity: .55; cursor: default; }
-input { font: 400 var(--size-xs) var(--font-mono); color: var(--text); background: var(--surface-well); border: 0; border-radius: var(--radius-md); box-shadow: var(--well-shadow); padding: 5px 8px; }
-:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-h2, p { margin: 0; }
-.mono { font-family: var(--font-mono); }
-.tag { font: 400 10.5px var(--font-mono); color: var(--text-muted); }
-.lbl { font: 500 10.5px var(--font-mono); color: var(--text-muted); text-transform: lowercase; }
+/* The base (page, keys, fields, labels) is @paperboat/shared/base.css. MX only keeps the page from scrolling. */
+body { overflow: hidden; }
+p { margin: 0; }
 
 .app {
   height: 100%;
   display: grid;
   grid-template-columns: 236px minmax(0, 1fr) 318px;
-  grid-template-rows: 56px minmax(0, 1fr) 142px;
+  grid-template-rows: var(--bar-height) minmax(0, 1fr) 142px;
   gap: 14px;
   padding: 14px;
 }
-.topbar { grid-column: 1 / -1; display: flex; align-items: center; gap: 16px; padding: 0 16px; background: var(--surface-panel); border: 1px solid var(--line); border-radius: var(--radius-lg); }
-.brand { display: flex; align-items: baseline; gap: 3px; font: 600 16px var(--font-sans); letter-spacing: -.01em; }
-.brand .studio { font: 400 13px var(--font-sans); color: var(--text-muted); }
-.badge { margin-left: 8px; align-self: center; display: inline-grid; place-items: center; width: 26px; height: 20px; background: var(--text); color: var(--surface-panel); border-radius: 3px; font: 500 10.5px var(--font-mono); }
-.proj { display: flex; align-items: center; gap: 7px; margin: 0 auto; font: 400 12px var(--font-mono); color: var(--text-muted); }
-.proj .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--signal); }
+/* The top bar is the shared .bar; MX sets only its panel look. */
+.topbar { background: var(--surface-panel); border: 1px solid var(--line); border-radius: var(--radius-lg); }
 .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--line-strong); }
 .linkrow.attached .pip { background: var(--signal); box-shadow: 0 0 0 3px color-mix(in srgb, var(--signal) 14%, transparent); }
 .linkrow.failed .pip { background: var(--danger); }
-.key { height: 28px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; }
-.key.run { font-weight: 600; border-color: var(--line-ink); }
-.key.small { height: 24px; padding: 0 8px; font-size: 11px; }
 
 .left { grid-row: 2; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
 .panel { display: flex; flex-direction: column; min-height: 0; background: var(--surface-panel); border: 1px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; }
@@ -132,7 +110,7 @@ h2, p { margin: 0; }
 /* ---- script-first layout (2): files | editor | stage | workspace/shared ---------------- */
 .app.split {
   grid-template-columns: 220px minmax(360px, 0.85fr) minmax(0, 1.15fr) 320px;
-  grid-template-rows: 56px minmax(0, 1fr) 154px;
+  grid-template-rows: var(--bar-height) minmax(0, 1fr) 154px;
 }
 .app.split .files { grid-column: 1; grid-row: 2; }
 .app.split .editor { grid-column: 2; grid-row: 2; }
@@ -270,10 +248,6 @@ body.resizing .app.split { transition: none; }
 .axis-triad text { fill: var(--text); }
 
 /* Topbar menus and the workspace-folder edit key. */
-.topbar .menubar { margin-left: 4px; }
-.topbar .menus { display: flex; align-items: center; gap: 2px; }
-.topbar .menus .menubar { margin-left: 0; }
-.topbar .menu-title { height: 26px; padding: 0 8px; }
 .files-head .edit-root { border: 0; background: none; padding: 0; color: var(--text-muted); font: 400 9.5px var(--font-mono); cursor: pointer; }
 .files-head .edit-root:hover { color: var(--text); }
 
@@ -290,9 +264,8 @@ body.resizing .app.split { transition: none; }
 .cm-answer.click { cursor: pointer; }
 .cm-answer.click:hover { color: var(--signal); border-color: color-mix(in srgb, var(--signal) 50%, transparent); }
 
-
 /* A drag bar for the console. */
-.app.split { grid-template-rows: 56px minmax(0, 1fr) 6px var(--console-h, 154px); }
+.app.split { grid-template-rows: var(--bar-height) minmax(0, 1fr) 6px var(--console-h, 154px); }
 .app.split .console-splitter { grid-column: 1 / -1; grid-row: 3; position: relative; cursor: row-resize; touch-action: none; }
 .app.split .console-splitter::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: var(--line); }
 .app.split .console-splitter:hover::after { height: 2px; top: calc(50% - .5px); background: var(--line-strong); }
@@ -337,7 +310,7 @@ body.resizing .app.split { transition: none; }
 .app.split .stage .stage-body { border: 0; border-radius: 0; }
 
 /* Console hide/show: collapsed to its 28px head, restored from the head or View ▸ Console. */
-.app.split.console-hidden { grid-template-rows: 56px minmax(0, 1fr) 0 28px; }
+.app.split.console-hidden { grid-template-rows: var(--bar-height) minmax(0, 1fr) 0 28px; }
 .console .lines, .console .cin { transition: opacity var(--motion); }
 .app.split.console-hidden .console .lines,
 .app.split.console-hidden .console .cin {
@@ -352,10 +325,6 @@ body.resizing .app.split { transition: none; }
 .console-toggle svg { transform: rotate(0deg); }
 .console-toggle.open svg { transform: rotate(180deg); }
 
-
-/* Double-click the project title to rename it in place, as in Paperboat. */
-.proj .proj-name { cursor: text; }
-.proj-input { width: 180px; height: 22px; padding: 0 6px; border: 1px solid var(--line-ink); border-radius: 3px; background: var(--surface-raised); color: var(--text); font: 400 12px var(--font-mono); }
 
 /* #%% sections read as cells: a rule above the header, the header in the signal colour. */
 .cm-line.cm-cell-line { background: color-mix(in srgb, var(--signal) 6%, transparent); border-top: 1px solid var(--line-strong); }
@@ -428,7 +397,6 @@ body.resizing .app.split { transition: none; }
 /* The Julia marks in the file rail: the shared tree pads glyphs to 13 px, the dots read better at 14. */
 .file-row .file-icon .jl-dots { width: 14px; height: 14px; }
 
-
 /* Figures: selection and export tools. */
 .figtools { flex: none; display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
 .figrow.sel { background: color-mix(in srgb, var(--signal) 9%, var(--surface-raised)); border-color: color-mix(in srgb, var(--signal) 42%, var(--line)); }
@@ -443,7 +411,7 @@ body.resizing .app.split { transition: none; }
 /* Editor with no script open. */
 .editor-empty { position: absolute; inset: 36px 0 28px; display: grid; place-items: center; pointer-events: none; color: var(--text-muted); font: 400 11px var(--font-mono); background: var(--surface-screen); }
 
-/* Dialogs, modals, About, the logo and the busy wave: @paperboat/shared/squero.css. */
+/* Modals: the shared Modal (plates.css). About, the logo and the busy wave: @paperboat/shared/squero.css. */
 
 .rightpane .head .tag { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 

@@ -2,6 +2,7 @@
 // optional "Current view" framing from interactive pan/zoom/orbit, and shows a live Cairo
 // true-vector SVG preview before downloading single files or a ZIP archive.
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Modal } from "@paperboat/shared/components";
 import { FIGURE_FORMATS, type FigureFormat, type ViewState } from "../kernel/protocol.ts";
 import { figureArtifact, figureExportSized } from "../kernel/client.ts";
 import { bufferOf, downloadBlob, SIZE_PRESETS, zipFiles } from "./export.ts";
@@ -149,14 +150,6 @@ export function ExportModal({
     useCurrentView,
   ]);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   const handleDownload = async () => {
     if (entries.length === 0 || exporting) return;
     setExporting(true);
@@ -216,14 +209,7 @@ export function ExportModal({
   if (!primary) return null;
 
   return (
-    <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="export-modal-title" onClick={onClose}>
-      <div className="modal-dialog export-dialog" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-head">
-          <h3 id="export-modal-title">
-            Export {entries.length === 1 ? entryLabel(primary) : `${entries.length} figures`}
-          </h3>
-          <button type="button" className="modal-close" onClick={onClose} aria-label="Close">×</button>
-        </div>
+    <Modal title={`Export ${entries.length === 1 ? entryLabel(primary) : `${entries.length} figures`}`} className="export-dialog" onClose={onClose}>
 
         <div className="export-body">
           <div className="export-preview-pane">
@@ -340,7 +326,6 @@ export function ExportModal({
                 : `Download ${format.toUpperCase()}`}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

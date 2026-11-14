@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { BarEnd, GlideBrackets, MenuBar, StatusPill, useDismiss, useTheme, type Theme } from "@paperboat/shared/components";
+import { AppBar, BarEnd, GlideBrackets, StatusPill, useDismiss, useTheme } from "@paperboat/shared/components";
 import type { Command } from "@paperboat/shared";
 import type { ClientMsg, Variable } from "@paperboat/shared/protocol";
 import { bufferOf } from "./plot/export.ts";
@@ -10,8 +10,8 @@ import { ExportModal } from "./plot/ExportModal.tsx";
 import { FIGURE_FORMATS, type FigureFormat, type FigureMeta, type ViewState } from "./kernel/protocol.ts";
 import type { WorkspaceVariable } from "./workspace/samples.ts";
 import { Script } from "./editor/Script.tsx";
-import { useEditorSettings, type ConfigStore } from "@paperboat/shared/editor";
-import { SqueroLogo } from "@paperboat/shared/squero";
+import { useSqueroConfig, type ConfigStore } from "@paperboat/shared/editor";
+import { SqueroWordmark } from "@paperboat/shared/squero";
 import { AboutModal } from "./shell/AboutModal.tsx";
 import { probeKernel, type KernelInfo } from "./kernel/probe.ts";
 import { evalCode, figureArtifact, figureScene, plotOptimum, resetKernel, whois, withArrays } from "./kernel/client.ts";
@@ -101,8 +101,6 @@ export function App() {
   const [readOnly, setReadOnly] = useState(false);
   const [dirty, setDirty] = useState<Set<string>>(new Set());
   const [varQuery, setVarQuery] = useState("");
-  const [renamingTitle, setRenamingTitle] = useState(false);
-  const [titleDraft, setTitleDraft] = useState("");
   const filePanel = useRef<FilePanelHandle>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const [stageW, setStageW] = useState(540);
@@ -129,11 +127,8 @@ export function App() {
   const [paperboat, setPaperboat] = useState<Variable[]>([]);
   const [pbLoaded, setPbLoaded] = useState(false);
   const [pbCount, setPbCount] = useState(0);
-  const [editor, setEditor, configFile] = useEditorSettings(configStore, "mx.editor");
-  const [themeChoice, setThemeChoice] = useState<Theme>(() => {
-    const t = localStorage.getItem("mx.theme");
-    return t === "light" || t === "dark" || t === "auto" ? t : "auto";
-  });
+  // The app theme and the editor settings, from the user's squero.toml (shared with OM).
+  const { editor, setEditor, file: configFile, theme: themeChoice, setTheme: setThemeChoice } = useSqueroConfig(configStore, { editor: "mx.editor", theme: "mx.theme" });
   const appTheme = useTheme(themeChoice);
   const lastSent = useRef("");
   const attachedCount = useRef(0);
@@ -165,11 +160,6 @@ export function App() {
     return true;
   };
   const baseName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
-  const commitTitle = () => {
-    const name = titleDraft.trim();
-    if (name && name !== baseName(selectedFile)) filePanel.current?.rename(selectedFile, name);
-    setRenamingTitle(false);
-  };
   useEffect(() => { if (consoleOpts.follow) consoleEnd.current?.scrollIntoView({ block: "nearest" }); }, [lines, consoleHidden, consoleOpts.follow]);
   useEffect(() => {
     if (!(selectedFile in files)) {
@@ -238,7 +228,6 @@ export function App() {
     return () => { live = false; };
   }, []);
 
-  useEffect(() => { localStorage.setItem("mx.theme", themeChoice); }, [themeChoice]);
 
   useEffect(() => {
     const h = new PaperboatHub();
@@ -891,36 +880,13 @@ export function App() {
 
   return (
     <div className={`app split${chartHidden ? " chart-hidden" : ""}${consoleHidden ? " console-hidden" : ""}${filesHidden ? " files-hidden" : ""}${rightHidden ? " right-hidden" : ""}`} style={{ "--stage-w": `${stageW}px`, "--console-h": `${consoleH}px` } as CSSProperties}>
-      <header className="topbar">
-        <span className="wordmark" aria-label="Squero Studio: MX">
-          <SqueroLogo product="MX" height={20} running={running > 0} />
-        </span>
-        <div className="menus">
-          <MenuBar commands={commands} />
-          <div className="menu-wrap">
-            <button type="button" className="menu-title" aria-haspopup="dialog" aria-expanded={aboutOpen} title="About Squero Studio" onClick={() => setAboutOpen(true)}>About</button>
-          </div>
-        </div>
-        <div className="proj" title="Double-click to rename">
-          <span className="dot" />
-          {renamingTitle ? (
-            <input
-              className="proj-input"
-              autoFocus
-              value={titleDraft}
-              onChange={(e) => setTitleDraft(e.target.value)}
-              onFocus={(e) => e.currentTarget.select()}
-              onBlur={commitTitle}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") { e.preventDefault(); commitTitle(); }
-                else if (e.key === "Escape") { e.preventDefault(); setRenamingTitle(false); }
-              }}
-              aria-label="File name"
-            />
-          ) : (
-            <span className="proj-name" onDoubleClick={() => { setTitleDraft(baseName(selectedFile)); setRenamingTitle(true); }}>{selectedFile}</span>
-          )}
-        </div>
+      <AppBar
+        className="topbar"
+        brand={<SqueroWordmark product="MX" name="MX" running={running > 0} />}
+        commands={commands}
+        about={{ title: "About Squero Studio", shown: aboutOpen, onOpen: () => setAboutOpen(true) }}
+        project={{ name: selectedFile, dirty: dirty.has(selectedFile), what: "file", onRename: (name) => filePanel.current?.rename(selectedFile, baseName(name)) }}
+      >
         <BarEnd
           panel={{ open: !chartHidden, label: "Figures pane", onToggle: () => setChartHidden((v) => !v) }}
           status={<>
@@ -941,7 +907,7 @@ export function App() {
           theme={themeChoice}
           onTheme={setThemeChoice}
         />
-      </header>
+      </AppBar>
 
       <FilePanel
         ref={filePanel}
