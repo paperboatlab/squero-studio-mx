@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { GlideBrackets, MenuBar, useDismiss } from "@paperboat/shared/components";
+import { BarEnd, GlideBrackets, MenuBar, StatusPill, useDismiss, useTheme, type Theme } from "@paperboat/shared/components";
 import type { Command } from "@paperboat/shared";
 import type { ClientMsg, Variable } from "@paperboat/shared/protocol";
 import { bufferOf } from "./plot/export.ts";
@@ -130,7 +130,11 @@ export function App() {
   const [pbLoaded, setPbLoaded] = useState(false);
   const [pbCount, setPbCount] = useState(0);
   const [editor, setEditor, configFile] = useEditorSettings(configStore, "mx.editor");
-  const [appTheme, setAppTheme] = useState<"light" | "dark">(() => (localStorage.getItem("mx.theme") === "dark" ? "dark" : "light"));
+  const [themeChoice, setThemeChoice] = useState<Theme>(() => {
+    const t = localStorage.getItem("mx.theme");
+    return t === "light" || t === "dark" || t === "auto" ? t : "auto";
+  });
+  const appTheme = useTheme(themeChoice);
   const lastSent = useRef("");
   const attachedCount = useRef(0);
   const [lines, setLines] = useState<Line[]>([
@@ -234,10 +238,7 @@ export function App() {
     return () => { live = false; };
   }, []);
 
-  useEffect(() => {
-    document.documentElement.dataset.theme = appTheme;
-    localStorage.setItem("mx.theme", appTheme);
-  }, [appTheme]);
+  useEffect(() => { localStorage.setItem("mx.theme", themeChoice); }, [themeChoice]);
 
   useEffect(() => {
     const h = new PaperboatHub();
@@ -920,37 +921,26 @@ export function App() {
             <span className="proj-name" onDoubleClick={() => { setTitleDraft(baseName(selectedFile)); setRenamingTitle(true); }}>{selectedFile}</span>
           )}
         </div>
-        <div className={`status ${status}`} title="Paperboat backends found by the launcher">
-          <span className="pip" />
-          {status === "attached" ? `paperboat · ${pbCount} attached` : status === "connecting" ? "paperboat · connecting" : "paperboat · not attached"}
-        </div>
-        <div className="keys">
-          <button
-            type="button"
-            className={`status status-button${kernelInfo ? " ready" : ""}`}
-            onClick={() => setKernelOpen(true)}
-            aria-expanded={kernelOpen}
-            aria-haspopup="dialog"
-            title="Kernel, Julia versions and packages"
-          >
-            <span className="pip" />
-            {kernelInfo ? `julia ${kernelInfo.julia} · kernel` : kernelProbed ? "julia · unavailable" : "julia · starting"}
-          </button>
-          <button
-            className={`key small iconkey${chartHidden ? " off" : ""}`}
-            onClick={() => setChartHidden((v) => !v)}
-            title={chartHidden ? "Show chart" : "Hide chart"}
-            aria-label={chartHidden ? "Show chart" : "Hide chart"}
-            aria-pressed={!chartHidden}
-          >
-            <svg viewBox="0 0 16 16" aria-hidden><rect x="2" y="3" width="12" height="10" rx="1" /><path d="M4 11l3-3 2 2 3-4" /></svg>
-          </button>
-          <button className="key small iconkey" onClick={() => setAppTheme((t) => (t === "dark" ? "light" : "dark"))} title="Toggle theme" aria-label="Toggle theme">
-            {appTheme === "dark"
-              ? <svg viewBox="0 0 16 16" aria-hidden><circle cx="8" cy="8" r="3" /><path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1" /></svg>
-              : <svg viewBox="0 0 16 16" aria-hidden><path d="M13 9.6A5.5 5.5 0 1 1 6.4 3a4.4 4.4 0 0 0 6.6 6.6z" /></svg>}
-          </button>
-        </div>
+        <BarEnd
+          panel={{ open: !chartHidden, label: "Figures pane", onToggle: () => setChartHidden((v) => !v) }}
+          status={<>
+            <StatusPill
+              label={status === "attached" ? `paperboat · ${pbCount} attached` : status === "connecting" ? "paperboat · connecting" : "paperboat · not attached"}
+              labels={[`paperboat · ${pbCount} attached`, "paperboat · connecting", "paperboat · not attached"]}
+              tone={status === "attached" ? "ok" : status === "failed" ? "bad" : "busy"}
+              title="Paperboat backends found by the launcher"
+            />
+            <StatusPill
+              label={kernelInfo ? `julia ${kernelInfo.julia} · kernel` : kernelProbed ? "julia · unavailable" : "julia · starting"}
+              labels={[`julia ${kernelInfo?.julia ?? "1.11.6"} · kernel`, "julia · unavailable", "julia · starting"]}
+              tone={kernelInfo ? "ok" : kernelProbed ? "bad" : "busy"}
+              title="Kernel, Julia versions and packages"
+              onClick={() => setKernelOpen(true)}
+            />
+          </>}
+          theme={themeChoice}
+          onTheme={setThemeChoice}
+        />
       </header>
 
       <FilePanel

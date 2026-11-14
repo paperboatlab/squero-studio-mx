@@ -33,11 +33,9 @@ h2, p { margin: 0; }
 .badge { margin-left: 8px; align-self: center; display: inline-grid; place-items: center; width: 26px; height: 20px; background: var(--text); color: var(--surface-panel); border-radius: 3px; font: 500 10.5px var(--font-mono); }
 .proj { display: flex; align-items: center; gap: 7px; margin: 0 auto; font: 400 12px var(--font-mono); color: var(--text-muted); }
 .proj .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--signal); }
-.status { display: inline-flex; align-items: center; gap: 7px; font: 400 11.5px var(--font-mono); color: var(--text-muted); }
 .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--line-strong); }
-.status.attached .pip, .linkrow.attached .pip { background: var(--signal); box-shadow: 0 0 0 3px color-mix(in srgb, var(--signal) 14%, transparent); }
-.status.failed .pip, .linkrow.failed .pip { background: var(--danger); }
-.keys { display: flex; align-items: center; gap: 8px; }
+.linkrow.attached .pip { background: var(--signal); box-shadow: 0 0 0 3px color-mix(in srgb, var(--signal) 14%, transparent); }
+.linkrow.failed .pip { background: var(--danger); }
 .key { height: 28px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; }
 .key.run { font-weight: 600; border-color: var(--line-ink); }
 .key.small { height: 24px; padding: 0 8px; font-size: 11px; }
@@ -48,7 +46,6 @@ h2, p { margin: 0; }
 .head { flex: none; height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid var(--line); background: var(--surface-raised); }
 .head b { font: 500 12px var(--font-mono); }
 .sp { flex: 1; }
-.files { padding: 6px 0 0; }
 .file { height: 27px; display: flex; align-items: center; padding: 0 12px; font: 400 12px var(--font-mono); color: var(--text-muted); }
 .file.on { background: var(--surface-raised); color: var(--text); box-shadow: inset 2px 0 0 var(--line-ink); font-weight: 500; }
 .foot { flex: none; height: 28px; margin-top: auto; display: flex; align-items: center; padding: 0 12px; border-top: 1px solid var(--line); font: 400 10.5px var(--font-mono); color: var(--text-muted); }
@@ -276,9 +273,6 @@ body.resizing .app.split { transition: none; }
 .topbar .menubar { margin-left: 4px; }
 .topbar .menus { display: flex; align-items: center; gap: 2px; }
 .topbar .menus .menubar { margin-left: 0; }
-.status-button { padding: 0 9px; cursor: pointer; font: 400 11px var(--font-mono); color: var(--text-muted); }
-.status-button:hover { color: var(--text); }
-.status.ready .pip { background: var(--signal); box-shadow: 0 0 0 3px color-mix(in srgb, var(--signal) 14%, transparent); }
 .topbar .menu-title { height: 26px; padding: 0 8px; }
 .files-head .edit-root { border: 0; background: none; padding: 0; color: var(--text-muted); font: 400 9.5px var(--font-mono); cursor: pointer; }
 .files-head .edit-root:hover { color: var(--text); }
@@ -328,16 +322,8 @@ body.resizing .app.split { transition: none; }
 .editor .head .key { white-space: nowrap; }
 
 /* The explicit folder picker in the Files rail. */
-.files .rail-open { margin-left: auto; height: 20px; padding: 0 6px; font-size: 10px; }
-.files .rail-add { margin-left: 4px; }
-.files-open { display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-bottom: 1px solid var(--line); }
-.files-open .tag { color: var(--text-muted); }
 
 /* Top-bar keys share one height; the icon keys are squares with a stroked glyph. */
-.topbar .keys .key, .topbar .status-button { height: 26px; }
-.topbar .iconkey { width: 26px; padding: 0; display: inline-grid; place-items: center; }
-.topbar .iconkey svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linejoin: round; stroke-linecap: round; }
-.topbar .iconkey.off { color: var(--text-muted); }
 .stage-hide { width: 24px; height: 24px; }
 
 /* One folder picker, in the head next to the workspace name. */
