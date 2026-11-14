@@ -1,35 +1,27 @@
-// The julia up panel: juliaup channels, the workspace project, its direct packages, and a
-// General-registry browser. Launcher work is slow (Pkg can resolve for a while), so one
-// operation runs at a time and the command's tail is shown under the list.
+// The julia up panel: juliaup channels, the workspace project, its direct packages, and the
+// General registry, in the shared package panel (@paperboat/shared/packages). This file is the
+// adapter: it loads through the launcher (client.ts) and hands the panel data and actions.
+// Launcher work is slow (Pkg can resolve for a while), so one operation runs at a time.
 import { useEffect, useRef, useState } from "react";
-import { GlideBrackets } from "@paperboat/shared/components";
+import { PackagePanel, type RegistryItem } from "@paperboat/shared/packages";
 import {
   juliaPackage, juliaUpdate, loadFeaturedRegistry, loadJulia, loadRegistryPackage, searchRegistry,
-  type JuliaStatus, type RegistryEntry, type RegistryPackage,
+  type JuliaStatus, type RegistryEntry,
 } from "./client.ts";
 
 type Level = "info" | "ok" | "warn";
-type View = "environment" | "registry";
 
 const stars = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
-const repoLabel = (repo: string) => repo.replace(/^https?:\/\/github\.com\//, "").replace(/\.git$/, "");
+const item = (e: RegistryEntry): RegistryItem => ({ name: e.name, latest: e.latest, note: e.path, repo: e.repo });
+const message = (failure: unknown) => String((failure as Error).message ?? failure);
 
 export function JuliaPanel({ onSay }: { onSay?: (text: string, level: Level) => void }) {
   const [status, setStatus] = useState<JuliaStatus | null>(null);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [output, setOutput] = useState("");
-  const [view, setView] = useState<View>("environment");
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<RegistryEntry[]>([]);
-  const [featured, setFeatured] = useState<RegistryEntry[]>([]);
-  const [featuredBusy, setFeaturedBusy] = useState("");
-  const [featuredLoaded, setFeaturedLoaded] = useState(false);
-  const [registryBusy, setRegistryBusy] = useState("");
-  const [registryError, setRegistryError] = useState("");
-  const [registrySource, setRegistrySource] = useState("");
-  const [registryTotal, setRegistryTotal] = useState(0);
-  const [detail, setDetail] = useState<RegistryPackage | null>(null);
+  const [featured, setFeatured] = useState<RegistryItem[]>([]);
+  const [shelf, setShelf] = useState({ loading: "", error: "", source: "", loaded: false });
   const alive = useRef(true);
 
   const refresh = async (announce = false) => {
@@ -43,7 +35,7 @@ export function JuliaPanel({ onSay }: { onSay?: (text: string, level: Level) => 
       setOutput(next.output ?? "");
       if (announce) onSay?.(`julia: ${next.packages.length} package${next.packages.length === 1 ? "" : "s"}`, "info");
     } catch (failure) {
-      if (alive.current) setError(String((failure as Error).message ?? failure));
+      if (alive.current) setError(message(failure));
     } finally {
       if (alive.current) setBusy("");
     }
@@ -52,54 +44,27 @@ export function JuliaPanel({ onSay }: { onSay?: (text: string, level: Level) => 
   useEffect(() => {
     alive.current = true;
     void refresh();
-    return () => { alive.current = false; };
-    // The panel reads the launcher once per mount; the reload key refreshes it.
+    return () => {
+      alive.current = false;
+    };
+    // The panel reads the launcher once per mount; Reload refreshes it.
   }, []);
 
+  // The popular shelf, once (retry reads it again).
   useEffect(() => {
-    if (view !== "registry" || featuredLoaded) return;
+    if (shelf.loaded) return;
     let live = true;
-    setFeaturedBusy("loading the popular shelf");
-    setRegistryError("");
+    setShelf((s) => ({ ...s, loading: "loading the popular shelf", error: "" }));
     void loadFeaturedRegistry()
       .then((found) => {
-        if (!live) return;
         if (!found.ok) throw new Error(found.error ?? "registry shelf failed");
-        setFeatured(found.results ?? []);
-        setRegistrySource(found.source ?? "");
-        setFeaturedLoaded(true);
+        if (live) setFeatured((found.results ?? []).map(item)), setShelf({ loading: "", error: "", source: found.source ?? "", loaded: true });
       })
-      .catch((failure) => { if (live) setRegistryError(String((failure as Error).message ?? failure)); })
-      .finally(() => { if (live) setFeaturedBusy(""); });
-    return () => { live = false; };
-  }, [view, featuredLoaded]);
-
-  useEffect(() => {
-    if (view !== "registry") return;
-    const text = query.trim();
-    if (text.length < 2) {
-      setResults([]);
-      setRegistryTotal(0);
-      setRegistryError("");
-      return;
-    }
-    let live = true;
-    const timer = setTimeout(() => {
-      setRegistryBusy("searching the registry");
-      setRegistryError("");
-      void searchRegistry(text)
-        .then((found) => {
-          if (!live) return;
-          if (!found.ok) throw new Error(found.error ?? "registry search failed");
-          setResults(found.results ?? []);
-          setRegistryTotal(found.total ?? 0);
-          setRegistrySource(found.source ?? "");
-        })
-        .catch((failure) => { if (live) setRegistryError(String((failure as Error).message ?? failure)); })
-        .finally(() => { if (live) setRegistryBusy(""); });
-    }, 250);
-    return () => { live = false; clearTimeout(timer); };
-  }, [query, view]);
+      .catch((failure) => live && setShelf((s) => ({ ...s, loading: "", error: message(failure) })));
+    return () => {
+      live = false;
+    };
+  }, [shelf.loaded]);
 
   const run = async (label: string, job: () => Promise<JuliaStatus>, done: string) => {
     setBusy(label);
@@ -109,238 +74,97 @@ export function JuliaPanel({ onSay }: { onSay?: (text: string, level: Level) => 
       if (!alive.current) return;
       setStatus(next);
       setOutput(next.output ?? "");
-      if (next.ok) {
-        onSay?.(done, "ok");
-      } else {
-        const message = next.error || `${label} failed`;
-        setError(message);
-        onSay?.(message, "warn");
+      if (next.ok) onSay?.(done, "ok");
+      else {
+        setError(next.error || `${label} failed`);
+        onSay?.(next.error || `${label} failed`, "warn");
       }
     } catch (failure) {
-      const message = String((failure as Error).message ?? failure);
-      if (alive.current) setError(message);
-      onSay?.(message, "warn");
+      if (alive.current) setError(message(failure));
+      onSay?.(message(failure), "warn");
     } finally {
       if (alive.current) setBusy("");
     }
   };
 
-  const add = (name: string) => {
-    const value = name.trim();
-    if (!value || busy) return;
-    void run(`adding ${value}`, () => juliaPackage("add", value), `julia: added ${value}`);
-  };
-
-  const openDetail = (name: string) => {
-    setDetail(null);
-    setRegistryBusy(`reading ${name}`);
-    setRegistryError("");
-    void loadRegistryPackage(name)
-      .then((found) => {
-        if (!found.ok) throw new Error(found.error ?? `not in the registry: ${name}`);
-        if (alive.current) setDetail(found);
-      })
-      .catch((failure) => { if (alive.current) setRegistryError(String((failure as Error).message ?? failure)); })
-      .finally(() => { if (alive.current) setRegistryBusy(""); });
-  };
-
   const project = status?.project;
   const packages = status?.packages ?? [];
   const channels = status?.juliaup.channels ?? [];
-  const installed = new Set(packages.map((one) => one.name));
   const canPackages = Boolean(status?.julia.present);
-  const canJuliaup = Boolean(status?.juliaup.present);
-  const searching = query.trim().length >= 2;
-  const shown = searching ? results : featured;
-  const shownBusy = searching ? registryBusy : featuredBusy;
-  const loadingStatus = !status && Boolean(busy);
 
   return (
-    <div className="juliatab">
-      <div className="jl-head">
-        <div className="jl-title">
-          <b>julia up</b>
-          <span className="tag">
-            {status
-              ? status.juliaup.present ? `juliaup ${status.juliaup.version ?? ""}`.trim() : "juliaup not found"
-              : loadingStatus ? "" : "juliaup not found"}
-          </span>
-        </div>
-        <button
-          className="key small"
-          onClick={() => void run("updating julia", () => juliaUpdate("julia"), "juliaup: updated")}
-          disabled={!canJuliaup || Boolean(busy)}
-          title="Update the juliaup channels on this machine"
-        >
-          Update
-        </button>
-      </div>
-
-      {status && (channels.length > 0 ? (
-        <div className="jl-chans">
-          {channels.map((channel) => (
-            <div className={`jl-ch${channel.default ? " on" : ""}`} key={channel.channel}>
-              <span className="nm">{channel.default ? `[ ${channel.channel} ]` : channel.channel}</span>
-              <span className="ver">{channel.version}</span>
-              <span className={`upd${channel.update ? " has" : ""}`}>{channel.update ? `→ ${channel.update}` : "current"}</span>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p className="hint">
-          {status.juliaup.present
+    <PackagePanel
+      busy={busy}
+      error={error}
+      output={output}
+      loading={busy ? "Reading the Julia kernel, workspace and packages" : undefined}
+      runtime={{
+        title: "julia up",
+        tag: status ? (status.juliaup.present ? `juliaup ${status.juliaup.version ?? ""}`.trim() : "juliaup not found") : undefined,
+        channels: channels.map((c) => ({ name: c.channel, version: c.version, update: c.update || undefined, current: c.default })),
+        hint: status
+          ? status.juliaup.present
             ? "juliaup has no channels installed."
-            : "Install juliaup to update Julia versions from here; the workspace environment still works."}
-        </p>
-      ))}
-
-      <div className="rule" />
-      <div className="jl-subtabs" role="tablist" aria-label="Kernel view">
-        <GlideBrackets />
-        <button type="button" role="tab" aria-selected={view === "environment"} className={`opt${view === "environment" ? " on" : ""}`} onClick={() => setView("environment")}>environment</button>
-        <button type="button" role="tab" aria-selected={view === "registry"} className={`opt${view === "registry" ? " on" : ""}`} onClick={() => setView("registry")}>registry</button>
-      </div>
-
-      {view === "environment" ? (
-        !status ? (
-          <div className="jl-loading">{loadingStatus ? <><span className="wave" aria-hidden="true"><i /><i /><i /><i /><i /></span> Reading the Julia kernel, workspace and packages…</> : "The launcher did not report a Julia runtime."}</div>
-        ) : (
-        <>
-          <div className="jl-head">
-            <div className="jl-title">
-              <b>environment</b>
-              <span className="tag">{status?.julia.present ? `julia ${status.julia.version}` : "no julia"}</span>
-            </div>
-            <button className="key small" onClick={() => void refresh(true)} disabled={Boolean(busy)}>Reload</button>
-          </div>
-          <div className="jl-path" title={project?.path}>{project?.path ?? "Reading the workspace…"}</div>
-          <div className="jl-tags">
-            <span className="tag">{project?.exists ? "Project.toml" : "no Project.toml yet"}</span>
-            <span className="tag">{status ? `${status.runtime.kind} · ${status.runtime.image}` : "kernel runtime"}</span>
-          </div>
-
-          <div className="jl-list">
-            {packages.map((one) => (
-              <div className="jl-pkg" key={one.uuid || one.name}>
-                <span className="nm">{one.name}</span>
-                <span className="ver">{one.version || "—"}</span>
-                <button
-                  className="jl-rm"
-                  type="button"
-                  title={`Remove ${one.name}`}
-                  aria-label={`Remove ${one.name}`}
-                  disabled={Boolean(busy) || !canPackages}
-                  onClick={() => void run(`removing ${one.name}`, () => juliaPackage("remove", one.name), `julia: removed ${one.name}`)}
-                >
-                  <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M4 4l6 6M10 4l-6 6" /></svg>
-                </button>
-              </div>
-            ))}
-            {packages.length === 0 && (
-              <p className="hint">
-                {status ? "No packages in this project yet. Add one from the registry." : "Reading the environment…"}
-              </p>
-            )}
-          </div>
-
-          <div className="jl-foot">
-            <button className="key small" type="button" onClick={() => setView("registry")}>Browse registry</button>
-            <span className="sp" />
-            <button
-              className="key small"
-              onClick={() => void run("updating packages", () => juliaUpdate("packages"), "julia: packages updated")}
-              disabled={Boolean(busy) || !canPackages || packages.length === 0}
-            >
-              Update packages
-            </button>
-            <span className="tag">{packages.length} direct</span>
-          </div>
-        </>
-        )
-      ) : (
-        <>
-          <form className="jl-add" onSubmit={(event) => event.preventDefault()}>
-            <span className="prompt" aria-hidden>find</span>
-            <input
-              value={query}
-              onChange={(event) => { setQuery(event.target.value); setDetail(null); }}
-              placeholder="search General"
-              aria-label="Search the General registry"
-              spellCheck={false}
-            />
-          </form>
-          <div className="jl-tags">
-            <span className="tag">General{registrySource ? ` · ${registrySource}` : ""}</span>
-            <span className="tag">{searching ? `${registryTotal} match${registryTotal === 1 ? "" : "es"}` : "popular"}</span>
-          </div>
-          {busy && <div className="jl-busy"><span className="wave" aria-hidden="true"><i /><i /><i /><i /><i /></span> {busy}…</div>}
-
-          {detail ? (
-            <div className="jr-card">
-              <div className="jr-card-head">
-                <b>{detail.name}</b>
-                <span className="tag">{detail.latest || "—"}</span>
-                <button className="jl-rm" type="button" title="Close package" aria-label="Close package" onClick={() => setDetail(null)}>
-                  <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M4 4l6 6M10 4l-6 6" /></svg>
-                </button>
-              </div>
-              <p className="jr-desc">{detail.github?.description || "No description from GitHub yet."}</p>
-              <div className="jr-facts">
-                {typeof detail.github?.stars === "number" && <span>★ {stars(detail.github.stars)}</span>}
-                <span>{detail.versionCount} version{detail.versionCount === 1 ? "" : "s"}</span>
-                <span>{detail.deps.length} dep{detail.deps.length === 1 ? "" : "s"}</span>
-              </div>
-              {detail.versions.length > 0 && (
-                <div className="jr-versions">
-                  {detail.versions.map((version) => <span className="tag" key={version}>{version}</span>)}
-                </div>
-              )}
-              {detail.repo && <a className="jr-repo" href={detail.repo} target="_blank" rel="noreferrer">{repoLabel(detail.repo)}</a>}
-              <div className="jr-actions">
-                {installed.has(detail.name) ? (
-                  <span className="tag jr-installed">installed</span>
-                ) : (
-                  <button className="key small" type="button" onClick={() => add(detail.name)} disabled={Boolean(busy)}>Add {detail.name}</button>
-                )}
-                <span className="sp" />
-                <span className="tag">{detail.uuid.slice(0, 8)}</span>
-              </div>
-            </div>
-          ) : (
-            <div className="jr-results">
-              {shown.map((one) => (
-                <div className="jr-row" key={one.uuid}>
-                  <button className="jr-name" type="button" onClick={() => openDetail(one.name)}>
-                    <span className="nm">{one.name}</span>
-                    <span className="uuid">{one.path}</span>
-                  </button>
-                  <span className="tag jr-latest">{one.latest ?? ""}</span>
-                  {installed.has(one.name)
-                    ? <span className="tag jr-installed">added</span>
-                    : <button className="key small" type="button" onClick={() => add(one.name)} disabled={Boolean(busy)}>Add</button>}
-                </div>
-              ))}
-              {!shownBusy && searching && results.length === 0 && !registryError && (
-                <p className="hint">No package matches “{query.trim()}”.</p>
-              )}
-              {!shownBusy && !searching && featured.length === 0 && !registryError && (
-                <p className="hint">The popular shelf could not be read. Search the registry by name instead.</p>
-              )}
-            </div>
-          )}
-          {shownBusy && <div className="jl-busy"><span className="wave" aria-hidden="true"><i /><i /><i /><i /><i /></span> {shownBusy}…</div>}
-          {registryError && (
-            <div className="jl-error">
-              {registryError}
-              {!searching && <button type="button" className="plain tag" onClick={() => setFeaturedLoaded(false)}>retry</button>}
-            </div>
-          )}
-        </>
-      )}
-
-      {busy && !loadingStatus && view === "environment" && <div className="jl-busy"><span className="wave" aria-hidden="true"><i /><i /><i /><i /><i /></span> {busy}…</div>}
-      {error && <div className="jl-error">{error}</div>}
-      {output && <pre className="jl-log" aria-label="Last julia command output">{output.slice(-2400)}</pre>}
-    </div>
+            : "Install juliaup to update Julia versions from here; the workspace environment still works."
+          : undefined,
+        update: {
+          label: "Update",
+          title: "Update the juliaup channels on this machine",
+          disabled: !status?.juliaup.present,
+          run: () => void run("updating julia", () => juliaUpdate("julia"), "juliaup: updated"),
+        },
+      }}
+      environment={
+        status && {
+          title: "environment",
+          tag: status.julia.present ? `julia ${status.julia.version}` : "no julia",
+          path: project?.path,
+          tags: [project?.exists ? "Project.toml" : "no Project.toml yet", `${status.runtime.kind} · ${status.runtime.image}`],
+          packages: packages.map((p) => ({ name: p.name, version: p.version })),
+          empty: "No packages in this project yet. Add one from the registry.",
+          remove: canPackages ? (name) => void run(`removing ${name}`, () => juliaPackage("remove", name), `julia: removed ${name}`) : undefined,
+          actions: [
+            { label: "Reload", run: () => void refresh(true) },
+            {
+              label: "Update packages",
+              disabled: !canPackages || packages.length === 0,
+              run: () => void run("updating packages", () => juliaUpdate("packages"), "julia: packages updated"),
+            },
+          ],
+        }
+      }
+      registry={{
+        title: "General",
+        source: shelf.source,
+        items: featured,
+        itemsLabel: "popular",
+        loading: shelf.loading,
+        error: shelf.error,
+        retry: () => setShelf((s) => ({ ...s, loaded: false })),
+        search: async (query) => {
+          const found = await searchRegistry(query);
+          if (!found.ok) throw new Error(found.error ?? "registry search failed");
+          return { results: (found.results ?? []).map(item), total: found.total ?? 0 };
+        },
+        detail: async (name) => {
+          const d = await loadRegistryPackage(name);
+          if (!d.ok) throw new Error(d.error ?? `not in the registry: ${name}`);
+          return {
+            name: d.name,
+            latest: d.latest,
+            description: d.github?.description || "No description from GitHub yet.",
+            repo: d.repo,
+            versions: d.versions,
+            id: d.uuid.slice(0, 8),
+            facts: [
+              ...(typeof d.github?.stars === "number" ? [`★ ${stars(d.github.stars)}`] : []),
+              `${d.versionCount} version${d.versionCount === 1 ? "" : "s"}`,
+              `${d.deps.length} dep${d.deps.length === 1 ? "" : "s"}`,
+            ],
+          };
+        },
+        add: (name) => void run(`adding ${name}`, () => juliaPackage("add", name), `julia: added ${name}`),
+      }}
+    />
   );
 }

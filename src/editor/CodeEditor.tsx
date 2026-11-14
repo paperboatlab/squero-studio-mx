@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   EditorView, gutter, GutterMarker, Decoration, ViewPlugin, type DecorationSet, type KeyBinding, type ViewUpdate,
 } from "@codemirror/view";
-import { CodeEditor as StudioEditor, type EditorPos, type EditorSettings } from "@paperboat/shared/editor";
+import { CodeEditor as StudioEditor, paletteOf, type EditorPos, type EditorSettings } from "@paperboat/shared/editor";
 import { julia } from "./julia.ts";
 import { linter, type Diagnostic } from "@codemirror/lint";
 import { snippetCompletion, type Completion, type CompletionSource } from "@codemirror/autocomplete";
@@ -381,7 +381,7 @@ export function CodeEditor({
     return () => resize.disconnect();
   }, [view]);
 
-  const resolved = settings.theme === "ui" ? appTheme : settings.theme;
+  const resolved = paletteOf(settings.theme, appTheme, settings.themes).dark ? "dark" : "light";
   const extra = useMemo(
     () => [answerTheme[resolved], folded ? [] : answerGutter(varList, fnMap, (line) => figureLink.current?.(line))],
     [resolved, folded, variables, functions],

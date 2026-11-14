@@ -1,12 +1,12 @@
 // The script panel: document header, editable CodeMirror body, run strip and editor settings.
 import { useState } from "react";
-import { EditorSettingsKey, type EditorSettings } from "@paperboat/shared/editor";
+import { EditorSettingsKey, type ConfigFile, type EditorSettings } from "@paperboat/shared/editor";
 import { CodeEditor } from "./CodeEditor.tsx";
 import type { FunctionTable } from "../kernel/localEval.ts";
 import type { AnswerVariable } from "./answers.ts";
 
 export function Script({
-  running, file, code, onChange, onRun, dirty, onSave, settings, onSettings, appTheme, variables, functions, onFigure, onRunSelection, lastRun, base,
+  running, file, code, onChange, onRun, dirty, onSave, settings, onSettings, configFile, appTheme, variables, functions, onFigure, onRunSelection, lastRun, base,
 }: {
   /** The kernel is compiling or running something. */
   running?: boolean;
@@ -18,6 +18,7 @@ export function Script({
   onSave: () => void;
   settings: EditorSettings;
   onSettings: (settings: EditorSettings) => void;
+  configFile?: ConfigFile;
   appTheme: "light" | "dark";
   variables: readonly AnswerVariable[];
   functions?: FunctionTable;
@@ -39,7 +40,7 @@ export function Script({
         <span className="sp" />
         <button className="key small" onClick={onSave} disabled={!dirty} title="Save (Ctrl+S)">Save</button>
         <button className="key small" onClick={onRun} disabled={running} aria-busy={running}>{running ? "Running" : "Run"}</button>
-        <EditorSettingsKey settings={settings} onSettings={onSettings} lintNote="% comments" />
+        <EditorSettingsKey settings={settings} onSettings={onSettings} lintNote="% comments" file={configFile} />
       </div>
 
 

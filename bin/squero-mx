@@ -10,6 +10,7 @@ import { DEFAULT_WORKSPACE, shortRoot, workspaceMiddleware } from "../server/wor
 import { attachKernel, kernelRuntime, KERNEL_IMAGE } from "../server/kernel.mjs";
 import { optimizeMiddleware } from "../server/optimize.mjs";
 import { juliaMiddleware } from "../server/julia.mjs";
+import { configMiddleware } from "../server/config.mjs";
 import { backendsMiddleware } from "../server/backends.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -57,6 +58,7 @@ const workspaceApi = workspaceMiddleware(workspace);
 const optimizeApi = optimizeMiddleware();
 const juliaApi = juliaMiddleware({ workspace });
 const backendsApi = backendsMiddleware();
+const configApi = configMiddleware();
 const server = createServer((req, res) => {
   const url = new URL(req.url ?? "/", "http://localhost");
   if (url.pathname === "/__mx/optimize") {
@@ -65,6 +67,10 @@ const server = createServer((req, res) => {
   }
   if (url.pathname.startsWith("/__mx/julia")) {
     void juliaApi(req, res, () => { res.statusCode = 404; res.end(); });
+    return;
+  }
+  if (url.pathname === "/__mx/config") {
+    void configApi(req, res);
     return;
   }
   if (url.pathname.startsWith("/__mx/backends")) {

@@ -110,9 +110,14 @@ escapes and string interpolation. Completions include the live workspace, functi
 builtins, snippets and LaTeX-style symbols; the popup uses mono kind tags (`fn`, `var`, `kw`,
 `snp`, `λ`) and marks the chosen row with a line, not a fill.
 
-The sliders key opens settings for theme (`ui` follows the main UI, or light/dark), font
-(Geist/System/Serif), size, line height, tab size, wrapping, autocomplete, brackets and lint; they
-persist in `localStorage`. `\pi` then Tab becomes π in both the editor and the console.
+The sliders key opens settings for theme (`ui` follows the main UI: paper when light, ink when
+dark; or paper, ink, sepia, harbor, contrast and your own), font (Geist/System/Serif), size, line
+height, tab size, wrapping, autocomplete, brackets and lint. They live in the user config file
+`squero.toml`, shared with Squero Studio OM: `~/.config/paperboat/` (`$XDG_CONFIG_HOME`) on Linux
+and macOS, `%APPDATA%\paperboat\` on Windows. The first run writes it with every key commented;
+the popover rewrites just the keys it changes, a hand edit is read when the window regains focus,
+and `[themes.<name>]` adds a theme on top of a built-in. Without the server they stay in
+`localStorage`. `\pi` then Tab becomes π in both the editor and the console.
 A small habit linter flags `%` comments (Julia uses `#`); the gutter is the seam for kernel
 diagnostics and an LSP later.
 

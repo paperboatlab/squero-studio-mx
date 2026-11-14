@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { GlideBrackets, MenuBar, useDismiss } from "@paperboat/shared/components";
+import { AppBar, BarEnd, GlideBrackets, StatusPill, useDismiss, useTheme } from "@paperboat/shared/components";
 import type { Command } from "@paperboat/shared";
 import type { ClientMsg, Variable } from "@paperboat/shared/protocol";
 import { bufferOf } from "./plot/export.ts";
@@ -10,8 +10,8 @@ import { ExportModal } from "./plot/ExportModal.tsx";
 import { FIGURE_FORMATS, type FigureFormat, type FigureMeta, type ViewState } from "./kernel/protocol.ts";
 import type { WorkspaceVariable } from "./workspace/samples.ts";
 import { Script } from "./editor/Script.tsx";
-import { DEFAULT_EDITOR_SETTINGS, type EditorSettings } from "@paperboat/shared/editor";
-import { SqueroLogo } from "@paperboat/shared/squero";
+import { useSqueroConfig, type ConfigStore } from "@paperboat/shared/editor";
+import { SqueroWordmark } from "@paperboat/shared/squero";
 import { AboutModal } from "./shell/AboutModal.tsx";
 import { probeKernel, type KernelInfo } from "./kernel/probe.ts";
 import { evalCode, figureArtifact, figureScene, plotOptimum, resetKernel, whois, withArrays } from "./kernel/client.ts";
@@ -54,6 +54,19 @@ function TypeIcon({ type }: { type: string }) {
   return <span className="typeicon t-scalar" title={type} aria-label="scalar"><span className="hash">#</span></span>;
 }
 
+/** The user's squero.toml (editor settings and themes, shared with OM), through server/config.mjs. */
+const configStore: ConfigStore = {
+  async read() {
+    const res = await fetch("/__mx/config", { headers: { accept: "application/json" } });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+  async write(text) {
+    const res = await fetch("/__mx/config", { method: "PUT", body: text });
+    if (!res.ok) throw new Error(await res.text());
+  },
+};
+
 /** What the console prints and how it scrolls; kept in localStorage like the editor's settings. */
 type ConsoleSettings = { echoCommands: boolean; echoValues: boolean; follow: boolean; fontSize: number };
 const DEFAULT_CONSOLE: ConsoleSettings = { echoCommands: true, echoValues: true, follow: true, fontSize: 11 };
@@ -88,8 +101,6 @@ export function App() {
   const [readOnly, setReadOnly] = useState(false);
   const [dirty, setDirty] = useState<Set<string>>(new Set());
   const [varQuery, setVarQuery] = useState("");
-  const [renamingTitle, setRenamingTitle] = useState(false);
-  const [titleDraft, setTitleDraft] = useState("");
   const filePanel = useRef<FilePanelHandle>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const [stageW, setStageW] = useState(540);
@@ -116,11 +127,9 @@ export function App() {
   const [paperboat, setPaperboat] = useState<Variable[]>([]);
   const [pbLoaded, setPbLoaded] = useState(false);
   const [pbCount, setPbCount] = useState(0);
-  const [editor, setEditor] = useState<EditorSettings>(() => {
-    try { return { ...DEFAULT_EDITOR_SETTINGS, ...JSON.parse(localStorage.getItem("mx.editor") ?? "{}") }; }
-    catch { return DEFAULT_EDITOR_SETTINGS; }
-  });
-  const [appTheme, setAppTheme] = useState<"light" | "dark">(() => (localStorage.getItem("mx.theme") === "dark" ? "dark" : "light"));
+  // The app theme and the editor settings, from the user's squero.toml (shared with OM).
+  const { editor, setEditor, file: configFile, theme: themeChoice, setTheme: setThemeChoice } = useSqueroConfig(configStore, { editor: "mx.editor", theme: "mx.theme" });
+  const appTheme = useTheme(themeChoice);
   const lastSent = useRef("");
   const attachedCount = useRef(0);
   const [lines, setLines] = useState<Line[]>([
@@ -151,11 +160,6 @@ export function App() {
     return true;
   };
   const baseName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
-  const commitTitle = () => {
-    const name = titleDraft.trim();
-    if (name && name !== baseName(selectedFile)) filePanel.current?.rename(selectedFile, name);
-    setRenamingTitle(false);
-  };
   useEffect(() => { if (consoleOpts.follow) consoleEnd.current?.scrollIntoView({ block: "nearest" }); }, [lines, consoleHidden, consoleOpts.follow]);
   useEffect(() => {
     if (!(selectedFile in files)) {
@@ -218,17 +222,12 @@ export function App() {
   const currentVars = workspace;
   const rows = useMemo(() => mergeShared(currentVars, paperboat), [currentVars, paperboat]);
 
-  useEffect(() => { localStorage.setItem("mx.editor", JSON.stringify(editor)); }, [editor]);
   useEffect(() => {
     let live = true;
     void probeKernel(60000).then((info) => { if (live) { setKernelInfo(info); setKernelProbed(true); } });
     return () => { live = false; };
   }, []);
 
-  useEffect(() => {
-    document.documentElement.dataset.theme = appTheme;
-    localStorage.setItem("mx.theme", appTheme);
-  }, [appTheme]);
 
   useEffect(() => {
     const h = new PaperboatHub();
@@ -881,68 +880,34 @@ export function App() {
 
   return (
     <div className={`app split${chartHidden ? " chart-hidden" : ""}${consoleHidden ? " console-hidden" : ""}${filesHidden ? " files-hidden" : ""}${rightHidden ? " right-hidden" : ""}`} style={{ "--stage-w": `${stageW}px`, "--console-h": `${consoleH}px` } as CSSProperties}>
-      <header className="topbar">
-        <span className="wordmark" aria-label="Squero Studio: MX">
-          <SqueroLogo product="MX" height={20} running={running > 0} />
-        </span>
-        <div className="menus">
-          <MenuBar commands={commands} />
-          <div className="menu-wrap">
-            <button type="button" className="menu-title" aria-haspopup="dialog" aria-expanded={aboutOpen} title="About Squero Studio" onClick={() => setAboutOpen(true)}>About</button>
-          </div>
-        </div>
-        <div className="proj" title="Double-click to rename">
-          <span className="dot" />
-          {renamingTitle ? (
-            <input
-              className="proj-input"
-              autoFocus
-              value={titleDraft}
-              onChange={(e) => setTitleDraft(e.target.value)}
-              onFocus={(e) => e.currentTarget.select()}
-              onBlur={commitTitle}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") { e.preventDefault(); commitTitle(); }
-                else if (e.key === "Escape") { e.preventDefault(); setRenamingTitle(false); }
-              }}
-              aria-label="File name"
+      <AppBar
+        className="topbar"
+        brand={<SqueroWordmark product="MX" name="MX" running={running > 0} />}
+        commands={commands}
+        about={{ title: "About Squero Studio", shown: aboutOpen, onOpen: () => setAboutOpen(true) }}
+        project={{ name: selectedFile, dirty: dirty.has(selectedFile), what: "file", onRename: (name) => filePanel.current?.rename(selectedFile, baseName(name)) }}
+      >
+        <BarEnd
+          panel={{ open: !chartHidden, label: "Figures pane", onToggle: () => setChartHidden((v) => !v) }}
+          status={<>
+            <StatusPill
+              label={status === "attached" ? `paperboat · ${pbCount} attached` : status === "connecting" ? "paperboat · connecting" : "paperboat · not attached"}
+              labels={[`paperboat · ${pbCount} attached`, "paperboat · connecting", "paperboat · not attached"]}
+              tone={status === "attached" ? "ok" : status === "failed" ? "bad" : "busy"}
+              title="Paperboat backends found by the launcher"
             />
-          ) : (
-            <span className="proj-name" onDoubleClick={() => { setTitleDraft(baseName(selectedFile)); setRenamingTitle(true); }}>{selectedFile}</span>
-          )}
-        </div>
-        <div className={`status ${status}`} title="Paperboat backends found by the launcher">
-          <span className="pip" />
-          {status === "attached" ? `paperboat · ${pbCount} attached` : status === "connecting" ? "paperboat · connecting" : "paperboat · not attached"}
-        </div>
-        <div className="keys">
-          <button
-            type="button"
-            className={`status status-button${kernelInfo ? " ready" : ""}`}
-            onClick={() => setKernelOpen(true)}
-            aria-expanded={kernelOpen}
-            aria-haspopup="dialog"
-            title="Kernel, Julia versions and packages"
-          >
-            <span className="pip" />
-            {kernelInfo ? `julia ${kernelInfo.julia} · kernel` : kernelProbed ? "julia · unavailable" : "julia · starting"}
-          </button>
-          <button
-            className={`key small iconkey${chartHidden ? " off" : ""}`}
-            onClick={() => setChartHidden((v) => !v)}
-            title={chartHidden ? "Show chart" : "Hide chart"}
-            aria-label={chartHidden ? "Show chart" : "Hide chart"}
-            aria-pressed={!chartHidden}
-          >
-            <svg viewBox="0 0 16 16" aria-hidden><rect x="2" y="3" width="12" height="10" rx="1" /><path d="M4 11l3-3 2 2 3-4" /></svg>
-          </button>
-          <button className="key small iconkey" onClick={() => setAppTheme((t) => (t === "dark" ? "light" : "dark"))} title="Toggle theme" aria-label="Toggle theme">
-            {appTheme === "dark"
-              ? <svg viewBox="0 0 16 16" aria-hidden><circle cx="8" cy="8" r="3" /><path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1" /></svg>
-              : <svg viewBox="0 0 16 16" aria-hidden><path d="M13 9.6A5.5 5.5 0 1 1 6.4 3a4.4 4.4 0 0 0 6.6 6.6z" /></svg>}
-          </button>
-        </div>
-      </header>
+            <StatusPill
+              label={kernelInfo ? `julia ${kernelInfo.julia} · kernel` : kernelProbed ? "julia · unavailable" : "julia · starting"}
+              labels={[`julia ${kernelInfo?.julia ?? "1.11.6"} · kernel`, "julia · unavailable", "julia · starting"]}
+              tone={kernelInfo ? "ok" : kernelProbed ? "bad" : "busy"}
+              title="Kernel, Julia versions and packages"
+              onClick={() => setKernelOpen(true)}
+            />
+          </>}
+          theme={themeChoice}
+          onTheme={setThemeChoice}
+        />
+      </AppBar>
 
       <FilePanel
         ref={filePanel}
@@ -975,6 +940,7 @@ export function App() {
         onSave={() => void saveCurrent()}
         settings={editor}
         onSettings={setEditor}
+        configFile={configFile}
         appTheme={appTheme}
         variables={workspace}
         functions={functions}
