@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // squero-mx — the native launcher: serve dist/, the default workspace, and the Julia kernel.
 // `paperboat start squero-studio-mx` runs this. `--port`, `--open`, `--workspace`.
-import { createReadStream, existsSync, statSync } from "node:fs";
+import { createReadStream, existsSync, mkdirSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,6 +26,7 @@ const arg = (name, fallback) => {
 };
 
 const workspace = path.resolve(arg("workspace", process.env.MX_WORKSPACE ?? DEFAULT_WORKSPACE));
+mkdirSync(workspace, { recursive: true });
 const open = process.argv.includes("--open");
 const start = Number(arg("port", process.env.PORT ?? 59301));
 
