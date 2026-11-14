@@ -226,7 +226,7 @@ runs in the same native Julia or kernel container the scripts use, with the work
 
 `npm start` (or `bin/squero-mx`) serves `dist/` with the same default workspace and kernel bridge
 the dev server uses. `paperboat pkg install squero-studio-mx` installs it from `apps.toml`,
-`paperboat start squero-studio-mx` runs it on port 59301, and `paperboat stop squero-studio-mx`
+`paperboat start squero-studio-mx` runs it on port 59202 (the Squero Studios share 592xx: OM 59201, MX 59202; the next free one if taken), and `paperboat stop squero-studio-mx`
 stops it — the same flow as Squero Studio OM. The manifest also installs
 `squero-julia-kernel`, which builds the pinned image.
 

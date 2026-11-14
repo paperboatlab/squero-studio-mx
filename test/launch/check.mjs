@@ -1,9 +1,9 @@
 // A running squero-mx, as `paperboat start squero-studio-mx` leaves it: the page is served, and the
 // kernel bridge answers hello and evaluates a matrix product. CI's launch job runs it.
-//   node test/launch/check.mjs [port]      (59301 by default)
+//   node test/launch/check.mjs [port]      (59202 by default)
 import WebSocket from "ws";
 
-const port = Number(process.argv[2] ?? 59301);
+const port = Number(process.argv[2] ?? 59202);
 const fail = (why) => { console.error(`FAIL ${why}`); process.exit(1); };
 setTimeout(() => fail("timed out"), 300000).unref();
 

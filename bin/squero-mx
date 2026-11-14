@@ -29,7 +29,7 @@ const arg = (name, fallback) => {
 const workspace = path.resolve(arg("workspace", process.env.MX_WORKSPACE ?? DEFAULT_WORKSPACE));
 mkdirSync(workspace, { recursive: true });
 const open = process.argv.includes("--open");
-const start = Number(arg("port", process.env.PORT ?? 59301));
+const start = Number(arg("port", process.env.PORT ?? 59202));
 
 if (!existsSync(path.join(dist, "index.html"))) {
   console.error("squero-mx: dist/ is missing — run `npm run build` first.");
