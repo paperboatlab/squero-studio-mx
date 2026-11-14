@@ -10,7 +10,7 @@ import { ExportModal } from "./plot/ExportModal.tsx";
 import { FIGURE_FORMATS, type FigureFormat, type FigureMeta, type ViewState } from "./kernel/protocol.ts";
 import type { WorkspaceVariable } from "./workspace/samples.ts";
 import { Script } from "./editor/Script.tsx";
-import { DEFAULT_EDITOR_SETTINGS, type EditorSettings } from "@paperboat/shared/editor";
+import { useEditorSettings, type ConfigStore } from "@paperboat/shared/editor";
 import { SqueroLogo } from "@paperboat/shared/squero";
 import { AboutModal } from "./shell/AboutModal.tsx";
 import { probeKernel, type KernelInfo } from "./kernel/probe.ts";
@@ -53,6 +53,19 @@ function TypeIcon({ type }: { type: string }) {
   if (type === "Function") return <span className="typeicon t-scalar" title={type} aria-label="function"><span className="hash">ƒ</span></span>;
   return <span className="typeicon t-scalar" title={type} aria-label="scalar"><span className="hash">#</span></span>;
 }
+
+/** The user's squero.toml (editor settings and themes, shared with OM), through server/config.mjs. */
+const configStore: ConfigStore = {
+  async read() {
+    const res = await fetch("/__mx/config", { headers: { accept: "application/json" } });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+  async write(text) {
+    const res = await fetch("/__mx/config", { method: "PUT", body: text });
+    if (!res.ok) throw new Error(await res.text());
+  },
+};
 
 /** What the console prints and how it scrolls; kept in localStorage like the editor's settings. */
 type ConsoleSettings = { echoCommands: boolean; echoValues: boolean; follow: boolean; fontSize: number };
@@ -116,10 +129,7 @@ export function App() {
   const [paperboat, setPaperboat] = useState<Variable[]>([]);
   const [pbLoaded, setPbLoaded] = useState(false);
   const [pbCount, setPbCount] = useState(0);
-  const [editor, setEditor] = useState<EditorSettings>(() => {
-    try { return { ...DEFAULT_EDITOR_SETTINGS, ...JSON.parse(localStorage.getItem("mx.editor") ?? "{}") }; }
-    catch { return DEFAULT_EDITOR_SETTINGS; }
-  });
+  const [editor, setEditor, configFile] = useEditorSettings(configStore, "mx.editor");
   const [appTheme, setAppTheme] = useState<"light" | "dark">(() => (localStorage.getItem("mx.theme") === "dark" ? "dark" : "light"));
   const lastSent = useRef("");
   const attachedCount = useRef(0);
@@ -218,7 +228,6 @@ export function App() {
   const currentVars = workspace;
   const rows = useMemo(() => mergeShared(currentVars, paperboat), [currentVars, paperboat]);
 
-  useEffect(() => { localStorage.setItem("mx.editor", JSON.stringify(editor)); }, [editor]);
   useEffect(() => {
     let live = true;
     void probeKernel(60000).then((info) => { if (live) { setKernelInfo(info); setKernelProbed(true); } });
@@ -975,6 +984,7 @@ export function App() {
         onSave={() => void saveCurrent()}
         settings={editor}
         onSettings={setEditor}
+        configFile={configFile}
         appTheme={appTheme}
         variables={workspace}
         functions={functions}
