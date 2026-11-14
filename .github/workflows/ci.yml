@@ -126,7 +126,7 @@ jobs:
         run: |
           cd "$RUNNER_TEMP"   # not the checkout: the app must find its own files
           "$PAPERBOAT" start squero-studio-mx --daemon
-          for i in $(seq 60); do curl -sf http://127.0.0.1:59301/ >/dev/null && break; sleep 1; done
+          for i in $(seq 60); do curl -sf http://127.0.0.1:59202/ >/dev/null && break; sleep 1; done
           # paperboat logs to /tmp, or %TEMP% on Windows, which is Git Bash's /tmp
-          node "$GITHUB_WORKSPACE/squero-studio-mx/test/launch/check.mjs" 59301 || { cat /tmp/paperboat-squero-studio-mx.log; exit 1; }
+          node "$GITHUB_WORKSPACE/squero-studio-mx/test/launch/check.mjs" 59202 || { cat /tmp/paperboat-squero-studio-mx.log; exit 1; }
           "$PAPERBOAT" stop squero-studio-mx
