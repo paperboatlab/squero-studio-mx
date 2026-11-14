@@ -1,7 +1,7 @@
 {
   "name": "squero-studio-mx",
   "private": true,
-  "version": "0.1.0-alpha.7",
+  "version": "0.1.0-alpha.8",
   "type": "module",
   "description": "Squero Studio MX: a MATLAB-like workbench on a Julia kernel, with Paperboat as Simulink.",
   "scripts": {
