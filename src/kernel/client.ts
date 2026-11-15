@@ -60,7 +60,13 @@ class KernelClient {
     waiter.resolve(reply);
   }
 
-  async request(message: Record<string, unknown>, timeout = 120000): Promise<KernelReply> {
+  /** Stop the running eval (SIGINT through the launcher); it replies with an InterruptException. */
+  interrupt() {
+    if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify({ op: "interrupt" }));
+  }
+
+  /** `timeout` 0: wait as long as it takes (a run; Cancel stops it). `frame`: binary bytes right after the line (`set`). */
+  async request(message: Record<string, unknown>, timeout = 120000, frame?: ArrayBuffer): Promise<KernelReply> {
     let socket: WebSocket;
     try {
       socket = await this.open();
@@ -69,20 +75,30 @@ class KernelClient {
     }
     const id = `mx-${++this.seq}`;
     return new Promise<KernelReply>((resolve) => {
-      const timer = window.setTimeout(() => {
+      const timer = timeout > 0 ? window.setTimeout(() => {
         this.waiting.delete(id);
         resolve({ ok: false, error: "kernel: timed out" });
-      }, timeout);
+      }, timeout) : undefined;
       this.waiting.set(id, {
         resolve: (reply) => { window.clearTimeout(timer); resolve(reply); },
       });
       socket.send(JSON.stringify({ ...message, id }));
+      if (frame) socket.send(frame);
     });
   }
 }
 
 export const kernel = new KernelClient();
-export const evalCode = (code: string) => kernel.request({ op: "eval", code });
+export const evalCode = (code: string) => kernel.request({ op: "eval", code }, 0);
+/** A name's docstring as HTML (null: none). */
+export const docOf = (name: string) => kernel.request({ op: "doc", name });
+/** Every name the Help window can look up. */
+export const docNames = () => kernel.request({ op: "doc.names" });
+/** Put a numeric array into the session: column-major Float64; `vector` keeps a Vector a Vector. */
+export const setArray = (name: string, rows: number, cols: number, columnMajor: ArrayLike<number>, vector?: boolean) => {
+  const data = Float64Array.from(columnMajor);
+  return kernel.request({ op: "set", name, rows, cols, bytes: data.byteLength, ...(vector === undefined ? {} : { vector }) }, 120000, data.buffer);
+};
 export const whois = () => kernel.request({ op: "whos" });
 export const resetKernel = () => kernel.request({ op: "reset" });
 /** One stored artifact of a figure version, as bytes (a binary frame, never base64). */

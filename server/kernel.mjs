@@ -186,6 +186,9 @@ function bridge(socket, options) {
     if (!child.stdin.writable) return;
     if (isBinary) { child.stdin.write(data); return; }
     const text = data.toString();
+    // Cancel: the launcher's own message, never the kernel's. SIGINT stops the running eval
+    // (podman and docker pass it into the container); the kernel stays up.
+    if (text.startsWith('{"op":"interrupt"')) { child.kill("SIGINT"); return; }
     child.stdin.write(text.endsWith("\n") ? text : `${text}\n`);
   });
   socket.on("close", () => stopKernel(name));

@@ -1,19 +1,23 @@
 // The script panel: document header, editable CodeMirror body, run strip and editor settings.
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { EditorSettingsKey, type ConfigFile, type EditorSettings } from "@paperboat/shared/editor";
 import { CodeEditor } from "./CodeEditor.tsx";
 import type { FunctionTable } from "../kernel/localEval.ts";
 import type { AnswerVariable } from "./answers.ts";
 
 export function Script({
-  running, file, code, onChange, onRun, dirty, onSave, settings, onSettings, configFile, appTheme, variables, functions, onFigure, onRunSelection, lastRun, base,
+  running, runStatus, file, code, onChange, onRun, onCancel, dirty, onSave, settings, onSettings, configFile, appTheme, variables, functions, onFigure, onRunSelection, lastRun, base,
 }: {
   /** The kernel is compiling or running something. */
   running?: boolean;
+  /** What the run is doing (the shared RunStatus), in place of the last run's line. */
+  runStatus?: ReactNode;
   file: string;
   code: string;
   onChange: (code: string) => void;
   onRun: () => void;
+  /** While running, the Run key is Cancel. */
+  onCancel?: () => void;
   dirty: boolean;
   onSave: () => void;
   settings: EditorSettings;
@@ -39,7 +43,9 @@ export function Script({
         <b>{file}{dirty ? " •" : ""}</b>
         <span className="sp" />
         <button className="key small" onClick={onSave} disabled={!dirty} title="Save (Ctrl+S)">Save</button>
-        <button className="key small" onClick={onRun} disabled={running} aria-busy={running}>{running ? "Running" : "Run"}</button>
+        {running && onCancel
+          ? <button className="key small" onClick={onCancel} title="Stop the run (Ctrl+C)">Cancel</button>
+          : <button className="key small" onClick={onRun} disabled={running} aria-busy={running}>{running ? "Running" : "Run"}</button>}
         <EditorSettingsKey settings={settings} onSettings={onSettings} lintNote="% comments" file={configFile} />
       </div>
 
@@ -52,6 +58,8 @@ export function Script({
         <span className="pos">Ln {pos.line}, Col {pos.col}</span>
         {pos.selected > 0 && <span className="sel">{pos.selected} selected</span>}
         <span className="sp" />
+        {running && runStatus ? runStatus : (
+        <>
         {running && <span className="wave" aria-hidden="true"><i /><i /><i /><i /><i /></span>}
         <span className="runstat" role="status">
           {running
@@ -60,7 +68,9 @@ export function Script({
             ? `run ${modeLabel(lastRun.mode)} · ${clock(lastRun.time)} · ${lastRun.lines} line${lastRun.lines === 1 ? "" : "s"} · ${lastRun.ms} ms`
             : "not run yet"}
         </span>
-        <span title="Ctrl/Cmd+Enter: run cell · Shift+Enter: run line">⌘↵ cell · ⇧↵ line</span>
+        </>
+        )}
+        {!running && <span title="Ctrl/Cmd+Enter: run cell · Shift+Enter: run line">⌘↵ cell · ⇧↵ line</span>}
       </div>
     </section>
   );

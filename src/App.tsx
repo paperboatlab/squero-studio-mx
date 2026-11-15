@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { AppBar, BarEnd, GlideBrackets, StatusPill, useDismiss, useTheme } from "@paperboat/shared/components";
-import type { Command } from "@paperboat/shared";
+import { AppBar, BarEnd, GlideBrackets, HelpWindow, StatusPill, useDismiss, useTheme } from "@paperboat/shared/components";
+import { helpCommand, useShortcuts, type Command } from "@paperboat/shared";
 import type { ClientMsg, Variable } from "@paperboat/shared/protocol";
 import { bufferOf } from "./plot/export.ts";
 import { addEntries, entryForLine, entryFrom, entryLabel, MIME, type FigureEntry } from "./plot/history.ts";
@@ -11,10 +11,14 @@ import { FIGURE_FORMATS, type FigureFormat, type FigureMeta, type ViewState } fr
 import type { WorkspaceVariable } from "./workspace/samples.ts";
 import { Script } from "./editor/Script.tsx";
 import { useSqueroConfig, type ConfigStore } from "@paperboat/shared/editor";
-import { SqueroWordmark } from "@paperboat/shared/squero";
+import { RunStatus, SqueroWordmark } from "@paperboat/shared/squero";
 import { AboutModal } from "./shell/AboutModal.tsx";
 import { probeKernel, type KernelInfo } from "./kernel/probe.ts";
-import { evalCode, figureArtifact, figureScene, plotOptimum, resetKernel, whois, withArrays } from "./kernel/client.ts";
+import { docNames, evalCode, figureArtifact, figureScene, kernel, plotOptimum, resetKernel, setArray, whois, withArrays } from "./kernel/client.ts";
+import { mxHelp, wordAtCaret } from "./shell/help.ts";
+import { IMPORT_EXTENSIONS, importFile, type ImportValue, type Imported } from "./workspace/importData.ts";
+import { ImportDialog } from "./workspace/ImportDialog.tsx";
+import { VariableEditor } from "./workspace/VariableEditor.tsx";
 import { solveProblem } from "./paperboat/optimize.ts";
 import { FRONTEND_VERSION, JULIA_VERSION, KERNEL_PROTOCOL, KERNEL_VERSION, PAPERBOAT_PROTOCOL } from "./version.ts";
 import { FilePanel, type FilePanelHandle } from "./files/FilePanel.tsx";
@@ -82,6 +86,9 @@ export function App() {
   const [aboutOpen, setAboutOpen] = useState(false);
   const [kernelOpen, setKernelOpen] = useState(false);
   const [kernelInfo, setKernelInfo] = useState<KernelInfo | null>(null);
+  const kernelUp = useRef(false);
+  kernelUp.current = kernelInfo !== null;
+  const helpProvider = useMemo(() => mxHelp(() => kernelUp.current), []);
   /** The first probe answered (or gave up): until then the chip says the kernel is starting. */
   const [kernelProbed, setKernelProbed] = useState(false);
   const [filesHidden, setFilesHidden] = useState(false);
@@ -112,6 +119,14 @@ export function App() {
     setRunning((n) => n + 1);
     try { return await work; } finally { setRunning((n) => n - 1); }
   };
+  /** What the run in flight is doing, and since when (#23). */
+  const [phase, setPhase] = useState<{ phase: string; since: number } | null>(null);
+  const runningNow = useRef(false);
+  runningNow.current = phase !== null;
+  const [helpQuery, setHelpQuery] = useState<string | null>(null);
+  const [importing, setImporting] = useState<{ file: string; data: Imported; reserved?: ReadonlySet<string> } | null>(null);
+  const importInput = useRef<HTMLInputElement>(null);
+  const [editing, setEditing] = useState<{ name: string; type: string; value: ImportValue } | null>(null);
   const [consoleOpts, setConsoleOpts] = useState<ConsoleSettings>(() => {
     try { return { ...DEFAULT_CONSOLE, ...JSON.parse(localStorage.getItem("mx.console") ?? "{}") }; }
     catch { return DEFAULT_CONSOLE; }
@@ -296,7 +311,23 @@ export function App() {
   }, [currentVars, status, pbLoaded, pbCount]);
 
   /** The console is the kernel's REPL: stdout and the value come back from the same session. */
-  const consoleEval = (code: string) => busy(consoleEvalNow(code));
+  const consoleEval = (code: string) => tracked(consoleEvalNow(code));
+  /** Work that shows in the run strip: busy, its phase from `evaluating`, Cancel. */
+  const tracked = <T,>(work: Promise<T>): Promise<T> => {
+    const since = performance.now();
+    setPhase({ phase: "evaluating", since });
+    return busy(work).finally(() => setPhase((p) => (p?.since === since ? null : p)));
+  };
+  const step = (next: string) => setPhase((p) => (p ? { ...p, phase: next } : p));
+  const cancelRun = () => {
+    kernel.interrupt();
+    say("cancel · stopping the running code", "warn");
+  };
+  /** The kernel's error, or "cancelled" when Cancel stopped it. */
+  const sayError = (error: string | undefined) => {
+    if (/^InterruptException/.test(error ?? "")) say("cancelled", "warn");
+    else say(error ?? "kernel error", "err");
+  };
   const consoleEvalNow = async (code: string) => {
     const info = kernelInfo ?? await probeKernel(60000);
     if (!info) {
@@ -312,7 +343,7 @@ export function App() {
       else if (event.type === "clear" && !event.names?.length) setFunctions({});
     }
     if (!reply.ok) {
-      say(reply.error ?? "kernel error", "err");
+      sayError(reply.error);
       return;
     }
     // The kernel prints the value as Julia's REPL would; an older kernel sends only a description.
@@ -359,9 +390,12 @@ export function App() {
       else clearWorkspace();
       return;
     }
+    if (cmd.startsWith("?")) { setHelpQuery(cmd.slice(1).trim()); return; }
+    if ((head === "help" || head === "doc") && (rest.length || head === "doc")) { setHelpQuery(rest.join(" ")); return; }
+    if (head === "openvar") { void openVariable(rest[0] ?? selectedVar); return; }
     if (head === "help") {
       say("Julia expressions run in the kernel and print like a REPL; script stdout lands here too.");
-      say("help · whos · clear [name] · clc · attach · detach · run · version");
+      say("help name · doc name · ?name (F1) · openvar name · whos · clear [name] · clc · attach · detach · run · version");
       say("Type \\pi then Tab for π; Arrow Up/Down recall history.");
       return;
     }
@@ -640,7 +674,7 @@ export function App() {
    * the changed ones; SqueroBase queues problems and runs, which Paperboat solves and simulates.
    * Nothing here parses the source, draws or solves.
    */
-  const runCodeViaKernel = (code: string, mode: "cell" | "line" | "selection" | "file") => busy(runCodeViaKernelNow(code, mode));
+  const runCodeViaKernel = (code: string, mode: "cell" | "line" | "selection" | "file") => tracked(runCodeViaKernelNow(code, mode));
   const runCodeViaKernelNow = async (code: string, mode: "cell" | "line" | "selection" | "file") => {
     const startedAt = performance.now();
     const source = selectedFile;
@@ -656,12 +690,16 @@ export function App() {
       if (event.type === "clc") setLines([]);
       else if (event.type === "clear" && !event.names?.length) setFunctions({});
     }
-    if (!reply.ok) say(reply.error ?? "kernel error", "err");
+    if (!reply.ok) sayError(reply.error);
 
-    if (reply.figures?.length) await addFigures(reply.figures, source);
+    if (reply.figures?.length) {
+      step("plotting");
+      await addFigures(reply.figures, source);
+    }
 
     let results: WorkspaceVariable[] = [];
     for (const problem of reply.problems ?? []) {
+      step("solving");
       const solved = await solveProblem(problem);
       for (const line of solved.trace ?? []) say(line);
       if (!solved.ok) {
@@ -686,6 +724,7 @@ export function App() {
       say(sent ? `simulate → ${sent} Paperboat backend${sent === 1 ? "" : "s"}` : "simulate: no Paperboat backend is attached", sent ? "ok" : "warn");
     }
 
+    step("reading the workspace");
     const after = await whois();
     if (after.ok && Array.isArray(after.value)) {
       const variables = (await withArrays(after.value as WorkspaceVariable[])).map((one) => ({
@@ -817,6 +856,72 @@ export function App() {
     }
   };
 
+  /** A number, vector or matrix into the kernel's session, shaped as it is here. */
+  const putVariable = (name: string, value: ImportValue) => {
+    if (typeof value === "number") return setArray(name, 1, 1, [value]);
+    if (!Array.isArray(value[0])) return setArray(name, value.length, 1, value as number[], true);
+    const m = value as number[][];
+    const rows = m.length, cols = m[0]?.length ?? 0;
+    const data = new Float64Array(rows * cols);
+    for (let c = 0; c < cols; c++) for (let r = 0; r < rows; r++) data[c * rows + r] = m[r][c] ?? 0;
+    return setArray(name, rows, cols, data, false);
+  };
+
+  /** Variables in, from an import or the editor: into the kernel when there is one, the workspace either way. */
+  const putVariables = async (vars: { name: string; value: ImportValue }[]) => {
+    if (kernelInfo) {
+      for (const v of vars) {
+        const reply = await putVariable(v.name, v.value);
+        if (!reply.ok) { say(`${v.name}: ${reply.error ?? "the kernel refused it"}`, "err"); return false; }
+      }
+    }
+    const next = vars.map((v) => variableFrom(v.name, v.value));
+    setWorkspace((prev) => [...prev.filter((one) => !next.some((n) => n.name === one.name)), ...next]);
+    return true;
+  };
+
+  const readImport = async (file: File) => {
+    try {
+      const data = await importFile(file.name, new Uint8Array(await file.arrayBuffer()));
+      // Julia's own names (time, angle, sum…) stay functions: a column by that name gets a `_`.
+      const names = kernelInfo ? await docNames() : null;
+      const reserved = new Set(Array.isArray(names?.value) ? (names.value as { name: string; module: string }[]).filter((n) => n.module !== "workspace").map((n) => n.name) : []);
+      setImporting({ file: file.name, data, reserved });
+    } catch (error) {
+      say(`import ${file.name}: ${(error as Error).message}`, "err");
+    }
+  };
+
+  const applyImport = async (vars: { name: string; value: ImportValue }[]) => {
+    const file = importing?.file ?? "file";
+    setImporting(null);
+    if (await putVariables(vars)) {
+      say(`imported ${file} → ${vars.map((v) => v.name).join(", ")}`, "ok");
+      setSelectedVar(vars[0]?.name ?? "");
+      setRightTab("workspace");
+    }
+  };
+
+  /** Open a numeric variable in the editor, with its whole value from the kernel. */
+  const openVariable = async (name: string) => {
+    const v = workspace.find((one) => one.name === name);
+    if (!name || !v) { say(name ? `${name} is not in the workspace` : "select a variable first", "warn"); return; }
+    let value: ImportValue | undefined = typeof v.value === "number" ? v.value : undefined;
+    if (value === undefined && (v.type.startsWith("Vector") || v.type.startsWith("Matrix"))) {
+      if (kernelInfo) {
+        const reply = await kernel.request({ op: "get", name });
+        const { array, data } = reply;
+        if (reply.ok && array && data) {
+          value = v.type.startsWith("Vector") ? Array.from(data)
+            : Array.from({ length: array.rows }, (_, r) => Array.from({ length: array.cols }, (_, c) => data[c * array.rows + r]));
+        }
+      } else if (Array.isArray(v.value)) value = v.value as number[] | number[][];
+    }
+    if (value === undefined) { say(`${name} is ${v.type}: the editor opens numbers, vectors and matrices`, "warn"); return; }
+    setSelectedVar(name);
+    setEditing({ name, type: v.type, value });
+  };
+
   const exportWorkspace = () => {
     const name = selectedFile.replace(/\.jl$/, "") || "workspace";
     const ok = downloadMat(workspace, `${name}.mat`);
@@ -851,6 +956,8 @@ export function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); void saveCurrent(); }
+      // Ctrl+C stops a run, as in MATLAB, unless there is text to copy.
+      else if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "c" && runningNow.current && !window.getSelection()?.toString()) { e.preventDefault(); cancelRun(); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -861,9 +968,11 @@ export function App() {
     { id: "new-folder", label: "New folder…", menu: "file", group: "new", run: () => filePanel.current?.newFolder() },
     { id: "open-folder", label: "Open workspace folder…", menu: "file", group: "workspace", run: () => void openFolder() },
     { id: "save", label: "Save", menu: "file", group: "workspace", shortcut: "Ctrl+S", run: () => void saveCurrent(), enabled: dirty.has(selectedFile) && dir !== null, why: dir ? "no unsaved changes" : "open a folder first" },
+    { id: "import", label: "Import data…", menu: "file", group: "workspace", run: () => importInput.current?.click() },
     { id: "export", label: "Export workspace (.mat)…", menu: "file", group: "workspace", run: exportWorkspace, enabled: workspace.length > 0, why: "the workspace is empty" },
     { id: "attach", label: "Find Paperboat backends", menu: "file", group: "connect", run: attach },
     { id: "find", label: "Find variables…", menu: "edit", group: "find", run: () => { setRightTab("workspace"); requestAnimationFrame(() => searchRef.current?.focus()); } },
+    { id: "open-variable", label: "Open variable", menu: "edit", group: "find", run: () => void openVariable(selectedVar), enabled: !!selectedVar, why: "select a variable first" },
     { id: "clear-workspace", label: "Clear workspace", menu: "edit", group: "console", run: clearWorkspace },
     { id: "clear-figures", label: "Clear figures", menu: "edit", group: "figures", run: clearFigures, enabled: figures.length > 0, why: "no figures" },
     { id: "clear-console", label: "Clear console", menu: "edit", group: "console", run: () => setLines([]) },
@@ -875,8 +984,11 @@ export function App() {
     { id: "console", label: "Console", menu: "view", group: "panels", checked: !consoleHidden, run: () => setConsoleHidden((v) => !v) },
     { id: "kernel-panel", label: "Kernel…", menu: "view", group: "about", run: () => setKernelOpen(true) },
     { id: "run", label: "Run script", menu: "run", group: "run", run: runScript },
+    { id: "cancel", label: "Cancel run", menu: "run", group: "run", shortcut: "Ctrl+C", run: cancelRun, enabled: running > 0, why: "nothing is running" },
+    helpCommand(() => setHelpQuery(wordAtCaret())),
     { id: "about", label: "About Squero Studio", menu: "view", group: "about", run: () => setAboutOpen(true) },
   ];
+  useShortcuts(commands);
 
   return (
     <div className={`app split${chartHidden ? " chart-hidden" : ""}${consoleHidden ? " console-hidden" : ""}${filesHidden ? " files-hidden" : ""}${rightHidden ? " right-hidden" : ""}`} style={{ "--stage-w": `${stageW}px`, "--console-h": `${consoleH}px` } as CSSProperties}>
@@ -885,6 +997,7 @@ export function App() {
         brand={<SqueroWordmark product="MX" name="MX" running={running > 0} />}
         commands={commands}
         about={{ title: "About Squero Studio", shown: aboutOpen, onOpen: () => setAboutOpen(true) }}
+        help={{ shown: helpQuery !== null, onOpen: () => setHelpQuery("") }}
         project={{ name: selectedFile, dirty: dirty.has(selectedFile), what: "file", onRename: (name) => filePanel.current?.rename(selectedFile, baseName(name)) }}
       >
         <BarEnd
@@ -929,6 +1042,8 @@ export function App() {
 
       <Script
         running={running > 0}
+        runStatus={phase && <RunStatus phase={phase.phase} since={phase.since} onCancel={kernelInfo ? cancelRun : undefined} />}
+        onCancel={kernelInfo ? cancelRun : undefined}
         file={selectedFile}
         code={files[selectedFile] ?? ""}
         onChange={(code) => {
@@ -1030,7 +1145,11 @@ export function App() {
         </div>
 
         {rightTab === "workspace" ? (
-          <div className="tabbody">
+          <div
+            className="tabbody"
+            onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }}
+            onDrop={(e) => { const f = e.dataTransfer.files[0]; if (f) { e.preventDefault(); void readImport(f); } }}
+          >
             <div className="varsearch">
               <span aria-hidden>⌕</span>
               <input ref={searchRef} value={varQuery} onChange={(e) => setVarQuery(e.target.value)} placeholder="filter variables" aria-label="Filter variables" />
@@ -1044,21 +1163,28 @@ export function App() {
                   role="button"
                   tabIndex={0}
                   aria-pressed={selectedVar === v.name}
+                  title="Double-click to edit"
                   onClick={() => setSelectedVar(v.name)}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedVar(v.name); } }}
+                  onDoubleClick={() => void openVariable(v.name)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") { e.preventDefault(); void openVariable(v.name); }
+                    else if (e.key === " ") { e.preventDefault(); setSelectedVar(v.name); }
+                  }}
                 >
                   <TypeIcon type={v.type} />
                   <div className="vmeta">
                     <div className="nm">{v.name}</div>
                     <div className="sh">{typeLabel(v.type)} · {v.shape}</div>
                   </div>
-                  <span className={`vval${v.type === "Float64" ? " scalar" : ""}`} title={valueOf(v)}>{valueOf(v)}</span>
+                  <span className={`vval${v.shape === "1" ? " scalar" : ""}`} title={valueOf(v)}>{valueOf(v)}</span>
                 </div>
               ))}
               {currentVars.length === 0 && (
                 <div className="ws-empty">
                   <p>No variables yet.</p>
                   <button className="key small" onClick={runScript}>▶ Run {selectedFile}</button>
+                  <button className="key small" onClick={() => importInput.current?.click()}>Import data…</button>
+                  <span className="hint">or drop a {IMPORT_EXTENSIONS.slice(0, 3).join(" ")} {IMPORT_EXTENSIONS.slice(3).join(" ")} file here</span>
                 </div>
               )}
             </div>
@@ -1231,6 +1357,33 @@ export function App() {
       </section>
 
       {aboutOpen && <AboutModal status={status} onClose={() => setAboutOpen(false)} />}
+      {helpQuery !== null && <HelpWindow app="Squero Studio MX" provider={helpProvider} commands={commands} query={helpQuery} onClose={() => setHelpQuery(null)} />}
+      {importing && (
+        <ImportDialog
+          file={importing.file}
+          data={importing.data}
+          reserved={importing.reserved}
+          taken={new Set(workspace.map((v) => v.name))}
+          onImport={(vars) => void applyImport(vars)}
+          onClose={() => setImporting(null)}
+        />
+      )}
+      {editing && (
+        <VariableEditor
+          name={editing.name}
+          type={editing.type}
+          value={editing.value}
+          onChange={(value) => { setEditing({ ...editing, value }); void putVariables([{ name: editing.name, value }]); }}
+          onClose={() => setEditing(null)}
+        />
+      )}
+      <input
+        ref={importInput}
+        type="file"
+        hidden
+        accept={IMPORT_EXTENSIONS.join(",")}
+        onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void readImport(f); }}
+      />
       {kernelOpen && <KernelPanel kernel={kernelInfo} onClose={() => setKernelOpen(false)} onSay={say} />}
       {exportOpen && selectedExportEntries.length > 0 && (
         <ExportModal

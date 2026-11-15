@@ -70,6 +70,10 @@ src/
   julia/JuliaPanel.tsx    juliaup, the workspace packages and the General registry browser
   julia/client.ts         `/__mx/julia` status, package and registry calls
   shell/KernelPanel.tsx   the centred kernel dialog opened from the bar
+  shell/help.ts           MX's side of the shared Help window: guides and Julia docstrings (F1, ?name)
+  workspace/importData.ts import: .csv .tsv .txt .dat .json .mat (v4–v7) .xlsx, parsed in the browser
+  workspace/ImportDialog.tsx  the import preview: a matrix or a vector per column
+  workspace/VariableEditor.tsx  a workspace array as an editable grid (double-click, openvar)
   plot/figure.ts          the figure model: tiles, series, surfaces
   plot/spec.ts            chart/optimization specs → the figure model (no parser)
   plot/FigureView.tsx     a figure page: Scope, SceneView, heat and scatter tiles
