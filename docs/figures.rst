@@ -21,5 +21,6 @@ closes the selected figures (Ctrl/Cmd+A selects all). Export the selection, or t
 as **PNG, SVG, EPS or PDF**; several figures come as one ``mx-figures.zip``. PNG is a 2× capture of
 the rendered page; the vector formats embed the same capture.
 
-The repo's ``examples/`` folder is on disk and is copied to the default workspace; try
-``subplots.jl``, ``subplot-scatter.jl``, ``lines.jl`` and ``surfaces.jl``.
+Open any script in the **examples** rail tab (or run ``open_example(1)``..``open_example(11)``)
+to inspect ``01-signals.jl``, ``03-surfaces.jl``, ``05-layouts-and-themes.jl`` and
+``06-history-and-export.jl``.

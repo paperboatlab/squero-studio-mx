@@ -32,7 +32,9 @@ export type KernelHello = {
   versions?: Record<string, string>;
 };
 
-export type KernelEvent = { type: "clear" | "clc"; names?: string[] };
+export type KernelEvent =
+  | { type: "clear" | "clc"; names?: string[] }
+  | { type: "open_example"; index?: number; name?: string };
 
 /** Every export format SqueroPlot stores for a history version (HTML is built from the SVG). */
 export type FigureFormat = "png" | "svg" | "pdf" | "eps" | "html";

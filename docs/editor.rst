@@ -25,4 +25,8 @@ and macOS, ``%APPDATA%\paperboat\`` on Windows. The first run writes it with eve
 the popover rewrites just the keys it changes, a hand edit is read when the window regains focus,
 and ``[themes.<name>]`` adds a theme on top of a built-in. Without the server they stay in
 ``localStorage``. ``\pi`` then Tab becomes π in both the editor and the console.
+When viewing a shipped script from the **examples** tab (or via ``open_example(...)``), the editor
+switches to **read-only** mode so the built-in tutorial stays unchanged; use **Copy to workspace**
+in the script header whenever you want to edit and save your own copy.
+
 A small habit linter flags ``%`` comments (Julia uses ``#``).

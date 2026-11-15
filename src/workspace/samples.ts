@@ -35,15 +35,17 @@ export const demoWorkspaces: Record<string, WorkspaceVariable[]> = {
     { name: "A", shape: "512 × 512", type: "Matrix{Float64}", preview: [0.1, 0.3, 0.85, 0.4, 0.2] },
     { name: "sel", shape: "1284", type: "Vector{Float64}", preview: [0.2, 0.5, 0.3, 0.8, 0.4] },
   ],
-  "examples/subplots.jl": [
-    { name: "x", shape: "101", type: "Vector{Float64}", preview: [0, 0.2, 0.5, 0.8, 1] },
-    { name: "A", shape: "64 × 64", type: "Matrix{Float64}", preview: [0.1, 0.3, 0.85, 0.4, 0.2] },
+  "examples/01-signals.jl": [
+    { name: "fs", shape: "1", type: "Float64", value: 8.0 },
+    { name: "t", shape: "400", type: "Vector{Float64}", preview: [0, 0.25, 0.5, 0.75, 1] },
+    { name: "ts", shape: "9", type: "Vector{Float64}", preview: [0, 0.25, 0.5, 0.75, 1] },
   ],
-  "examples/lines.jl": [
-    { name: "x", shape: "101", type: "Vector{Float64}", preview: [0, 0.2, 0.5, 0.8, 1] },
+  "examples/03-surfaces.jl": [
+    { name: "Z", shape: "60 × 60", type: "Matrix{Float64}", preview: [0.1, 0.3, 0.85, 0.4, 0.2] },
   ],
-  "examples/surfaces.jl": [
-    { name: "A", shape: "64 × 64", type: "Matrix{Float64}", preview: [0.1, 0.3, 0.85, 0.4, 0.2] },
+  "examples/04-dashboard.jl": [
+    { name: "temperature", shape: "24", type: "Vector{Float64}", preview: [0.2, 0.4, 0.8, 0.6, 0.3] },
+    { name: "samples", shape: "2000", type: "Vector{Float64}", preview: [0.1, 0.5, 0.7, 0.4, 0.2] },
   ],
   "plots/peaks.jl": [
     { name: "A", shape: "512 × 512", type: "Matrix{Float64}", preview: [0.1, 0.3, 0.85, 0.4, 0.2] },

@@ -7,7 +7,8 @@ import { addEntries, entryForLine, entryFrom, entryLabel, MIME, type FigureEntry
 import { unpackScene } from "./plot/scene.ts";
 import { FigureView } from "./plot/FigureView.tsx";
 import { ExportModal } from "./plot/ExportModal.tsx";
-import { FIGURE_FORMATS, type FigureFormat, type FigureMeta, type ViewState } from "./kernel/protocol.ts";
+import { FIGURE_FORMATS, type FigureFormat, type FigureMeta, type KernelEvent, type ViewState } from "./kernel/protocol.ts";
+import { SHIPPED_EXAMPLES, findShippedExample, type ShippedExample } from "./examples/catalog.ts";
 import type { WorkspaceVariable } from "./workspace/samples.ts";
 import { Script } from "./editor/Script.tsx";
 import { useSqueroConfig, type ConfigStore } from "@paperboat/shared/editor";
@@ -106,6 +107,8 @@ export function App() {
   const [serverRoot, setServerRoot] = useState<string | null>(null);
   const [saved, setSaved] = useState<FileSystemDirectoryHandle | null>(null);
   const [readOnly, setReadOnly] = useState(false);
+  const [railTab, setRailTab] = useState<"files" | "examples">("files");
+  const [openExampleId, setOpenExampleId] = useState<string | null>(null);
   const [dirty, setDirty] = useState<Set<string>>(new Set());
   const [varQuery, setVarQuery] = useState("");
   const filePanel = useRef<FilePanelHandle>(null);
@@ -175,6 +178,34 @@ export function App() {
     return true;
   };
   const baseName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
+  const openExample = useMemo(
+    () => (openExampleId ? SHIPPED_EXAMPLES.find((one) => one.id === openExampleId) ?? null : null),
+    [openExampleId],
+  );
+  const editorFile = openExample ? openExample.path : selectedFile;
+  const editorCode = openExample ? openExample.content : (files[selectedFile] ?? "");
+  const editorSource = openExample ? `examples/${openExample.path}` : selectedFile;
+  const editorReadOnly = openExample !== null;
+
+  const handleKernelEvents = (events: readonly KernelEvent[] | undefined) => {
+    for (const event of events ?? []) {
+      if (event.type === "clc") {
+        setLines([]);
+      } else if (event.type === "clear" && !event.names?.length) {
+        setFunctions({});
+      } else if (event.type === "open_example") {
+        const hit = findShippedExample({ index: event.index, name: event.name });
+        if (!hit) {
+          const ref = event.index !== undefined ? `#${event.index}` : JSON.stringify(event.name ?? "");
+          say(`open_example: no shipped example matching ${ref} (available: 1..${SHIPPED_EXAMPLES.length})`, "warn");
+          continue;
+        }
+        setOpenExampleId(hit.id);
+        setRailTab("examples");
+        say(`opened ${hit.path} (read-only)`, "ok");
+      }
+    }
+  };
   useEffect(() => { if (consoleOpts.follow) consoleEnd.current?.scrollIntoView({ block: "nearest" }); }, [lines, consoleHidden, consoleOpts.follow]);
   useEffect(() => {
     if (!(selectedFile in files)) {
@@ -338,10 +369,7 @@ export function App() {
     const reply = await evalCode(code);
     for (const line of (reply.stdout ?? "").split("\n")) if (line.trim()) say(line);
     // The kernel already applied `clear` between statements; the workspace follows `whos`.
-    for (const event of reply.events ?? []) {
-      if (event.type === "clc") setLines([]);
-      else if (event.type === "clear" && !event.names?.length) setFunctions({});
-    }
+    handleKernelEvents(reply.events);
     if (!reply.ok) {
       sayError(reply.error);
       return;
@@ -612,7 +640,7 @@ export function App() {
 
   /** `→ figure` in the editor: show the figure that line drew into. */
   const focusLine = (line: number) => {
-    const match = entryForLine(figures, selectedFile, line);
+    const match = entryForLine(figures, editorSource, line);
     if (!match) { say("run the script to create this figure", "warn"); return; }
     setActiveFigureId(match.key);
     setFigureSel([match.key]);
@@ -677,7 +705,7 @@ export function App() {
   const runCodeViaKernel = (code: string, mode: "cell" | "line" | "selection" | "file") => tracked(runCodeViaKernelNow(code, mode));
   const runCodeViaKernelNow = async (code: string, mode: "cell" | "line" | "selection" | "file") => {
     const startedAt = performance.now();
-    const source = selectedFile;
+    const source = editorSource;
     const count = code.split("\n").filter((line) => line.trim()).length;
     say(mode === "file" ? `run ${source || "script"}` : `run ${mode} · ${count} line${count === 1 ? "" : "s"}`, "info");
     const reply = await evalCode(code);
@@ -686,10 +714,7 @@ export function App() {
     }
     // The kernel already applied `clear` between statements; the workspace follows `whos`.
     // Neither `clear` nor `clc` touches the figure history.
-    for (const event of reply.events ?? []) {
-      if (event.type === "clc") setLines([]);
-      else if (event.type === "clear" && !event.names?.length) setFunctions({});
-    }
+    handleKernelEvents(reply.events);
     if (!reply.ok) sayError(reply.error);
 
     if (reply.figures?.length) {
@@ -755,7 +780,33 @@ export function App() {
     });
   };
 
-  const runScript = () => runCode(files[selectedFile] ?? "", "file");
+  const runScript = () => runCode(editorCode, "file");
+
+  const copyExampleToWorkspace = async (example: ShippedExample) => {
+    let target = example.name;
+    const stem = example.name.replace(/\.jl$/i, "");
+    let i = 1;
+    while (target in files) {
+      target = i === 1 ? `${stem}-copy.jl` : `${stem}-copy-${i}.jl`;
+      i++;
+    }
+    setFiles((prev) => ({ ...prev, [target]: example.content }));
+    setOpenExampleId(null);
+    setRailTab("files");
+    setSelectedFile(target);
+    if (storage) {
+      try {
+        await storage.write(target, example.content);
+        say(`copied ${example.name} → ${target}`, "ok");
+      } catch (error) {
+        setDirty((prev) => new Set(prev).add(target));
+        say(`disk: ${error instanceof Error ? error.message : String(error)}`, "warn");
+      }
+    } else {
+      setDirty((prev) => new Set(prev).add(target));
+      say(`copied ${example.name} → ${target} (open a folder to save)`, "ok");
+    }
+  };
 
   const applyServerTree = (tree: ServerWorkspace, restored = true) => {
     setDir(null);
@@ -842,6 +893,10 @@ export function App() {
   };
 
   const saveCurrent = async () => {
+    if (openExample) {
+      say("shipped examples are read-only; use Copy to workspace to edit", "warn");
+      return;
+    }
     if (!selectedFile) return;
     if (!storage) {
       say(readOnly ? "this folder is read-only; use Chrome or Edge to save" : "no folder is open; open the workspace in Documents to save", "warn");
@@ -923,7 +978,7 @@ export function App() {
   };
 
   const exportWorkspace = () => {
-    const name = selectedFile.replace(/\.jl$/, "") || "workspace";
+    const name = editorFile.replace(/\.jl$/, "") || "workspace";
     const ok = downloadMat(workspace, `${name}.mat`);
     say(ok ? `exported ${name}.mat · ${workspace.length} variables` : "workspace is empty", ok ? "ok" : "warn");
   };
@@ -961,13 +1016,13 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [dir, selectedFile, files]);
+  }, [dir, selectedFile, files, openExampleId]);
 
   const commands: Command[] = [
     { id: "new-script", label: "New script…", menu: "file", group: "new", run: () => filePanel.current?.newFile() },
     { id: "new-folder", label: "New folder…", menu: "file", group: "new", run: () => filePanel.current?.newFolder() },
     { id: "open-folder", label: "Open workspace folder…", menu: "file", group: "workspace", run: () => void openFolder() },
-    { id: "save", label: "Save", menu: "file", group: "workspace", shortcut: "Ctrl+S", run: () => void saveCurrent(), enabled: dirty.has(selectedFile) && dir !== null, why: dir ? "no unsaved changes" : "open a folder first" },
+    { id: "save", label: "Save", menu: "file", group: "workspace", shortcut: "Ctrl+S", run: () => void saveCurrent(), enabled: !openExample && dirty.has(selectedFile) && dir !== null, why: openExample ? "example is read-only" : dir ? "no unsaved changes" : "open a folder first" },
     { id: "import", label: "Import data…", menu: "file", group: "workspace", run: () => importInput.current?.click() },
     { id: "export", label: "Export workspace (.mat)…", menu: "file", group: "workspace", run: exportWorkspace, enabled: workspace.length > 0, why: "the workspace is empty" },
     { id: "attach", label: "Find Paperboat backends", menu: "file", group: "connect", run: attach },
@@ -998,7 +1053,7 @@ export function App() {
         commands={commands}
         about={{ title: "About Squero Studio", shown: aboutOpen, onOpen: () => setAboutOpen(true) }}
         help={{ shown: helpQuery !== null, onOpen: () => setHelpQuery("") }}
-        project={{ name: selectedFile, dirty: dirty.has(selectedFile), what: "file", onRename: (name) => filePanel.current?.rename(selectedFile, baseName(name)) }}
+        project={{ name: editorFile, dirty: !openExample && dirty.has(selectedFile), what: openExample ? "example" : "file", onRename: openExample ? undefined : (name) => filePanel.current?.rename(selectedFile, baseName(name)) }}
       >
         <BarEnd
           panel={{ open: !chartHidden, label: "Figures pane", onToggle: () => setChartHidden((v) => !v) }}
@@ -1029,7 +1084,7 @@ export function App() {
         folders={folders}
         gitMarks={gitMarks}
         active={selectedFile}
-        onOpen={setSelectedFile}
+        onOpen={(path) => { setOpenExampleId(null); setSelectedFile(path); }}
         onChange={({ files: nextFiles, folders: nextFolders }) => { setFiles(nextFiles); setFolders(nextFolders); }}
         onOpenFolder={() => void openFolder()}
         rootBadge={dir ? "folder" : serverRoot ? "synced" : readOnly ? "read-only" : "not open"}
@@ -1038,21 +1093,29 @@ export function App() {
         onToggle={() => setFilesHidden((v) => !v)}
         storage={storage}
         onSay={say}
+        tab={railTab}
+        onTab={setRailTab}
+        examples={SHIPPED_EXAMPLES}
+        activeExample={openExampleId}
+        onOpenExample={(id) => { setOpenExampleId(id); setRailTab("examples"); }}
       />
 
       <Script
         running={running > 0}
         runStatus={phase && <RunStatus phase={phase.phase} since={phase.since} onCancel={kernelInfo ? cancelRun : undefined} />}
         onCancel={kernelInfo ? cancelRun : undefined}
-        file={selectedFile}
-        code={files[selectedFile] ?? ""}
+        file={editorFile}
+        code={editorCode}
+        readOnly={editorReadOnly}
         onChange={(code) => {
+          if (openExample) return;
           setFiles((prev) => ({ ...prev, [selectedFile]: code }));
           setDirty((prev) => new Set(prev).add(selectedFile));
         }}
         onRun={runScript}
-        dirty={dirty.has(selectedFile)}
+        dirty={!openExample && dirty.has(selectedFile)}
         onSave={() => void saveCurrent()}
+        onCopyToWorkspace={openExample ? () => void copyExampleToWorkspace(openExample) : undefined}
         settings={editor}
         onSettings={setEditor}
         configFile={configFile}
@@ -1062,7 +1125,7 @@ export function App() {
         onFigure={focusLine}
         onRunSelection={runCode}
         lastRun={lastRun}
-        base={git?.head[selectedFile] ?? null}
+        base={openExample ? null : (git?.head[selectedFile] ?? null)}
       />
 
       <div
@@ -1182,7 +1245,7 @@ export function App() {
               {currentVars.length === 0 && (
                 <div className="ws-empty">
                   <p>No variables yet.</p>
-                  <button className="key small" onClick={runScript}>▶ Run {selectedFile}</button>
+                  <button className="key small" onClick={runScript}>▶ Run {editorFile}</button>
                   <button className="key small" onClick={() => importInput.current?.click()}>Import data…</button>
                   <span className="hint">or drop a {IMPORT_EXTENSIONS.slice(0, 3).join(" ")} {IMPORT_EXTENSIONS.slice(3).join(" ")} file here</span>
                 </div>

@@ -33,4 +33,6 @@ While a run is busy the run strip says what it's doing (evaluating, solving, plo
 - Cancel stops the running Julia code; the workspace keeps what was defined before it.
 - A run never times out by itself: Cancel is how it ends early.
 
-The repository's ``examples/`` folder is copied to the default workspace; try ``subplots.jl``, ``subplot-scatter.jl``, ``lines.jl`` and ``surfaces.jl``.
+Shipped tutorial examples live in the **examples** tab of the left rail and open read-only; start
+with ``01-signals.jl``, ``02-lorenz.jl``, ``03-surfaces.jl`` and ``07-session-and-workspace.jl``, or run
+``open_example(1)`` in the console (see :doc:`examples`).

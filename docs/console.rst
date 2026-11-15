@@ -9,12 +9,13 @@ too.
 
 .. code-block:: text
 
-   help · whos · clear [name] · clc · attach · detach
+   help · whos · clear [name] · clc · open_example · attach · detach
    run · version
 
 
 ``clear`` resets the kernel session and the workspace; ``clear x`` removes one binding from the
-workspace; ``clc`` clears the console. ``\pi`` then Tab becomes π. Arrow Up/Arrow Down recall history.
+workspace; ``clc`` clears the console; ``open_example(1)`` or ``open_example("signals")`` opens
+a shipped tutorial example read-only in the editor. ``\pi`` then Tab becomes π. Arrow Up/Arrow Down recall history.
 The scratch line under the workspace still evaluates simple expressions locally until a kernel is
 attached.
 
@@ -32,4 +33,5 @@ Anything else is Julia.
 - ``help name``, ``doc name`` or ``?name`` open this window on a name; ``F1`` looks up the selected word.
 - ``openvar A`` opens a variable in the variable editor.
 - ``whos`` lists the workspace; ``clear`` empties it, ``clear A`` drops one; ``clc`` clears the console.
+- ``open_example(1)`` or ``open_example("signals")`` opens a shipped tutorial example read-only in the editor.
 - ``run`` runs the open script; ``attach`` and ``detach`` find or leave Paperboat backends; ``version`` prints the versions.
