@@ -1,62 +1,23 @@
-// MX's side of the shared Help window: a few guide pages and every Julia name the kernel knows,
-// whose docstrings the kernel renders (`doc`). Nothing here parses Julia.
-import { matches, type HelpItem, type HelpPage, type HelpProvider } from "@paperboat/shared";
+// MX's side of the shared Help window: its manual and Paperboat's (paperboatlab.github.io), and
+// every Julia name the kernel knows, whose docstrings the kernel renders (`doc`). Nothing here
+// parses Julia.
+import { combineHelp, docsHelp, DOCS_URL, loadDocs, type HelpItem, type HelpPage, type HelpProvider } from "@paperboat/shared";
 import { docNames, docOf } from "../kernel/client.ts";
-import { IMPORT_EXTENSIONS } from "../workspace/importData.ts";
 
-const GUIDES: (HelpItem & { text: string })[] = [
-  {
-    id: "guide:start", title: "Getting started", kind: "guide", summary: "scripts, cells, the console and the workspace",
-    text: `MX runs Julia scripts in a kernel and keeps what they define in the workspace on the right.
-
-- \`Run\` runs the whole script; \`Ctrl+Enter\` runs the \`#%%\` cell at the cursor; \`Shift+Enter\` runs the line or the selection.
-- The console is the kernel's REPL: type an expression and press Enter.
-- Figures drawn with SqueroPlot (\`lines\`, \`surface\`, \`heatmap\`…) land in the figure pane and its history.
-- Paperboat sees every workspace number, vector and matrix as a live variable while it's attached.`,
-  },
-  {
-    id: "guide:console", title: "Console commands", kind: "guide", summary: "help, doc, openvar, whos, clear, clc…",
-    text: `Anything else is Julia.
-
-- \`help name\`, \`doc name\` or \`?name\` open this window on a name; \`F1\` looks up the selected word.
-- \`openvar A\` opens a variable in the variable editor.
-- \`whos\` lists the workspace; \`clear\` empties it, \`clear A\` drops one; \`clc\` clears the console.
-- \`run\` runs the open script; \`attach\` and \`detach\` find or leave Paperboat backends; \`version\` prints the versions.`,
-  },
-  {
-    id: "guide:variables", title: "Variable editor", kind: "guide", summary: "edit a vector or matrix as a grid",
-    text: `Double-click a workspace card (or \`openvar A\`) to open it as a grid.
-
-- Arrows move; type a number, press \`Enter\` or \`F2\` to edit; \`Enter\` and \`Tab\` commit and move on; \`Esc\` drops the edit.
-- Paste a block copied from a spreadsheet: it lands at the selected cell and grows the array.
-- \`+ row\`, \`+ column\`, \`− row\`, \`− column\` change the shape. Every change goes to the kernel at once.`,
-  },
-  {
-    id: "guide:import", title: "Import data", kind: "guide", summary: IMPORT_EXTENSIONS.join(" "),
-    text: `File › Import data… or drop a file on the workspace. A preview shows what will come in.
-
-- \`.csv\` \`.tsv\` \`.txt\` \`.dat\`: comma, tab, semicolon or spaces, found by themselves. A first row of names is a header.
-- \`.xlsx\`: every sheet; formulas come in as their last computed values.
-- \`.mat\`: MATLAB v4, v6 and v7 (compressed). v7.3 files are HDF5: save them with \`-v7\` to import.
-- \`.json\`: numbers, arrays, arrays of rows, or records like \`[{"t": 0, "y": 1}, …]\`.
-
-A table with a header comes in as one vector per column, or as one matrix. Text columns are left out and named in the preview.`,
-  },
-  {
-    id: "guide:run", title: "Running and cancelling", kind: "guide", summary: "what a run is doing, and how to stop it",
-    text: `While a run is busy the run strip says what it's doing (evaluating, solving, plotting) and for how long.
-
-- While a run is busy the editor's \`Run\` key is \`Cancel\`, and the run strip has one too; \`Ctrl+C\` (with no text selected) and Run › Cancel run do the same.
-- Cancel stops the running Julia code; the workspace keeps what was defined before it.
-- A run never times out by itself: Cancel is how it ends early.`,
-  },
-];
+/** The org's docs site; VITE_DOCS_URL points Help at another build (a local one, to try docs out). */
+const DOCS: string = import.meta.env?.VITE_DOCS_URL ?? DOCS_URL;
+/** MX's manual and the engine's, fetched on Help's first look. */
+const mxDocs = () => docsHelp(() => loadDocs((s) => s.site === "apps/squero-studio-mx" || s.site === "paperboat", DOCS), DOCS);
 
 const JULIA = "julia:";
 const LIMIT = 200;
 
-/** The Help provider: guides first, then Julia names (a prefix match before a match inside). */
-export function mxHelp(kernelReady: () => boolean): HelpProvider {
+/** The Help provider: the manuals, then Julia names (a prefix match before a match inside). */
+export function mxHelp(kernelReady: () => boolean, docs: HelpProvider = mxDocs()): HelpProvider {
+  return combineHelp(docs, juliaHelp(kernelReady));
+}
+
+function juliaHelp(kernelReady: () => boolean): HelpProvider {
   let names: Promise<{ name: string; module: string }[]> | null = null;
   const loadNames = () => {
     if (!kernelReady()) return Promise.resolve([]);
@@ -65,8 +26,7 @@ export function mxHelp(kernelReady: () => boolean): HelpProvider {
   };
   return {
     async items(query) {
-      const guides = GUIDES.filter((g) => matches(g, query));
-      if (!query) return guides;
+      if (!query) return [];
       const q = query.toLowerCase();
       const all = await loadNames();
       const hits = all.filter((n) => n.name.toLowerCase().includes(q));
@@ -74,11 +34,10 @@ export function mxHelp(kernelReady: () => boolean): HelpProvider {
       const items: HelpItem[] = hits.slice(0, LIMIT).map((n) => ({ id: JULIA + n.name, title: n.name, kind: n.module }));
       // A name the list doesn't have (a qualified one, a package's) can still be looked up.
       if (/^[\p{L}_][\p{L}\p{N}_!.]*$/u.test(query) && !hits.some((n) => n.name === query)) items.unshift({ id: JULIA + query, title: query, kind: "look up" });
-      return [...guides, ...items];
+      return items;
     },
     async page(id): Promise<HelpPage | null> {
-      const guide = GUIDES.find((g) => g.id === id);
-      if (guide) return { title: guide.title, kind: "guide", text: guide.text };
+      if (!id.startsWith(JULIA)) return null;
       const name = id.slice(JULIA.length);
       if (!kernelReady()) return { title: name, kind: "julia", text: "Julia docs come from the kernel: start it (the julia chip in the top bar) and look again." };
       const reply = await docOf(name);
