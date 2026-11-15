@@ -6,7 +6,7 @@ import type { FunctionTable } from "../kernel/localEval.ts";
 import type { AnswerVariable } from "./answers.ts";
 
 export function Script({
-  running, runStatus, file, code, onChange, onRun, onCancel, dirty, onSave, settings, onSettings, configFile, appTheme, variables, functions, onFigure, onRunSelection, lastRun, base,
+  running, runStatus, file, code, onChange, onRun, onCancel, dirty, onSave, settings, onSettings, configFile, appTheme, variables, functions, onFigure, onRunSelection, lastRun, base, readOnly, onCopyToWorkspace,
 }: {
   /** The kernel is compiling or running something. */
   running?: boolean;
@@ -32,6 +32,8 @@ export function Script({
   lastRun?: { time: number; ms: number; lines: number; mode: string } | null;
   /** HEAD's copy of the file, for the git gutter. */
   base?: string | null;
+  readOnly?: boolean;
+  onCopyToWorkspace?: () => void;
 }) {
   const [pos, setPos] = useState({ line: 1, col: 1, selected: 0 });
   const clock = (time: number) => new Date(time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
@@ -41,8 +43,12 @@ export function Script({
     <section className="panel editor">
       <div className="head">
         <b>{file}{dirty ? " •" : ""}</b>
+        {readOnly && <span className="tag" title="Shipped tutorial example (read-only)">read-only</span>}
         <span className="sp" />
-        <button className="key small" onClick={onSave} disabled={!dirty} title="Save (Ctrl+S)">Save</button>
+        {onCopyToWorkspace && (
+          <button type="button" className="key small" onClick={onCopyToWorkspace} title="Copy into your writable workspace to edit">Copy to workspace</button>
+        )}
+        {!readOnly && <button className="key small" onClick={onSave} disabled={!dirty} title="Save (Ctrl+S)">Save</button>}
         {running && onCancel
           ? <button className="key small" onClick={onCancel} title="Stop the run (Ctrl+C)">Cancel</button>
           : <button className="key small" onClick={onRun} disabled={running} aria-busy={running}>{running ? "Running" : "Run"}</button>}
@@ -51,7 +57,7 @@ export function Script({
 
 
       <div className="code">
-        <CodeEditor key={file} value={code} file={file} onChange={onChange} settings={settings} appTheme={appTheme} variables={variables} functions={functions} onFigure={onFigure} onRunSelection={onRunSelection} onPos={setPos} base={base} />
+        <CodeEditor key={file} value={code} file={file} onChange={onChange} settings={settings} appTheme={appTheme} variables={variables} functions={functions} onFigure={onFigure} onRunSelection={onRunSelection} onPos={setPos} base={base} readOnly={readOnly} />
       </div>
       {!file && <div className="editor-empty">Open the workspace folder, or create a script with +.</div>}
       <div className="runstrip">

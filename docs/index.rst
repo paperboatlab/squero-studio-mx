@@ -15,6 +15,7 @@ MX is **not** a MATLAB compatibility product. It does not run ``.m`` files; it g
    :maxdepth: 1
 
    getting_started
+   examples
    editor
    console
    workspace

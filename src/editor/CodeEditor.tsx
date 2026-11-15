@@ -262,7 +262,7 @@ const answerTheme = {
 };
 
 export function CodeEditor({
-  value, file, onChange, settings, appTheme, variables, functions, onFigure, onRunSelection, onPos, base,
+  value, file, onChange, settings, appTheme, variables, functions, onFigure, onRunSelection, onPos, base, readOnly,
 }: {
   value: string;
   file: string;
@@ -276,6 +276,7 @@ export function CodeEditor({
   onPos?: (pos: EditorPos) => void;
   /** HEAD's copy of this file for the git gutter; null when it is untracked or not in a repository. */
   base?: string | null;
+  readOnly?: boolean;
 }) {
   const vars = useRef(variables);
   vars.current = variables;
@@ -400,6 +401,7 @@ export function CodeEditor({
       lint={habitLint}
       extra={extra}
       base={base}
+      readOnly={readOnly}
       onPos={onPos}
       onView={setView}
     />

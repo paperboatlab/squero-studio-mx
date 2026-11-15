@@ -1,7 +1,9 @@
 Files and menus
 ===============
 
-The Files rail is ``@paperboat/shared/files`` — the same tree as Squero Studio OM. It supports
+The Files rail is ``@paperboat/shared/files`` — the same tree as Squero Studio OM, with two tabs:
+**files** (your editable workspace) and **examples** (the read-only ``SqueroBase`` /
+``SqueroPlot`` tutorial bundled with MX). It supports
 folders, selection, new file/folder, rename, duplicate, delete, copy path and drag-to-move. ``.jl``
 files carry the Julia dots instead of a generic glyph. Both side panels collapse to a standing
 tab with the chevron in their header, like Lookout's drawers; ``View`` has matching toggles.

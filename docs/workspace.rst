@@ -5,7 +5,8 @@ Like MATLAB's, the workspace is **the session**, not the open file: a run adds/o
 variables, other variables stay until ``clear``, and switching scripts does not change it. ``clear``
 empties it, ``clear x`` removes one binding and ``clc`` only clears the console. In a script,
 ``clear()`` takes effect between statements, so what the script defines after it stays
-(``clear.jl`` leaves ``z``, ``a``, ``f`` and ``t``). Functions are listed too (``ƒ``) but stay in MX. The filter searches
+``07-session-and-workspace.jl`` shows ``clear(:scratch_gain, :scratch_matrix)`` leaving the
+intended bindings intact). Functions are listed too (``ƒ``) but stay in MX. The filter searches
 name, shape and type. Each card shows the value on the right (a scalar, or an array's first
 entries); the dot is the automatic broadcast to Paperboat.
 

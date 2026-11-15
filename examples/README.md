@@ -1,12 +1,11 @@
-# MX examples
+# MX Tutorial Examples
 
-A real folder to try the editor, the kernel and the figure history. In MX:
+An 11-step progressive tutorial for **`SqueroPlot.jl`** and **`SqueroBase.jl`**, shipped read-only
+with **Squero Studio MX**. Open any example in one of three ways:
 
-1. Click the folder key next to `mx-workspace` in the Files rail, or choose
-   `File ▸ Open workspace folder…`, and pick this `examples/` folder.
-2. Open a script and press `Ctrl/Cmd+Enter` (cell) or run the file.
-3. Figures appear on the stage and in the **Figures** tab; select one or several and export
-   PNG, SVG, PDF, EPS or HTML (several become `mx-figures.zip`).
+1. Switch to the **examples** tab in the left rail and click a script.
+2. Call `open_example(1)`..`open_example(11)` or `open_example("signals")` / `open_example(:signals)` in the Julia console.
+3. Use **Copy to workspace** in the script header to save an editable copy in your workspace folder.
 
 Every call in the scripts is tagged with where it comes from:
 
@@ -14,20 +13,21 @@ Every call in the scripts is tagged with where it comes from:
 | --- | --- |
 | `[Julia]` | Base Julia or a standard library (`LinearAlgebra`, `Statistics`) |
 | `[SqueroPlot]` | the plotting library: `Figure`, `Axis`, `Axis3`, `lines!`, `surface!`, `save`, … |
-| `[SqueroBase]` | the session layer: `clear`, `clc`, `optimize`, `simulate` |
+| `[SqueroBase]` | the session layer: `clear`, `clc`, `open_example`, `optimize`, `simulate` |
 | `[Paperboat]` | runs in Paperboat, not in Julia: the solver, the simulation blocks |
 
-The kernel loads SqueroPlot and SqueroBase into every session, so the scripts need no `using`.
+The kernel loads `SqueroPlot` and `SqueroBase` into every session, so scripts need no `using`.
 
-| File | What it shows |
-| --- | --- |
-| `01-signals.jl` | `lines!`, `stem!`, `stairs!`, `hlines!`, a legend |
-| `02-lorenz.jl` | a Base-Julia RK4 loop; a 3D line coloured by time, linked 2D axes, column sizes |
-| `03-surfaces.jl` | `surface!`, `wireframe!`, `heatmap!`, `contourf!`/`contour!`, colour bars, a title row |
-| `04-dashboard.jl` | bars + error bars, a histogram, a band, a twin y axis, a log axis with stems |
-| `05-history.jl` | run it cell by cell: one history entry per changed figure; `clear()`/`clc()` keep the history |
-| `06-export.jl` | `save` to SVG/PDF/PNG/HTML from a script; a `snapshot` that outlives later changes |
-| `optimization/*.jl` | `optimize` (LP, QP, NLP) solved by Paperboat; the app draws the objective as a SqueroPlot surface with the optimum, and each script draws its own view of the problem |
-| `simulation/state-space.jl` | poles with SqueroPlot; the model sent to a Paperboat backend with `simulate` |
-
-See `optimization/README.md` for the optimization problems and their answers.
+| # | File | Topic | Key APIs |
+| --- | --- | --- | --- |
+| 1 | `01-signals.jl` | Basic 2D plotting | `Figure`, `Axis`, `lines!`, `stem!`, `stairs!`, `scatter!`, `hlines!`, `axislegend` |
+| 2 | `02-lorenz.jl` | Linked 2D & 3D axes | `Axis3`, 3D `lines!`, `linkxaxes!`, `hidexdecorations!`, `colsize!` |
+| 3 | `03-surfaces.jl` | 2D fields, surfaces & meshes | `surface!`, `wireframe!`, `mesh!`, `heatmap!`, `contourf!`, `contour!`, `Colorbar`, `Label` |
+| 4 | `04-dashboard.jl` | Statistics, bands & twin/log axes | `barplot!`, `errorbars!`, `hist!`, `band!`, `area!`, `twinx`, `scatterlines!`, log `stem!` |
+| 5 | `05-layouts-and-themes.jl` | Layouts, themes, legends & text | `GridLayout`, `with_theme(theme_dark())`, `Legend`, `series!`, `linesegments!`, `rich`, `superscript`, `subscript` |
+| 6 | `06-history-and-export.jl` | Cells, snapshots & export | `#%%` cells, `snapshot`, `save`, `to_html(; interactive = true)`, `render`, `poly!` |
+| 7 | `07-session-and-workspace.jl` | Session & workspace control | `clear(:x)`, `clear()`, `clc()`, `open_example(...)` |
+| 8 | `08-simulation.jl` | Dynamical systems & simulation | `simulate(graph; duration, dt, solver, variables)`, `control/state_space` |
+| 9 | `09-optimization-lp.jl` | Linear optimization (LP) | `optimize(problem)` with `f, A, b, lb`, `ablines!`, `contourf!` |
+| 10 | `10-optimization-qp.jl` | Quadratic optimization (QP) | `optimize(problem)` with `H, Aeq, beq`, `barplot!`, custom tick formats |
+| 11 | `11-optimization-nlp.jl` | Nonlinear optimization (NLP) | `optimize(problem)` with `fun, nonlcon`, `band!`, `annotation!` |
