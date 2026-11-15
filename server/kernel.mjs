@@ -21,6 +21,69 @@ const has = (cmd) => {
   return probe.status === 0;
 };
 
+// ---- Kernels never outlive the launcher -------------------------------------------------------
+// A container's client can die and leave the container running, and Julia as PID 1 ignores
+// SIGTERM. So each kernel container is named and labelled with this launcher's pid: closing a
+// kernel removes its container, the launcher removes all of its own when it stops, and at start
+// it removes those whose launcher is gone (a crash, kill -9).
+
+const LABEL = "squero.kernel";
+const OWNER = "squero.kernel.owner";
+let serial = 0;
+/** Live kernels: a container name (podman/docker) or a native child, by name. */
+const live = new Map();
+
+const alive = (pid) => {
+  try { process.kill(pid, 0); return true; } catch (error) { return error.code === "EPERM"; }
+};
+
+/** Remove a kernel container now (the launcher is exiting) or in the background. */
+function removeContainer(engine, name, wait = false) {
+  const args = ["rm", "-f", "-t", "1", name];
+  if (wait) spawnSync(engine, args, { stdio: "ignore", timeout: 15000 });
+  else spawn(engine, args, { stdio: "ignore" }).on("error", () => {});
+}
+
+function stopKernel(name, wait = false) {
+  const kernel = live.get(name);
+  if (!kernel) return;
+  live.delete(name);
+  if (kernel.engine) removeContainer(kernel.engine, name, wait);
+  if (!kernel.child.killed) kernel.child.kill("SIGTERM");
+  // A native Julia busy in a C call can ignore SIGTERM; it gets a moment, then SIGKILL.
+  if (!kernel.engine && !wait) setTimeout(() => { if (kernel.child.exitCode === null) kernel.child.kill("SIGKILL"); }, 3000).unref();
+  if (!kernel.engine && wait && kernel.child.exitCode === null) kernel.child.kill("SIGKILL");
+}
+
+let hooked = false;
+function stopAllOnExit() {
+  if (hooked) return;
+  hooked = true;
+  const all = () => { for (const name of [...live.keys()]) stopKernel(name, true); };
+  process.on("exit", all);
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+    process.once(signal, () => {
+      all();
+      // Leave as the signal would have, unless something else also listens for it.
+      if (process.listenerCount(signal) === 0) process.kill(process.pid, signal);
+    });
+  }
+}
+
+/** Remove kernel containers left by a launcher that is gone. */
+export function sweepOrphans(engine = kernelRuntime()) {
+  if (engine !== "podman" && engine !== "docker") return 0;
+  const listed = spawnSync(engine, ["ps", "-a", "--filter", `label=${LABEL}`, "--format", `{{.Names}} {{.Label "${OWNER}"}}`], { encoding: "utf8", timeout: 15000 });
+  let removed = 0;
+  for (const line of (listed.stdout ?? "").split("\n")) {
+    const [name, owner] = line.trim().split(/\s+/);
+    if (!name || alive(Number(owner))) continue;
+    removeContainer(engine, name);
+    removed++;
+  }
+  return removed;
+}
+
 let runtime;
 /** The first runtime present; probed once, as each probe is a blocking child. */
 export function kernelRuntime() {
@@ -30,7 +93,7 @@ export function kernelRuntime() {
 }
 
 /** The command that runs the kernel. `workspace` is mounted at /workspace for load/save. */
-export function kernelCommand({ workspace, image = KERNEL_IMAGE, runtime = kernelRuntime() } = {}) {
+export function kernelCommand({ workspace, image = KERNEL_IMAGE, runtime = kernelRuntime(), name } = {}) {
   if (runtime === "native") {
     const repo = KERNEL_REPO;
     const env = {};
@@ -47,7 +110,9 @@ export function kernelCommand({ workspace, image = KERNEL_IMAGE, runtime = kerne
     };
   }
   if (runtime === "podman" || runtime === "docker") {
-    const args = ["run", "--rm", "-i", "--network=none"];
+    // --init: Julia isn't PID 1, so signals reach it (Cancel's SIGINT goes through the init).
+    const args = ["run", "--rm", "-i", "--init", "--network=none", "--label", `${LABEL}=1`, "--label", `${OWNER}=${process.pid}`];
+    if (name) args.push("--name", name);
     if (runtime === "podman") args.push("--userns=keep-id");
     if (workspace) {
       args.push("-v", `${workspace}:/workspace:rw`, "-w", "/workspace");
@@ -57,15 +122,16 @@ export function kernelCommand({ workspace, image = KERNEL_IMAGE, runtime = kerne
       args.push("-e", "JULIA_LOAD_PATH=@:/workspace:@stdlib");
     }
     args.push(image);
-    return { cmd: runtime, args, runtime };
+    return { cmd: runtime, args, runtime, name };
   }
   throw new Error("no Julia runtime: install podman, docker or julia (or set SQUERO_JULIA)");
 }
 
 function bridge(socket, options) {
   let command;
+  const name = `squero-kernel-${process.pid}-${++serial}`;
   try {
-    command = kernelCommand(options);
+    command = kernelCommand({ ...options, name });
   } catch (error) {
     socket.send(JSON.stringify({ ok: false, error: String(error.message ?? error) }));
     socket.close(1011, "no kernel runtime");
@@ -75,6 +141,8 @@ function bridge(socket, options) {
     stdio: ["pipe", "pipe", "pipe"],
     env: { ...process.env, ...(command.env ?? {}) },
   });
+  live.set(name, { child, engine: command.runtime === "native" ? null : command.cmd });
+  stopAllOnExit();
   let buffer = Buffer.alloc(0);
   let mode = "line";
   let need = 0;
@@ -110,6 +178,7 @@ function bridge(socket, options) {
     socket.close(1011, "kernel failed");
   });
   child.on("exit", (code, signal) => {
+    live.delete(name);
     if (socket.readyState === socket.OPEN) socket.close(1011, `kernel exited ${code ?? signal}`);
   });
 
@@ -119,7 +188,7 @@ function bridge(socket, options) {
     const text = data.toString();
     child.stdin.write(text.endsWith("\n") ? text : `${text}\n`);
   });
-  socket.on("close", () => { if (!child.killed) child.kill("SIGTERM"); });
+  socket.on("close", () => stopKernel(name));
 }
 
 /**
@@ -127,6 +196,7 @@ function bridge(socket, options) {
  * carry JSON lines, binary frames carry the matrix payloads named by `array.bytes`.
  */
 export function attachKernel(server, options) {
+  sweepOrphans();
   const route = options.path ?? "/__mx/kernel";
   const wss = new WebSocketServer({ noServer: true });
   const upgrade = (req, socket, head) => {
@@ -137,6 +207,7 @@ export function attachKernel(server, options) {
   server.on("upgrade", upgrade);
   return {
     close() {
+      for (const name of [...live.keys()]) stopKernel(name, true);  // before the launcher exits
       server.off("upgrade", upgrade);
       for (const client of wss.clients) client.close();
       wss.close();
