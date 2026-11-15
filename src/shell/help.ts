@@ -46,7 +46,8 @@ A table with a header comes in as one vector per column, or as one matrix. Text 
     id: "guide:run", title: "Running and cancelling", kind: "guide", summary: "what a run is doing, and how to stop it",
     text: `While a run is busy the run strip says what it's doing (evaluating, solving, plotting) and for how long.
 
-- \`Cancel\` stops the running Julia code; the workspace keeps what was defined before it.
+- While a run is busy the editor's \`Run\` key is \`Cancel\`, and the run strip has one too; \`Ctrl+C\` (with no text selected) and Run › Cancel run do the same.
+- Cancel stops the running Julia code; the workspace keeps what was defined before it.
 - A run never times out by itself: Cancel is how it ends early.`,
   },
 ];

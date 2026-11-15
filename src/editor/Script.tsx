@@ -6,7 +6,7 @@ import type { FunctionTable } from "../kernel/localEval.ts";
 import type { AnswerVariable } from "./answers.ts";
 
 export function Script({
-  running, runStatus, file, code, onChange, onRun, dirty, onSave, settings, onSettings, configFile, appTheme, variables, functions, onFigure, onRunSelection, lastRun, base,
+  running, runStatus, file, code, onChange, onRun, onCancel, dirty, onSave, settings, onSettings, configFile, appTheme, variables, functions, onFigure, onRunSelection, lastRun, base,
 }: {
   /** The kernel is compiling or running something. */
   running?: boolean;
@@ -16,6 +16,8 @@ export function Script({
   code: string;
   onChange: (code: string) => void;
   onRun: () => void;
+  /** While running, the Run key is Cancel. */
+  onCancel?: () => void;
   dirty: boolean;
   onSave: () => void;
   settings: EditorSettings;
@@ -41,7 +43,9 @@ export function Script({
         <b>{file}{dirty ? " •" : ""}</b>
         <span className="sp" />
         <button className="key small" onClick={onSave} disabled={!dirty} title="Save (Ctrl+S)">Save</button>
-        <button className="key small" onClick={onRun} disabled={running} aria-busy={running}>{running ? "Running" : "Run"}</button>
+        {running && onCancel
+          ? <button className="key small" onClick={onCancel} title="Stop the run (Ctrl+C)">Cancel</button>
+          : <button className="key small" onClick={onRun} disabled={running} aria-busy={running}>{running ? "Running" : "Run"}</button>}
         <EditorSettingsKey settings={settings} onSettings={onSettings} lintNote="% comments" file={configFile} />
       </div>
 

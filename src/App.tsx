@@ -121,6 +121,8 @@ export function App() {
   };
   /** What the run in flight is doing, and since when (#23). */
   const [phase, setPhase] = useState<{ phase: string; since: number } | null>(null);
+  const runningNow = useRef(false);
+  runningNow.current = phase !== null;
   const [helpQuery, setHelpQuery] = useState<string | null>(null);
   const [importing, setImporting] = useState<{ file: string; data: Imported; reserved?: ReadonlySet<string> } | null>(null);
   const importInput = useRef<HTMLInputElement>(null);
@@ -954,6 +956,8 @@ export function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); void saveCurrent(); }
+      // Ctrl+C stops a run, as in MATLAB, unless there is text to copy.
+      else if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "c" && runningNow.current && !window.getSelection()?.toString()) { e.preventDefault(); cancelRun(); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -980,7 +984,7 @@ export function App() {
     { id: "console", label: "Console", menu: "view", group: "panels", checked: !consoleHidden, run: () => setConsoleHidden((v) => !v) },
     { id: "kernel-panel", label: "Kernel…", menu: "view", group: "about", run: () => setKernelOpen(true) },
     { id: "run", label: "Run script", menu: "run", group: "run", run: runScript },
-    { id: "cancel", label: "Cancel run", menu: "run", group: "run", run: cancelRun, enabled: running > 0, why: "nothing is running" },
+    { id: "cancel", label: "Cancel run", menu: "run", group: "run", shortcut: "Ctrl+C", run: cancelRun, enabled: running > 0, why: "nothing is running" },
     helpCommand(() => setHelpQuery(wordAtCaret())),
     { id: "about", label: "About Squero Studio", menu: "view", group: "about", run: () => setAboutOpen(true) },
   ];
@@ -1039,6 +1043,7 @@ export function App() {
       <Script
         running={running > 0}
         runStatus={phase && <RunStatus phase={phase.phase} since={phase.since} onCancel={kernelInfo ? cancelRun : undefined} />}
+        onCancel={kernelInfo ? cancelRun : undefined}
         file={selectedFile}
         code={files[selectedFile] ?? ""}
         onChange={(code) => {
