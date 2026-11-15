@@ -1176,7 +1176,7 @@ export function App() {
                     <div className="nm">{v.name}</div>
                     <div className="sh">{typeLabel(v.type)} · {v.shape}</div>
                   </div>
-                  <span className={`vval${v.type === "Float64" ? " scalar" : ""}`} title={valueOf(v)}>{valueOf(v)}</span>
+                  <span className={`vval${v.shape === "1" ? " scalar" : ""}`} title={valueOf(v)}>{valueOf(v)}</span>
                 </div>
               ))}
               {currentVars.length === 0 && (
