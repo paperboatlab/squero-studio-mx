@@ -7,7 +7,7 @@
 // Figure images never travel as base64 inside JSON.
 export type KernelRequest =
   | { op: "hello" }
-  | { op: "eval"; id: string; code: string }
+  | { op: "eval"; id: string; code: string; file?: string; files?: Record<string, string> }
   | { op: "whos" }
   | { op: "get"; id: string; name: string }
   | { op: "set"; id: string; name: string; rows: number; cols: number }
@@ -19,8 +19,70 @@ export type KernelRequest =
   | ({ op: "figure.interact"; id: string; figure: string; version: string; width: number; height: number; format: "png" | "svg"; px_per_unit?: number } & ViewAction)
   | { op: "figure.list"; id: string }
   | { op: "plot.optimum"; id: string; result: unknown; title?: string }
+  | { op: "debug.breakpoints"; id: string; file: string; breakpoints: BreakpointSpec[] }
+  | { op: "debug.start"; id: string; file: string; code: string; breakpoints?: BreakpointSpec[]; stopOnEntry?: boolean; files?: Record<string, string> }
+  | { op: "debug.continue"; id: string }
+  | { op: "debug.step"; id: string; kind: "over" | "into" | "out" }
+  | { op: "debug.pause"; id: string }
+  | { op: "debug.stop"; id: string }
+  | { op: "debug.locals"; id: string; frameId: number }
+  | { op: "debug.eval"; id: string; frameId: number; code: string }
   | { op: "reset" }
   | { op: "shutdown" };
+
+export type BreakpointSpec = {
+  line: number;
+  enabled: boolean;
+  condition?: string;
+};
+
+export type DebugFrame = {
+  id: number;
+  name: string;
+  file: string;
+  line: number;
+};
+
+export type DebugLocal = {
+  name: string;
+  type: string;
+  shape?: string;
+  value?: unknown;
+  preview?: unknown[];
+  text?: string;
+  runnable?: boolean;
+};
+
+export type DebugStoppedEvent = {
+  event: "debug.stopped";
+  reason: "breakpoint" | "step" | "pause" | "entry" | string;
+  file: string;
+  line: number;
+  frames: DebugFrame[];
+  locals: DebugLocal[];
+  stdout?: string;
+  figures?: FigureMeta[];
+};
+
+export type DebugResumedEvent = {
+  event: "debug.resumed";
+};
+
+export type DebugTerminatedEvent = {
+  event: "debug.terminated";
+  ok: boolean;
+  stopped?: boolean;
+  error?: string | null;
+  stdout?: string;
+  figures?: FigureMeta[];
+  problems?: unknown[];
+  runs?: unknown[];
+  events?: KernelEvent[];
+  value?: unknown;
+  text?: string;
+};
+
+export type KernelEventMessage = DebugStoppedEvent | DebugResumedEvent | DebugTerminatedEvent;
 
 export type KernelHello = {
   op: "hello";
@@ -105,6 +167,8 @@ export type KernelReply = {
   value?: unknown;
   /** `eval`: the value as Julia's REPL prints it (`text/plain`), "" for nothing. */
   text?: string;
+  /** `debug.locals`: variables bound in the selected stack frame. */
+  locals?: DebugLocal[];
   /** `eval`: figures whose drawing changed in this run. */
   figures?: FigureMeta[];
   /** `plot.optimum`: the figure it drew. */

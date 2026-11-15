@@ -15,7 +15,12 @@ import { useSqueroConfig, type ConfigStore } from "@paperboat/shared/editor";
 import { RunStatus, SqueroWordmark } from "@paperboat/shared/squero";
 import { AboutModal } from "./shell/AboutModal.tsx";
 import { probeKernel, type KernelInfo } from "./kernel/probe.ts";
-import { docNames, evalCode, figureArtifact, figureScene, kernel, plotOptimum, resetKernel, setArray, whois, withArrays } from "./kernel/client.ts";
+import { docNames, evalCode, figureArtifact, figureScene, kernel, plotOptimum, resetKernel, setArray, setKernelBreakpoints, debugContinue, debugEval, debugLocals, debugPause, debugStart, debugStep, debugStop, whois, withArrays } from "./kernel/client.ts";
+import type { BreakpointSpec, DebugFrame, DebugLocal, KernelEventMessage } from "./kernel/protocol.ts";
+import { TypeIcon } from "./workspace/TypeIcon.tsx";
+import { DebugPanel } from "./debug/DebugPanel.tsx";
+import { flattenBreakpoints, formatDebugValue, removeBreakpoint, setBreakpointCondition, setBreakpointEnabled, toggleBreakpointList, type BreakpointMap, type WatchEntry } from "./debug/state.ts";
+import type { ScriptDebugControls } from "./editor/Script.tsx";
 import { mxHelp, wordAtCaret } from "./shell/help.ts";
 import { IMPORT_EXTENSIONS, importFile, type ImportValue, type Imported } from "./workspace/importData.ts";
 import { ImportDialog } from "./workspace/ImportDialog.tsx";
@@ -34,30 +39,11 @@ import { PaperboatHub } from "./paperboat/hub.ts";
 import { discoverBackends } from "./paperboat/discovery.ts";
 import { mergeShared, setMessage } from "./paperboat/variables.ts";
 
-type RightTab = "workspace" | "figures";
+type RightTab = "workspace" | "debug" | "figures";
 
 /** The workspace lives on disk; this is the folder the picker starts from and the default. */
 export const DEFAULT_WORKSPACE = "~/Documents/paperboat/squero-studio/mx";
 type Line = { level: "info" | "ok" | "warn" | "err"; text: string; cmd?: boolean };
-
-function TypeIcon({ type }: { type: string }) {
-  if (type.startsWith("Matrix")) {
-    return (
-      <span className="typeicon t-matrix" title={type} aria-label="matrix">
-        <svg viewBox="0 0 12 12"><rect x="1" y="1" width="10" height="10" rx="1" /><path d="M4.3 1v10M7.6 1v10M1 4.3h10M1 7.6h10" /></svg>
-      </span>
-    );
-  }
-  if (type.startsWith("Vector")) {
-    return (
-      <span className="typeicon t-vector" title={type} aria-label="vector">
-        <svg viewBox="0 0 12 12"><path d="M1.5 9.5 10.5 2.5M8 2.5h2.5V5" /></svg>
-      </span>
-    );
-  }
-  if (type === "Function") return <span className="typeicon t-scalar" title={type} aria-label="function"><span className="hash">ƒ</span></span>;
-  return <span className="typeicon t-scalar" title={type} aria-label="scalar"><span className="hash">#</span></span>;
-}
 
 /** The user's squero.toml (editor settings and themes, shared with OM), through server/config.mjs. */
 const configStore: ConfigStore = {
@@ -95,7 +81,22 @@ export function App() {
   const [filesHidden, setFilesHidden] = useState(false);
   const [rightHidden, setRightHidden] = useState(false);
   const [figureFocus, setFigureFocus] = useState<string | null>(null);
-    const [rightTab, setRightTab] = useState<RightTab>("workspace");
+  const [rightTab, setRightTab] = useState<RightTab>("workspace");
+  const [breakpoints, setBreakpoints] = useState<BreakpointMap>({});
+  const [debugActive, setDebugActive] = useState(false);
+  const [debugPaused, setDebugPaused] = useState(false);
+  const [debugLastOutcome, setDebugLastOutcome] = useState<"finished" | "stopped" | "error" | null>(null);
+  const [debugFile, setDebugFile] = useState("");
+  const [debugLine, setDebugLine] = useState<number | null>(null);
+  const [debugFrames, setDebugFrames] = useState<DebugFrame[]>([]);
+  const [activeFrameId, setActiveFrameId] = useState<number | null>(null);
+  const [debugLocalsList, setDebugLocalsList] = useState<DebugLocal[]>([]);
+  const [watches, setWatches] = useState<WatchEntry[]>([]);
+  const debugSourceRef = useRef("");
+  const debugStartedAtRef = useRef<number | null>(null);
+  const debugSessionDoneRef = useRef(false);
+  const debugEventRef = useRef<(event: KernelEventMessage) => void>(() => {});
+  useEffect(() => kernel.onEvent((event) => debugEventRef.current(event)), []);
   const [files, setFiles] = useState<Record<string, string>>({});
   const [folders, setFolders] = useState<string[]>([]);
   const [selectedFile, setSelectedFile] = useState("");
@@ -107,7 +108,6 @@ export function App() {
   const [serverRoot, setServerRoot] = useState<string | null>(null);
   const [saved, setSaved] = useState<FileSystemDirectoryHandle | null>(null);
   const [readOnly, setReadOnly] = useState(false);
-  const [railTab, setRailTab] = useState<"files" | "examples">("files");
   const [openExampleId, setOpenExampleId] = useState<string | null>(null);
   const [dirty, setDirty] = useState<Set<string>>(new Set());
   const [varQuery, setVarQuery] = useState("");
@@ -186,6 +186,22 @@ export function App() {
   const editorCode = openExample ? openExample.content : (files[selectedFile] ?? "");
   const editorSource = openExample ? `examples/${openExample.path}` : selectedFile;
   const editorReadOnly = openExample !== null;
+  const editorDirty = !openExample && dirty.has(selectedFile);
+
+  useEffect(() => {
+    document.title = editorFile ? `${editorDirty ? "● " : ""}${editorFile} · Squero Studio` : "Squero Studio";
+  }, [editorFile, editorDirty]);
+
+  const openExampleByQuery = (query: { index?: number; name?: string }) => {
+    const hit = findShippedExample(query);
+    if (!hit) {
+      const ref = query.index !== undefined ? `#${query.index}` : JSON.stringify(query.name ?? "");
+      say(`open_example: no shipped example matching ${ref} (available: 1..${SHIPPED_EXAMPLES.length})`, "warn");
+      return;
+    }
+    setOpenExampleId(hit.id);
+    say(`opened ${hit.path} (read-only)`, "ok");
+  };
 
   const handleKernelEvents = (events: readonly KernelEvent[] | undefined) => {
     for (const event of events ?? []) {
@@ -194,15 +210,7 @@ export function App() {
       } else if (event.type === "clear" && !event.names?.length) {
         setFunctions({});
       } else if (event.type === "open_example") {
-        const hit = findShippedExample({ index: event.index, name: event.name });
-        if (!hit) {
-          const ref = event.index !== undefined ? `#${event.index}` : JSON.stringify(event.name ?? "");
-          say(`open_example: no shipped example matching ${ref} (available: 1..${SHIPPED_EXAMPLES.length})`, "warn");
-          continue;
-        }
-        setOpenExampleId(hit.id);
-        setRailTab("examples");
-        say(`opened ${hit.path} (read-only)`, "ok");
+        openExampleByQuery({ index: event.index, name: event.name });
       }
     }
   };
@@ -359,6 +367,20 @@ export function App() {
     if (/^InterruptException/.test(error ?? "")) say("cancelled", "warn");
     else say(error ?? "kernel error", "err");
   };
+  const workspaceFilesOverlay = (): Record<string, string> => {
+    const overlay: Record<string, string> = {};
+    if (dir !== null || serverRoot === null) {
+      for (const [path, content] of Object.entries(files)) {
+        if (path.endsWith(".jl")) overlay[path] = content;
+      }
+    } else {
+      for (const path of dirty) {
+        if (path in files && path.endsWith(".jl")) overlay[path] = files[path];
+      }
+    }
+    return overlay;
+  };
+
   const consoleEvalNow = async (code: string) => {
     const info = kernelInfo ?? await probeKernel(60000);
     if (!info) {
@@ -366,7 +388,7 @@ export function App() {
       return;
     }
     if (!kernelInfo) setKernelInfo(info);
-    const reply = await evalCode(code);
+    const reply = await evalCode(code, editorSource, workspaceFilesOverlay());
     for (const line of (reply.stdout ?? "").split("\n")) if (line.trim()) say(line);
     // The kernel already applied `clear` between statements; the workspace follows `whos`.
     handleKernelEvents(reply.events);
@@ -397,9 +419,50 @@ export function App() {
     }
   };
 
+  const refreshWatches = async (frameId: number | null, list: readonly WatchEntry[] = watches) => {
+    if (list.length === 0 || frameId === null) return;
+    const updated = await Promise.all(list.map(async (w) => {
+      const reply = await debugEval(frameId, w.expr);
+      if (!reply.ok) return { expr: w.expr, error: reply.error ?? "error" };
+      const val = reply.value as Record<string, unknown> | undefined;
+      return {
+        expr: w.expr,
+        text: reply.text ?? (val ? formatDebugValue({ name: w.expr, type: String(val.type ?? "Any"), shape: "—", ...val } as DebugLocal) : "nothing"),
+        type: typeof val?.type === "string" ? val.type : undefined,
+      };
+    }));
+    setWatches(updated);
+  };
+
+  const debugEvalInConsole = async (cmd: string) => {
+    if (consoleOpts.echoCommands) say(cmd, "info", true);
+    if (activeFrameId === null) return;
+    const reply = await debugEval(activeFrameId, cmd);
+    for (const ln of (reply.stdout ?? "").split("\n")) if (ln.trim()) say(ln);
+    if (!reply.ok) {
+      sayError(reply.error);
+      return;
+    }
+    if (reply.text !== undefined && consoleOpts.echoValues) {
+      for (const ln of reply.text.split("\n")) if (ln.trim()) say(ln, "ok");
+    }
+    const localsReply = await debugLocals(activeFrameId);
+    if (localsReply.ok) setDebugLocalsList(localsReply.locals ?? []);
+    if (watches.length > 0) void refreshWatches(activeFrameId);
+  };
+
   const run = (raw: string) => {
     const cmd = raw.trim();
     if (!cmd) return;
+    if (debugPaused) {
+      if (cmd === "clc" || /^clc\s*\(\s*\)$/.test(cmd)) {
+        if (consoleOpts.echoCommands) say(cmd, "info", true);
+        setLines([]);
+        return;
+      }
+      void debugEvalInConsole(cmd);
+      return;
+    }
     if (consoleOpts.echoCommands) say(cmd, "info", true);
     const call = /^([A-Za-z_]\w*)\s*\(\s*([^)]*)\s*\)$/.exec(cmd);
     if (call) {
@@ -410,9 +473,28 @@ export function App() {
         return;
       }
       if (call[1] === "clc") { setLines([]); return; }
+      if (call[1] === "open_example") {
+        const rawArg = call[2].trim();
+        if (!rawArg) { openExampleByQuery({ index: 1 }); return; }
+        if (/^\d+$/.test(rawArg)) { openExampleByQuery({ index: Number(rawArg) }); return; }
+        const lit = /^["']([^"']+)["']$/.exec(rawArg) ?? /^:([A-Za-z_]\w*)$/.exec(rawArg);
+        if (lit) { openExampleByQuery({ name: lit[1] }); return; }
+      }
     }
     const [head, ...rest] = cmd.split(/\s+/);
     if (head === "clc") { setLines([]); return; }
+    if (head === "examples") {
+      for (const ex of SHIPPED_EXAMPLES) say(`${String(ex.index).padStart(2)}  ${ex.name.padEnd(28)} ${ex.title}`);
+      say('run open_example(1) or open_example("lorenz") to open one', "info");
+      return;
+    }
+    if (head === "open_example") {
+      const rawArg = rest.join(" ").trim();
+      if (!rawArg) { openExampleByQuery({ index: 1 }); return; }
+      if (/^\d+$/.test(rawArg)) { openExampleByQuery({ index: Number(rawArg) }); return; }
+      openExampleByQuery({ name: rawArg.replace(/^["':]|["']$/g, "") });
+      return;
+    }
     if (head === "clear" || head === "clearvars") {
       if (rest[0] && rest[0] !== "all") clearVar(rest[0]);
       else clearWorkspace();
@@ -423,7 +505,7 @@ export function App() {
     if (head === "openvar") { void openVariable(rest[0] ?? selectedVar); return; }
     if (head === "help") {
       say("Julia expressions run in the kernel and print like a REPL; script stdout lands here too.");
-      say("help name · doc name · ?name (F1) · openvar name · whos · clear [name] · clc · attach · detach · run · version");
+      say("help name · doc name · ?name (F1) · examples · open_example(n|\"name\") · openvar name · whos · clear [name] · clc · attach · detach · run · version");
       say("Type \\pi then Tab for π; Arrow Up/Down recall history.");
       return;
     }
@@ -708,7 +790,7 @@ export function App() {
     const source = editorSource;
     const count = code.split("\n").filter((line) => line.trim()).length;
     say(mode === "file" ? `run ${source || "script"}` : `run ${mode} · ${count} line${count === 1 ? "" : "s"}`, "info");
-    const reply = await evalCode(code);
+    const reply = await evalCode(code, source, workspaceFilesOverlay());
     for (const line of (reply.stdout ?? "").split("\n")) {
       if (line.trim()) say(line);
     }
@@ -782,6 +864,214 @@ export function App() {
 
   const runScript = () => runCode(editorCode, "file");
 
+  debugEventRef.current = (event) => {
+    if (event.event === "debug.resumed") {
+      setDebugPaused(false);
+      setPhase((p) => ({ phase: "debugging", since: p?.since ?? performance.now() }));
+      return;
+    }
+    if (event.event === "debug.stopped") {
+      const frames = event.frames ?? [];
+      const top = frames[0] ?? null;
+      const file = event.file || top?.file || debugSourceRef.current;
+      const line = event.line ?? top?.line ?? null;
+      const frameId = top?.id ?? null;
+      setDebugActive(true);
+      setDebugPaused(true);
+      setDebugFrames(frames);
+      setActiveFrameId(frameId);
+      setDebugLocalsList(event.locals ?? []);
+      setDebugFile(file);
+      setDebugLine(line);
+      setPhase((p) => ({ phase: "paused", since: p?.since ?? performance.now() }));
+      if (file && file in files) {
+        setOpenExampleId(null);
+        setSelectedFile(file);
+      }
+      for (const ln of (event.stdout ?? "").split("\n")) if (ln.trim()) say(ln);
+      if (event.figures?.length) void addFigures(event.figures, debugSourceRef.current || file);
+      if (frameId !== null && watches.length > 0) void refreshWatches(frameId, watches);
+      return;
+    }
+    if (event.event === "debug.terminated") {
+      debugSessionDoneRef.current = true;
+      const startedAt = debugStartedAtRef.current;
+      debugStartedAtRef.current = null;
+      setDebugActive(false);
+      setDebugPaused(false);
+      setDebugLastOutcome(event.stopped ? "stopped" : event.ok ? "finished" : "error");
+      setPhase(null);
+      for (const ln of (event.stdout ?? "").split("\n")) if (ln.trim()) say(ln);
+      handleKernelEvents(event.events);
+      if (event.stopped) say("debug · stopped", "warn");
+      else if (!event.ok && event.error) sayError(event.error);
+      void (async () => {
+        const source = debugSourceRef.current || editorSource;
+        if (event.figures?.length) await addFigures(event.figures, source);
+        const after = await whois();
+        if (after.ok && Array.isArray(after.value)) {
+          const variables = (await withArrays(after.value as WorkspaceVariable[])).map((one) => ({
+            name: one.name, shape: one.shape, type: one.type, value: one.value, preview: one.preview,
+          }));
+          setWorkspace(variables);
+        }
+        if (startedAt !== null) {
+          const count = (files[source] ?? editorCode).split("\n").filter((l) => l.trim()).length;
+          setLastRun({ time: Date.now(), ms: Math.max(1, Math.round(performance.now() - startedAt)), lines: count, mode: "debug" });
+        }
+      })();
+    }
+  };
+
+  const syncFileBreakpoints = (file: string, list: readonly BreakpointSpec[]) => {
+    if (!kernelInfo || !file) return;
+    void setKernelBreakpoints(file, [...list]);
+  };
+
+  const toggleBreakpoint = (file: string, line: number) => {
+    if (!file || line < 1) return;
+    setBreakpoints((prev) => {
+      const next = toggleBreakpointList(prev, file, line);
+      syncFileBreakpoints(file, next[file] ?? []);
+      return next;
+    });
+  };
+
+  const toggleBpEnabled = (file: string, line: number, enabled: boolean) => {
+    setBreakpoints((prev) => {
+      const next = setBreakpointEnabled(prev, file, line, enabled);
+      syncFileBreakpoints(file, next[file] ?? []);
+      return next;
+    });
+  };
+
+  const editBpCondition = (file: string, line: number, condition: string) => {
+    setBreakpoints((prev) => {
+      const next = setBreakpointCondition(prev, file, line, condition);
+      syncFileBreakpoints(file, next[file] ?? []);
+      return next;
+    });
+  };
+
+  const deleteBp = (file: string, line: number) => {
+    setBreakpoints((prev) => {
+      const next = removeBreakpoint(prev, file, line);
+      syncFileBreakpoints(file, next[file] ?? []);
+      return next;
+    });
+  };
+
+  const jumpToBp = (file: string, _line: number) => {
+    if (file in files) {
+      setOpenExampleId(null);
+      setSelectedFile(file);
+      return;
+    }
+    if (file.startsWith("examples/")) {
+      const path = file.slice("examples/".length);
+      const ex = SHIPPED_EXAMPLES.find((one) => one.path === path);
+      if (ex) setOpenExampleId(ex.id);
+    }
+  };
+
+  const startDebugging = async () => {
+    if (!editorFile || debugActive) return;
+    const startedAt = performance.now();
+    const source = editorSource;
+    const code = editorCode;
+    debugSourceRef.current = source;
+    debugStartedAtRef.current = startedAt;
+    debugSessionDoneRef.current = false;
+    setDebugFile(source);
+    setDebugLine(null);
+    setDebugFrames([]);
+    setActiveFrameId(null);
+    setDebugLocalsList([]);
+    setDebugLastOutcome(null);
+    setWatches((prev) => prev.map((w) => ({ expr: w.expr })));
+    setRightHidden(false);
+    setRightTab("debug");
+    setPhase({ phase: "debugging", since: startedAt });
+    const reply = await busy((async () => {
+      const info = kernelInfo ?? await probeKernel(60000);
+      if (!info) return null;
+      if (!kernelInfo) setKernelInfo(info);
+      say(`debug ${source || "script"}`, "info");
+      await Promise.all(
+        Object.entries(breakpoints)
+          .filter(([f]) => f !== source)
+          .map(([f, list]) => setKernelBreakpoints(f, list)),
+      );
+      const fileBps = breakpoints[source] ?? [];
+      return debugStart(source, code, fileBps, fileBps.length === 0, workspaceFilesOverlay());
+    })());
+    if (!reply) {
+      debugStartedAtRef.current = null;
+      setPhase(null);
+      say("kernel unavailable · install Julia or start the kernel container", "warn");
+      return;
+    }
+    if (!reply.ok) {
+      debugStartedAtRef.current = null;
+      setPhase(null);
+      sayError(reply.error);
+      return;
+    }
+    if (!debugSessionDoneRef.current) setDebugActive(true);
+  };
+
+  const stopDebugging = () => {
+    if (!debugActive) return;
+    void debugStop();
+  };
+
+  const selectDebugFrame = async (frameId: number) => {
+    setActiveFrameId(frameId);
+    const frame = debugFrames.find((f) => f.id === frameId);
+    if (frame) {
+      if (frame.file && frame.file in files) {
+        setOpenExampleId(null);
+        setSelectedFile(frame.file);
+      }
+      setDebugFile(frame.file);
+      setDebugLine(frame.line);
+    }
+    if (!debugActive) return;
+    const reply = await debugLocals(frameId);
+    if (reply.ok) setDebugLocalsList(reply.locals ?? []);
+    if (watches.length > 0) void refreshWatches(frameId);
+  };
+
+  const addWatch = (expr: string) => {
+    const trimmed = expr.trim();
+    if (!trimmed) return;
+    const next = watches.some((w) => w.expr === trimmed) ? watches : [...watches, { expr: trimmed }];
+    setWatches(next);
+    if (debugPaused && activeFrameId !== null) void refreshWatches(activeFrameId, next);
+  };
+
+  const removeWatch = (expr: string) => {
+    setWatches((prev) => prev.filter((w) => w.expr !== expr));
+  };
+
+  const allBreakpoints = useMemo(() => flattenBreakpoints(breakpoints), [breakpoints]);
+  const activeDebugFrame = useMemo(
+    () => debugFrames.find((f) => f.id === activeFrameId) ?? debugFrames[0] ?? null,
+    [debugFrames, activeFrameId],
+  );
+  const scriptDebugControls: ScriptDebugControls = {
+    active: debugActive,
+    paused: debugPaused,
+    line: debugFile === editorSource ? debugLine : null,
+    fnName: activeDebugFrame?.name,
+    onContinue: () => void debugContinue(),
+    onStepOver: () => void debugStep("over"),
+    onStepInto: () => void debugStep("into"),
+    onStepOut: () => void debugStep("out"),
+    onPause: () => void debugPause(),
+    onStop: stopDebugging,
+  };
+
   const copyExampleToWorkspace = async (example: ShippedExample) => {
     let target = example.name;
     const stem = example.name.replace(/\.jl$/i, "");
@@ -792,7 +1082,6 @@ export function App() {
     }
     setFiles((prev) => ({ ...prev, [target]: example.content }));
     setOpenExampleId(null);
-    setRailTab("files");
     setSelectedFile(target);
     if (storage) {
       try {
@@ -989,7 +1278,6 @@ export function App() {
 
   const activeFigure = figures.find((f) => f.key === activeFigureId) ?? figures[0] ?? null;
   const shownVars = rows.filter((r) => r.source === "mx" && `${r.name} ${r.shape} ${r.type}`.toLowerCase().includes(varQuery.toLowerCase()));
-  const active = rows.filter((r) => r.shared).length;
 
   const startConsoleResize = (e: ReactPointerEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -1013,10 +1301,20 @@ export function App() {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); void saveCurrent(); }
       // Ctrl+C stops a run, as in MATLAB, unless there is text to copy.
       else if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "c" && runningNow.current && !window.getSelection()?.toString()) { e.preventDefault(); cancelRun(); }
+      else if (debugActive) {
+        if (e.key === "F5" && e.shiftKey) { e.preventDefault(); stopDebugging(); }
+        else if (e.key === "F5" && debugPaused) { e.preventDefault(); void debugContinue(); }
+        else if (e.key === "F10" && debugPaused) { e.preventDefault(); void debugStep("over"); }
+        else if (e.key === "F11" && e.shiftKey && debugPaused) { e.preventDefault(); void debugStep("out"); }
+        else if (e.key === "F11" && !e.shiftKey && debugPaused) { e.preventDefault(); void debugStep("into"); }
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [dir, selectedFile, files, openExampleId]);
+  }, [dir, selectedFile, files, openExampleId, debugActive, debugPaused]);
+
+  const isBusy = running > 0 || (debugActive && !debugPaused);
+  const stopAction = debugActive ? stopDebugging : kernelInfo ? cancelRun : undefined;
 
   const commands: Command[] = [
     { id: "new-script", label: "New script…", menu: "file", group: "new", run: () => filePanel.current?.newFile() },
@@ -1035,11 +1333,13 @@ export function App() {
     { id: "files-panel", label: "Files panel", menu: "view", group: "panels", checked: !filesHidden, run: () => setFilesHidden((v) => !v) },
     { id: "workspace-panel", label: "Workspace panel", menu: "view", group: "panels", checked: !rightHidden, run: () => setRightHidden((v) => !v) },
     { id: "workspace-tab", label: "Workspace tab", menu: "view", group: "panels", checked: rightTab === "workspace", run: () => setRightTab("workspace") },
+    { id: "debug-tab", label: "Debug tab", menu: "view", group: "panels", checked: rightTab === "debug", run: () => setRightTab("debug") },
     { id: "figures-tab", label: "Figures", menu: "view", group: "panels", checked: rightTab === "figures", run: () => setRightTab("figures") },
     { id: "console", label: "Console", menu: "view", group: "panels", checked: !consoleHidden, run: () => setConsoleHidden((v) => !v) },
     { id: "kernel-panel", label: "Kernel…", menu: "view", group: "about", run: () => setKernelOpen(true) },
     { id: "run", label: "Run script", menu: "run", group: "run", run: runScript },
-    { id: "cancel", label: "Cancel run", menu: "run", group: "run", shortcut: "Ctrl+C", run: cancelRun, enabled: running > 0, why: "nothing is running" },
+    { id: "debug-start", label: debugActive ? "Stop debugging" : "Start debugging", menu: "run", group: "debug", run: () => { if (debugActive) stopDebugging(); else void startDebugging(); } },
+    { id: "cancel", label: "Cancel run", menu: "run", group: "run", shortcut: "Ctrl+C", run: debugActive ? stopDebugging : cancelRun, enabled: isBusy, why: "nothing is running" },
     helpCommand(() => setHelpQuery(wordAtCaret())),
     { id: "about", label: "About Squero Studio", menu: "view", group: "about", run: () => setAboutOpen(true) },
   ];
@@ -1049,7 +1349,7 @@ export function App() {
     <div className={`app split${chartHidden ? " chart-hidden" : ""}${consoleHidden ? " console-hidden" : ""}${filesHidden ? " files-hidden" : ""}${rightHidden ? " right-hidden" : ""}`} style={{ "--stage-w": `${stageW}px`, "--console-h": `${consoleH}px` } as CSSProperties}>
       <AppBar
         className="topbar"
-        brand={<SqueroWordmark product="MX" name="MX" running={running > 0} />}
+        brand={<SqueroWordmark product="MX" name="MX" running={isBusy} />}
         commands={commands}
         about={{ title: "About Squero Studio", shown: aboutOpen, onOpen: () => setAboutOpen(true) }}
         help={{ shown: helpQuery !== null, onOpen: () => setHelpQuery("") }}
@@ -1083,7 +1383,7 @@ export function App() {
         files={files}
         folders={folders}
         gitMarks={gitMarks}
-        active={selectedFile}
+        active={openExample ? "" : selectedFile}
         onOpen={(path) => { setOpenExampleId(null); setSelectedFile(path); }}
         onChange={({ files: nextFiles, folders: nextFolders }) => { setFiles(nextFiles); setFolders(nextFolders); }}
         onOpenFolder={() => void openFolder()}
@@ -1093,17 +1393,12 @@ export function App() {
         onToggle={() => setFilesHidden((v) => !v)}
         storage={storage}
         onSay={say}
-        tab={railTab}
-        onTab={setRailTab}
-        examples={SHIPPED_EXAMPLES}
-        activeExample={openExampleId}
-        onOpenExample={(id) => { setOpenExampleId(id); setRailTab("examples"); }}
       />
 
       <Script
-        running={running > 0}
-        runStatus={phase && <RunStatus phase={phase.phase} since={phase.since} onCancel={kernelInfo ? cancelRun : undefined} />}
-        onCancel={kernelInfo ? cancelRun : undefined}
+        running={isBusy}
+        runStatus={phase && <RunStatus phase={phase.phase} since={phase.since} onCancel={stopAction} />}
+        onCancel={stopAction}
         file={editorFile}
         code={editorCode}
         readOnly={editorReadOnly}
@@ -1126,6 +1421,9 @@ export function App() {
         onRunSelection={runCode}
         lastRun={lastRun}
         base={openExample ? null : (git?.head[selectedFile] ?? null)}
+        breakpoints={breakpoints[editorSource] ?? []}
+        onToggleBreakpoint={(line) => toggleBreakpoint(editorSource, line)}
+        debug={scriptDebugControls}
       />
 
       <div
@@ -1198,10 +1496,10 @@ export function App() {
           <div className="rtabs" role="tablist" aria-label="Workspace views">
             <GlideBrackets />
             <button role="tab" aria-selected={rightTab === "workspace"} className={`opt${rightTab === "workspace" ? " on" : ""}`} onClick={() => setRightTab("workspace")}>workspace</button>
+            <button role="tab" aria-selected={rightTab === "debug"} className={`opt${rightTab === "debug" ? " on" : ""}`} onClick={() => setRightTab("debug")}>debug</button>
             <button role="tab" aria-selected={rightTab === "figures"} className={`opt${rightTab === "figures" ? " on" : ""}`} onClick={() => setRightTab("figures")}>figures</button>
           </div>
           <span className="sp" />
-          {rightTab === "workspace" && <span className="tag">{`${active} shared`}</span>}
           <button type="button" className="panel-toggle" onClick={() => setRightHidden(true)} title="Hide workspace" aria-label="Hide workspace" aria-expanded={!rightHidden}>
             <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M5 3l4 4-4 4" /></svg>
           </button>
@@ -1285,6 +1583,29 @@ export function App() {
               </div>
             )}
           </div>
+        ) : rightTab === "debug" ? (
+          <DebugPanel
+            active={debugActive}
+            paused={debugPaused}
+            lastOutcome={debugLastOutcome}
+            file={debugFile || editorSource}
+            line={debugLine}
+            canStart={Boolean(editorFile)}
+            frames={debugFrames}
+            activeFrameId={activeFrameId}
+            locals={debugLocalsList}
+            watches={watches}
+            breakpoints={allBreakpoints}
+            onStart={() => void startDebugging()}
+            onStop={stopDebugging}
+            onSelectFrame={(id) => void selectDebugFrame(id)}
+            onAddWatch={addWatch}
+            onRemoveWatch={removeWatch}
+            onToggleBpEnabled={toggleBpEnabled}
+            onEditBpCondition={editBpCondition}
+            onRemoveBp={deleteBp}
+            onJumpToBp={jumpToBp}
+          />
         ) : (
           <div
             className="tabbody figtab"
@@ -1401,7 +1722,7 @@ export function App() {
           <div ref={consoleEnd} />
         </div>
         <form className="cin" onSubmit={(e) => { e.preventDefault(); submit(); }} aria-hidden={consoleHidden}>
-          <span className="prompt">julia&gt;</span>
+          <span className={`prompt${debugPaused ? " dbg" : ""}`}>{debugPaused ? `debug (${activeDebugFrame?.name || "top-level"})>` : "julia>"}</span>
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}

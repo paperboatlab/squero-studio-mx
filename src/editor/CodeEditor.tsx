@@ -10,7 +10,10 @@ import { julia } from "./julia.ts";
 import { linter, type Diagnostic } from "@codemirror/lint";
 import { snippetCompletion, type Completion, type CompletionSource } from "@codemirror/autocomplete";
 import type { FunctionTable } from "../kernel/localEval.ts";
+import type { BreakpointSpec } from "../kernel/protocol.ts";
 import { computeLineAnswers, type AnswerSpec, type AnswerVariable } from "./answers.ts";
+import { debugExtension, syncDebugView } from "./debugGutter.ts";
+import { findMatlabPercentComments } from "./lint.ts";
 import { LATEX_SYMBOLS } from "./unicode.ts";
 
 /** `#%%` sections: a rule above the header and the header itself in the signal colour. */
@@ -70,14 +73,12 @@ const SNIPPETS: Completion[] = [
 
 /** The lint seam: a MATLAB habit is flagged today, kernel diagnostics plug in here later. */
 const habitLint = linter((view): Diagnostic[] => {
-  const out: Diagnostic[] = [];
-  for (let i = 1; i <= view.state.doc.lines; i++) {
-    const line = view.state.doc.line(i);
-    if (line.text.trimStart().startsWith("#")) continue; // comments, including #%% cells
-    const at = line.text.indexOf("%");
-    if (at >= 0) out.push({ from: line.from + at, to: line.from + at + 1, severity: "warning", message: "Julia comments start with #, not %." });
-  }
-  return out;
+  return findMatlabPercentComments(view.state.doc.toString()).map((at) => ({
+    from: at,
+    to: at + 1,
+    severity: "warning",
+    message: "Julia comments start with #, not %.",
+  }));
 });
 
 const FOLD_ANSWERS_WIDTH = 376;
@@ -262,7 +263,7 @@ const answerTheme = {
 };
 
 export function CodeEditor({
-  value, file, onChange, settings, appTheme, variables, functions, onFigure, onRunSelection, onPos, base, readOnly,
+  value, file, onChange, settings, appTheme, variables, functions, onFigure, onRunSelection, onPos, base, readOnly, breakpoints, pausedLine, onToggleBreakpoint,
 }: {
   value: string;
   file: string;
@@ -277,6 +278,9 @@ export function CodeEditor({
   /** HEAD's copy of this file for the git gutter; null when it is untracked or not in a repository. */
   base?: string | null;
   readOnly?: boolean;
+  breakpoints?: readonly BreakpointSpec[];
+  pausedLine?: number | null;
+  onToggleBreakpoint?: (line: number) => void;
 }) {
   const vars = useRef(variables);
   vars.current = variables;
@@ -288,6 +292,8 @@ export function CodeEditor({
   figureLink.current = onFigure;
   const runSelection = useRef(onRunSelection);
   runSelection.current = onRunSelection;
+  const toggleBreakpoint = useRef(onToggleBreakpoint);
+  toggleBreakpoint.current = onToggleBreakpoint;
 
   const runAt = (instance: EditorView, mode: "cell" | "line"): boolean => {
     if (!runSelection.current) return false;
@@ -382,10 +388,16 @@ export function CodeEditor({
     return () => resize.disconnect();
   }, [view]);
 
+  const debugExt = useRef(debugExtension(() => toggleBreakpoint.current)).current;
+
+  useEffect(() => {
+    syncDebugView(view, breakpoints ?? [], pausedLine ?? null);
+  }, [view, breakpoints, pausedLine]);
+
   const resolved = paletteOf(settings.theme, appTheme, settings.themes).dark ? "dark" : "light";
   const extra = useMemo(
-    () => [answerTheme[resolved], folded ? [] : answerGutter(varList, fnMap, (line) => figureLink.current?.(line))],
-    [resolved, folded, variables, functions],
+    () => [debugExt, answerTheme[resolved], folded ? [] : answerGutter(varList, fnMap, (line) => figureLink.current?.(line))],
+    [debugExt, resolved, folded, variables, functions],
   );
 
   return (

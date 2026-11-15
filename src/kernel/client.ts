@@ -1,6 +1,6 @@
 // The squero-kernel/0 client: one WebSocket for the session, requests matched by id. The
 // launcher owns the process; nothing here evaluates Julia itself.
-import type { FigureFormat, KernelReply, ViewAction, ViewState } from "./protocol.ts";
+import type { BreakpointSpec, FigureFormat, KernelEventMessage, KernelReply, ViewAction, ViewState } from "./protocol.ts";
 import { LIVE_LIMIT } from "../paperboat/variables.ts";
 
 const url = () => `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/__mx/kernel`;
@@ -12,8 +12,14 @@ class KernelClient {
   private opening: Promise<WebSocket> | null = null;
   private seq = 0;
   private waiting = new Map<string, Waiter>();
+  private eventListeners = new Set<(event: KernelEventMessage) => void>();
   /** A `get` header waiting for its binary frame (the bridge sends the two back to back). */
   private header: KernelReply | null = null;
+
+  onEvent(listener: (event: KernelEventMessage) => void): () => void {
+    this.eventListeners.add(listener);
+    return () => { this.eventListeners.delete(listener); };
+  }
 
   private open(): Promise<WebSocket> {
     if (this.socket?.readyState === WebSocket.OPEN) return Promise.resolve(this.socket);
@@ -43,8 +49,13 @@ class KernelClient {
           else if (header) this.settle({ ...header, data: new Float64Array(event.data as ArrayBuffer) });
           return;
         }
-        let reply: KernelReply;
-        try { reply = JSON.parse(event.data) as KernelReply; } catch { return; }
+        let parsed: KernelReply | KernelEventMessage;
+        try { parsed = JSON.parse(event.data) as KernelReply | KernelEventMessage; } catch { return; }
+        if ("event" in parsed && typeof parsed.event === "string") {
+          for (const fn of this.eventListeners) fn(parsed);
+          return;
+        }
+        const reply = parsed as KernelReply;
         if (reply.array?.bytes || reply.artifact?.bytes) this.header = reply;
         else this.settle(reply);
       };
@@ -89,7 +100,8 @@ class KernelClient {
 }
 
 export const kernel = new KernelClient();
-export const evalCode = (code: string) => kernel.request({ op: "eval", code }, 0);
+export const evalCode = (code: string, file?: string, files?: Record<string, string>) =>
+  kernel.request({ op: "eval", code, ...(file ? { file } : {}), ...(files ? { files } : {}) }, 0);
 /** A name's docstring as HTML (null: none). */
 export const docOf = (name: string) => kernel.request({ op: "doc", name });
 /** Every name the Help window can look up. */
@@ -116,6 +128,18 @@ export const interactFigure = (figure: string, version: string, width: number, h
 /** Draw a solved 2-variable problem as a SqueroPlot surface with the optimum (a history entry). */
 export const plotOptimum = (result: unknown, title: string) => kernel.request({ op: "plot.optimum", result, title });
 export const figureScene = (figure: string, version?: string) => kernel.request({ op: "figure.scene", figure, version });
+
+/** Sync breakpoints for a file to the Julia kernel (can run anytime, including while paused). */
+export const setKernelBreakpoints = (file: string, breakpoints: BreakpointSpec[]) =>
+  kernel.request({ op: "debug.breakpoints", file, breakpoints });
+export const debugStart = (file: string, code: string, breakpoints: BreakpointSpec[], stopOnEntry = false, files?: Record<string, string>) =>
+  kernel.request({ op: "debug.start", file, code, breakpoints, stopOnEntry, ...(files ? { files } : {}) });
+export const debugContinue = () => kernel.request({ op: "debug.continue" });
+export const debugStep = (kind: "over" | "into" | "out") => kernel.request({ op: "debug.step", kind });
+export const debugPause = () => kernel.request({ op: "debug.pause" });
+export const debugStop = () => kernel.request({ op: "debug.stop" });
+export const debugLocals = (frameId: number) => kernel.request({ op: "debug.locals", frameId });
+export const debugEval = (frameId: number, code: string) => kernel.request({ op: "debug.eval", frameId, code });
 
 
 const countOf = (shape: string) => shape.split("×").reduce((n, part) => n * (Number(part.trim()) || 0), 1);

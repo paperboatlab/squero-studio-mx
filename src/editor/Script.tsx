@@ -3,10 +3,24 @@ import { useState, type ReactNode } from "react";
 import { EditorSettingsKey, type ConfigFile, type EditorSettings } from "@paperboat/shared/editor";
 import { CodeEditor } from "./CodeEditor.tsx";
 import type { FunctionTable } from "../kernel/localEval.ts";
+import type { BreakpointSpec } from "../kernel/protocol.ts";
 import type { AnswerVariable } from "./answers.ts";
 
+export type ScriptDebugControls = {
+  active: boolean;
+  paused: boolean;
+  line: number | null;
+  fnName?: string | null;
+  onContinue: () => void;
+  onStepOver: () => void;
+  onStepInto: () => void;
+  onStepOut: () => void;
+  onPause: () => void;
+  onStop: () => void;
+};
+
 export function Script({
-  running, runStatus, file, code, onChange, onRun, onCancel, dirty, onSave, settings, onSettings, configFile, appTheme, variables, functions, onFigure, onRunSelection, lastRun, base, readOnly, onCopyToWorkspace,
+  running, runStatus, file, code, onChange, onRun, onCancel, dirty, onSave, settings, onSettings, configFile, appTheme, variables, functions, onFigure, onRunSelection, lastRun, base, readOnly, onCopyToWorkspace, breakpoints, onToggleBreakpoint, debug,
 }: {
   /** The kernel is compiling or running something. */
   running?: boolean;
@@ -34,6 +48,9 @@ export function Script({
   base?: string | null;
   readOnly?: boolean;
   onCopyToWorkspace?: () => void;
+  breakpoints?: readonly BreakpointSpec[];
+  onToggleBreakpoint?: (line: number) => void;
+  debug?: ScriptDebugControls;
 }) {
   const [pos, setPos] = useState({ line: 1, col: 1, selected: 0 });
   const clock = (time: number) => new Date(time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
@@ -57,14 +74,48 @@ export function Script({
 
 
       <div className="code">
-        <CodeEditor key={file} value={code} file={file} onChange={onChange} settings={settings} appTheme={appTheme} variables={variables} functions={functions} onFigure={onFigure} onRunSelection={onRunSelection} onPos={setPos} base={base} readOnly={readOnly} />
+        <CodeEditor key={file} value={code} file={file} onChange={onChange} settings={settings} appTheme={appTheme} variables={variables} functions={functions} onFigure={onFigure} onRunSelection={onRunSelection} onPos={setPos} base={base} readOnly={readOnly} breakpoints={breakpoints} pausedLine={debug?.paused ? debug.line : null} onToggleBreakpoint={onToggleBreakpoint} />
       </div>
       {!file && <div className="editor-empty">Open the workspace folder, or create a script with +.</div>}
+      {debug?.active && (
+        <div className="dock debug-dock" role="group" aria-label="Debugger controls">
+          {debug.paused ? (
+            <>
+              <button type="button" className="key small primary" onClick={debug.onContinue} title="Continue (F5)">
+                <span className="dbg-ico" aria-hidden="true">▶</span> Continue
+              </button>
+              <button type="button" className="key small" onClick={debug.onStepOver} title="Step Over (F10)">
+                <span className="dbg-ico" aria-hidden="true">↷</span> Over
+              </button>
+              <button type="button" className="key small" onClick={debug.onStepInto} title="Step Into (F11)">
+                <span className="dbg-ico" aria-hidden="true">↘</span> Into
+              </button>
+              <button type="button" className="key small" onClick={debug.onStepOut} title="Step Out (Shift+F11)">
+                <span className="dbg-ico" aria-hidden="true">↗</span> Out
+              </button>
+            </>
+          ) : (
+            <button type="button" className="key small" onClick={debug.onPause} title="Pause execution">
+              <span className="dbg-ico" aria-hidden="true">⏸</span> Pause
+            </button>
+          )}
+          <button type="button" className="key small dbg-stop" onClick={debug.onStop} title="Stop debugging (Shift+F5)">
+            <span className="dbg-ico" aria-hidden="true">■</span> Stop
+          </button>
+          <span className="dbg-sep" aria-hidden="true" />
+          <span className="dbg-stat" role="status">
+            <i className={`dbg-dot${debug.paused ? " paused" : ""}`} aria-hidden="true" />
+            {debug.paused && debug.line !== null ? `ln ${debug.line}` : "running"}
+          </span>
+        </div>
+      )}
       <div className="runstrip">
         <span className="pos">Ln {pos.line}, Col {pos.col}</span>
         {pos.selected > 0 && <span className="sel">{pos.selected} selected</span>}
         <span className="sp" />
-        {running && runStatus ? runStatus : (
+        {debug?.paused ? (
+          <span className="runstat dbg-runstat" role="status">paused · {debug.fnName || "top-level"}</span>
+        ) : running && runStatus ? runStatus : (
         <>
         {running && <span className="wave" aria-hidden="true"><i /><i /><i /><i /><i /></span>}
         <span className="runstat" role="status">

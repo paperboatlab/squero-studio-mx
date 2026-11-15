@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
 
-export const KERNEL_IMAGE = process.env.SQUERO_KERNEL_IMAGE ?? "squero-julia-kernel:1.11.6-r2";
+export const KERNEL_IMAGE = process.env.SQUERO_KERNEL_IMAGE ?? "squero-julia-kernel:1.11.6-r3";
 export const KERNEL_PROTOCOL = 0;
 
 // SqueroBase (session, Paperboat bridges) and SqueroPlot (figures) are the kernel project's own
