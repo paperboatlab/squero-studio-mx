@@ -54,8 +54,10 @@ Squero Studio OM. It ships a sysimage with LinearAlgebra, SparseArrays, Statisti
 ControlSystems and JSON3 — **no plotting and no simulation libraries**. Plotting and simulation
 stay in-house.
 
-Versioning follows Julia for the product (`1.11.6`) and tracks the frontend separately
-(`0.1.0`), shown together in About and the console.
+Releases follow frontend semver (`0.1.0-alpha.9`, tag `v0.1.0-alpha.9`) so `paperboat pkg`
+tracks UI releases directly; the Julia runtime (`1.11.6`) and pinned kernel image
+(`1.11.6-r3`) move independently and appear beside it in About, the console banner, and
+`apps.toml`.
 
 ## Layout
 
@@ -112,10 +114,10 @@ builds them with Paperboat's `docs/site/build.py`.
 
 ## Status
 
-The kernel, the spec path and the optimization bridge are in place. Next:
+The kernel, debugger, spec path, figure run grouping, `state_space`/`rhs` simulation dock,
+and the optimization bridge are in place. Next:
 
-- `state_space`/`rhs` toolkit blocks in Paperboat and the run dock.
-- `Plot3D`/`Axes3D`/`ColorBar`/`Plot2D` in `@paperboat/shared/plot` (pb#312).
+- `Plot3D`/`Axes3D`/`ColorBar`/`Plot2D` enhancements in `@paperboat/shared/plot` (pb#312).
 - The Julia backend host (`paperboat new --julia`, pb#323) is in the engine; MX itself reads
   SqueroBase from the `squero-mx-base` checkout, mounted read-only into the kernel.
 - `StationPanel`/`StationGraph` into `@paperboat/shared/station`.

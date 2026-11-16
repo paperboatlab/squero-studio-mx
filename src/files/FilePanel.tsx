@@ -4,7 +4,6 @@ import { forwardRef, useImperativeHandle, useMemo, useRef } from "react";
 import { FileRail, FileTree, type FileEntry, type FileTreeHandle } from "@paperboat/shared/files";
 import type { Storage } from "./storage.ts";
 import { JuliaGlyph } from "./JuliaGlyph.tsx";
-import type { ShippedExample } from "../examples/catalog.ts";
 
 export type FilePanelHandle = { newFile: () => void; newFolder: () => void; rename: (path: string, name: string) => void };
 
@@ -27,11 +26,6 @@ export type FilePanelProps = {
   onToggle?: () => void;
   storage?: Storage;
   onSay: (text: string, level?: "info" | "ok" | "warn") => void;
-  tab?: "files" | "examples";
-  onTab?: (tab: "files" | "examples") => void;
-  examples?: readonly ShippedExample[];
-  activeExample?: string | null;
-  onOpenExample?: (id: string) => void;
 };
 
 const dirOf = (path: string) => (path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "");
@@ -78,19 +72,9 @@ export function entriesOf(files: Readonly<Record<string, string>>, folders: read
 
 export const FilePanel = forwardRef<FilePanelHandle, FilePanelProps>(function FilePanel({
   root, files, folders, gitMarks, active, onOpen, onChange, onPathChange, onDeletePath, onOpenFolder, rootBadge, offline, collapsed, onToggle, storage, onSay,
-  tab = "files", onTab, examples = [], activeExample, onOpenExample,
 }, ref) {
   const tree = useRef<FileTreeHandle>(null);
   const entries = useMemo(() => entriesOf(files, folders, gitMarks), [files, folders, gitMarks]);
-  const exampleEntries = useMemo<FileEntry[]>(() => examples.map((example) => ({
-    path: example.id,
-    name: example.name,
-    depth: 0,
-    kind: "file",
-    icon: "function",
-    glyph: <JuliaGlyph />,
-    badge: `#${example.index}`,
-  })), [examples]);
   const exists = (path: string) => path in files || folders.includes(path);
   const mirror = (work?: Promise<void>) => { void work?.catch((error: unknown) => onSay(`disk: ${error instanceof Error ? error.message : String(error)}`, "warn")); };
   const copyThenRemove = (from: string, to: string, folder: boolean) => {
@@ -223,11 +207,8 @@ export const FilePanel = forwardRef<FilePanelHandle, FilePanelProps>(function Fi
 
   return (
     <FileRail
-      label="Files and examples"
+      label="Files"
       className="panel files"
-      tabs={examples.length > 0 ? ["files", "examples"] : ["files"]}
-      tab={tab}
-      onTab={(next) => onTab?.(next as "files" | "examples")}
       onAdd={(x, y) => tree.current?.openNewMenu(x, y)}
       name={root}
       nameTitle={root}
@@ -250,32 +231,12 @@ export const FilePanel = forwardRef<FilePanelHandle, FilePanelProps>(function Fi
         <FileTree
           ref={tree}
           entries={entries}
-          active={activeExample ? "" : active}
+          active={active}
           ariaLabel="MX workspace"
           labels={{ newFile: "New script…", newFolder: "New folder…", empty: "No .jl files yet. Create one with +." }}
           actions={{ onOpen: open, onNewFile: newFile, onNewFolder: newFolder, onRename: rename, onDuplicate: duplicate, onDelete: remove, onCopyPath: (e) => { void navigator.clipboard?.writeText(e.path); onSay(`copied ${e.path}`, "ok"); }, onMove: move }}
         />
       )}
-    >
-      {examples.length > 0 && (
-        <div className="files-panel" hidden={tab !== "examples"}>
-          <div className="files-head">
-            <span className="nm" title="Shipped SqueroBase & SqueroPlot tutorials">tutorial examples</span>
-            <span className="lbl">read-only</span>
-          </div>
-          <FileTree
-            entries={exampleEntries}
-            active={activeExample ?? undefined}
-            ariaLabel="Tutorial examples"
-            labels={{ copyPath: "Copy filename", empty: "No shipped examples." }}
-            actions={{
-              onOpen: (entry) => onOpenExample?.(entry.path),
-              onCopyPath: (entry) => { void navigator.clipboard?.writeText(entry.name); onSay(`copied ${entry.name}`, "ok"); },
-            }}
-          />
-          <p className="files-foot">{`${examples.length} examples · open_example(1..${examples.length})`}</p>
-        </div>
-      )}
-    </FileRail>
+    />
   );
 });

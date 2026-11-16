@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" shape-rendering="geometricPrecision">
+  <style>
+    .tile { fill: #161616; }
+    .code { fill: #f2f2ef; }
+    @media (prefers-color-scheme: dark) {
+      .tile { fill: #e9e9e4; }
+      .code { fill: #1a1a1a; }
+    }
+  </style>
+  <rect class="tile" width="128" height="128" rx="13"/>
+  <g class="code" transform="translate(1.6 39.04) scale(0.052)">
+    <path d="M476 910h-352v-860h352v102h-232v656h232v102z"/>
+    <path transform="translate(600 0)" d="M32 800v-534h99l3 79q12 -35 31 -58q29 -33 73 -33q48 0 72 34q17 24 26 66q11 -40 35 -65q32 -35 80 -35q61 0 89 43t28 137v366h-113v-343q0 -59 -11 -80.5t-35 -21.5q-16 0 -28.5 10.5t-20 33.5t-7.5 59v342h-106v-343q0 -56 -11 -79t-36 -23q-17 0 -29 10.5t-19 33.5t-7 59v342h-113z"/>
+    <path transform="translate(1200 0)" d="M40 800l193 -274l-183 -260h130l121 179l118 -179h132l-182 262l191 272h-131l-128 -193l-129 193h-132z"/>
+    <path transform="translate(1800 0)" d="M124 910v-102h232v-656h-232v-102h352v860h-352z"/>
+  </g>
+</svg>

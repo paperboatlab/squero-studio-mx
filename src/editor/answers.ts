@@ -475,6 +475,7 @@ export function computeLineAnswers(
   lines: readonly string[],
   workspace: readonly AnswerVariable[],
   baseFunctions: FunctionTable = {},
+  pausedLocals?: readonly AnswerVariable[],
 ): (AnswerSpec | null)[] {
   const wsMap = new Map<string, AnswerVariable>();
   const scopeVars: Record<string, NumValue> = {};
@@ -484,6 +485,8 @@ export function computeLineAnswers(
       scopeVars[v.name] = v.value;
     }
   }
+  const localMap = new Map<string, AnswerVariable>();
+  for (const v of pausedLocals ?? []) localMap.set(v.name, v);
   let functions: FunctionTable = { ...baseFunctions };
   const scanned = analyzeLines(lines);
 
@@ -539,8 +542,18 @@ export function computeLineAnswers(
       const rhsCode = code.slice(eqIdx + 1).trim();
       const rhsMasked = masked.slice(eqIdx + 1).trim();
 
-      // Assignments inside `for` / `function` / `let` blocks stay local — never show stale global workspace values.
-      if (startLocalDepth > 0) return null;
+      // Assignments inside `for` / `function` / `let` blocks stay local — never show stale global
+      // workspace values, unless a paused debug frame supplies live local bindings.
+      if (startLocalDepth > 0) {
+        if (localMap.size === 0) return null;
+        const localTargets = parseTargets(lhsMasked);
+        if (!localTargets) return null;
+        const hit = localTargets.map((name) => localMap.get(name)).filter((v): v is AnswerVariable => !!v);
+        if (hit.length === 0) return null;
+        if (hit.length === 1) return answerFromWorkspace(hit[0]);
+        const specs = hit.map(answerFromWorkspace);
+        return { text: specs.map((s) => s.text).join(", "), kind: "type", title: specs.map((s) => s.title).join(" · ") };
+      }
 
       const targets = parseTargets(lhsMasked);
       if (!targets) return null;

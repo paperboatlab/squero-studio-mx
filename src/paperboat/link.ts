@@ -1,8 +1,15 @@
-// A minimal client for a Paperboat backend (`paperboat/0`). The scaffold uses it to show the
-// shared-variable contract; a run/state-space client grows from the same socket.
+// A client for a Paperboat backend (`paperboat/0`). Shares workspace variables, reads
+// capabilities (`hello`, `catalog`), and streams `graph.run` execution (`run.*`, `signal`s).
 import type { ClientMsg, ServerMsg, Variable } from "@paperboat/shared/protocol";
+import type { SignalSample } from "../sim/stateSpace.ts";
 
 export type LinkStatus = "idle" | "connecting" | "attached" | "failed";
+
+export type PaperboatRunEvent =
+  | { type: "started"; run: string }
+  | { type: "progress"; run: string; fraction: number }
+  | { type: "finished"; run: string; status: "done" | "cancelled" | "failed"; samples: SignalSample[] }
+  | { type: "log"; level: "info" | "warn" | "error"; text: string };
 
 export class PaperboatLink {
   private socket: WebSocket | null = null;
@@ -12,8 +19,16 @@ export class PaperboatLink {
    *  it has no default variables at all. Only then is it safe to write. */
   loaded = false;
   variables: Variable[] = [];
+  solvers: string[] = [];
+  catalogTypes = new Set<string>();
+  engine = "";
+  defaultDt = 0.01;
+  defaultDuration = 10;
+  private activeSamples: SignalSample[] = [];
   onStatus?: (status: LinkStatus, detail?: string) => void;
   onVariables?: (variables: Variable[]) => void;
+  onCapabilities?: () => void;
+  onRunEvent?: (event: PaperboatRunEvent) => void;
 
   connect(url: string): void {
     this.close();
@@ -41,8 +56,20 @@ export class PaperboatLink {
       socket.onmessage = (event) => {
         let msg: ServerMsg;
         try { msg = JSON.parse(String(event.data)) as ServerMsg; } catch { return; }
+        if (msg.type === "hello") {
+          this.engine = msg.engine ?? "";
+          if (msg.run?.solvers?.length) this.solvers = [...msg.run.solvers];
+          if (typeof msg.run?.dt === "number") this.defaultDt = msg.run.dt;
+          if (typeof msg.run?.duration === "number") this.defaultDuration = msg.run.duration;
+          this.onCapabilities?.();
+          return;
+        }
+        if (msg.type === "catalog") {
+          this.catalogTypes = new Set((msg.blocks ?? []).map((b) => b.type));
+          this.onCapabilities?.();
+          return;
+        }
         if (msg.type === "variables.load" || msg.type === "variables.patch") {
-          // `variables.load` carries the full list; a patch carries only the changed values.
           if (msg.type === "variables.load") {
             this.variables = msg.variables;
             this.loaded = true;
@@ -57,11 +84,43 @@ export class PaperboatLink {
             this.variables = [...byName.values()];
           }
           this.onVariables?.(this.variables);
+          return;
+        }
+        if (msg.type === "run.started") {
+          this.activeSamples = [];
+          this.onRunEvent?.({ type: "started", run: msg.run });
+          return;
+        }
+        if (msg.type === "run.progress") {
+          this.onRunEvent?.({ type: "progress", run: msg.run, fraction: msg.fraction });
+          return;
+        }
+        if (msg.type === "signal") {
+          this.activeSamples.push({ node: msg.node, t: msg.t, v: msg.v });
+          return;
+        }
+        if (msg.type === "signals") {
+          for (const one of msg.list) this.activeSamples.push({ node: one.node, t: one.t, v: one.v });
+          return;
+        }
+        if (msg.type === "log") {
+          this.onRunEvent?.({ type: "log", level: msg.level, text: msg.text });
+          return;
+        }
+        if (msg.type === "run.finished") {
+          const samples = this.activeSamples;
+          this.activeSamples = [];
+          this.onRunEvent?.({ type: "finished", run: msg.run, status: msg.status, samples });
         }
       };
     } catch (error) {
       this.setStatus("failed", error instanceof Error ? error.message : String(error));
     }
+  }
+
+  supportsGraph(msg: Extract<ClientMsg, { type: "graph.run" }>): boolean {
+    if (this.catalogTypes.size === 0) return true;
+    return msg.graph.nodes.every((n) => this.catalogTypes.has(n.type));
   }
 
   send(msg: ClientMsg): boolean {

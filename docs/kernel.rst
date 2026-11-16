@@ -25,8 +25,17 @@ the dev server uses. ``paperboat pkg install squero-studio-mx`` installs it from
 stops it — the same flow as Squero Studio OM. The manifest also installs
 ``squero-julia-kernel``, which builds the pinned image.
 
-The kernel is ``squero-julia-kernel:1.11.6-r1``, a Julia container with ``--network=none`` that speaks
-``squero-kernel/0`` on stdio; the launcher bridges it to ``/__mx/kernel`` (one process per WebSocket).
-``SQUERO_JULIA=native`` runs a sibling ``squero-julia-kernel`` checkout instead. ``bin/doctor`` in that
-repo reports native/container, Julia, the image and a ``hello``. Plotting and solving stay out of the
-kernel: charts are shared Paperboat components and solvers live in Paperboat.
+The kernel is ``ghcr.io/paperboatlab/squero-julia-kernel:1.11.6-r3`` (pinned by digest once
+published to GHCR; overridden with ``SQUERO_KERNEL_IMAGE`` for local dev), a Julia container
+with ``--network=none`` that speaks ``squero-kernel/0`` on stdio; the launcher bridges it to
+``/__mx/kernel`` (one process per WebSocket) and pulls the pinned image when absent.
+``SQUERO_JULIA=native`` runs a sibling ``squero-julia-kernel`` checkout instead. ``bin/doctor``
+in that repo reports native/container, Julia, the image digest and a ``hello``. Plotting and
+solving stay out of the kernel: charts are shared Paperboat components and solvers live in
+Paperboat.
+
+Release flow:
+
+1. Push/tag ``squero-julia-kernel`` to build and push the multi-arch image to GHCR and obtain its ``sha256:…`` digest.
+2. Record the digest in ``src/version.ts`` / ``server/kernel.mjs`` (``KERNEL_DIGEST``).
+3. Tag and release ``squero-studio-mx`` using frontend semver (e.g. ``v0.2.0``).

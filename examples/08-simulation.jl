@@ -39,10 +39,14 @@ axislegend(ax2; position = :rt)
 
 # Queue the `graph.run` message for any attached Paperboat backend (rk45 solver for 10 s).
 matrix(M) = join([join(M[i, :], " ") for i in axes(M, 1)], "; ")   # [Julia] "a b; c d" block text format
+vec(v) = join(v, "; ")
 graph = (
-    nodes = [(id = "plant", type = "control/state_space",           # [Paperboat] state-space block
-              params = (A = matrix(A), B = matrix(B), C = matrix(C), D = matrix(D), domain = "s"))],
-    edges = [],
+    nodes = [
+        (id = "plant", type = "state_space",                       # [Paperboat] control/state_space block
+         params = (A = matrix(A), B = matrix(B), C = matrix(C), D = matrix(D), x0 = vec(x0), domain = "s")),
+        (id = "y_plot", type = "graph", params = NamedTuple()),
+    ],
+    edges = [(from = ["plant", "y"], to = ["y_plot", "in"])],
 )
-run = simulate(graph; duration = 10, dt = 0.01, solver = :rk45, variables = (x0 = x0,))   # [SqueroBase] → graph.run
+run = simulate(graph; duration = 10, dt = 0.01, solver = :rk45)    # [SqueroBase] → graph.run
 fig
