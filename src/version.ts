@@ -1,7 +1,7 @@
 // Versions shown in About, the console banner, and the launcher.
 // Releases follow frontend semver (keep in step with package.json); Julia and the kernel
 // image are tracked separately and verified on attach.
-export const FRONTEND_VERSION = "0.1.0-alpha.9";
+export const FRONTEND_VERSION = "0.1.0-alpha.10";
 export const JULIA_VERSION = "1.11.6";
 export const KERNEL_IMAGE = "squero-julia-kernel";
 export const KERNEL_REGISTRY = "ghcr.io/paperboatlab/squero-julia-kernel";
