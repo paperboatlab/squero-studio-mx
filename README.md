@@ -54,9 +54,9 @@ Squero Studio OM. It ships a sysimage with LinearAlgebra, SparseArrays, Statisti
 ControlSystems and JSON3 — **no plotting and no simulation libraries**. Plotting and simulation
 stay in-house.
 
-Releases follow frontend semver (`0.1.0-alpha.9`, tag `v0.1.0-alpha.9`) so `paperboat pkg`
+Releases follow frontend semver (`0.1.0`, tag `v0.1.0`) so `paperboat pkg`
 tracks UI releases directly; the Julia runtime (`1.11.6`) and pinned kernel image
-(`1.11.6-r3`) move independently and appear beside it in About, the console banner, and
+(`1.11.6-r4`) move independently and appear beside it in About, the console banner, and
 `apps.toml`.
 
 ## Layout
