@@ -103,13 +103,17 @@ const listen = (port, left = 100) => {
   });
   server.listen(port, "127.0.0.1", () => {
     const runtime = kernelRuntime();
-    const ensured = runtime === "podman" || runtime === "docker" ? ensureKernelImage({ runtime }) : null;
     const url = `http://127.0.0.1:${port}`;
     console.log("squero studio MX");
     console.log(`  url     ${url}`);
     console.log(`  folder  ${shortRoot(workspace)}`);
-    const imageDesc = ensured ? `${ensured.image}${ensured.digest ? ` (${ensured.digest.slice(0, 19)})` : ""}${ensured.matchesPin ? "" : " [unpinned]"}` : KERNEL_IMAGE;
-    console.log(`  kernel  ${imageDesc} (${runtime})`);
+    // The page is served now; the kernel image is pulled (the first time) beside it, not before it.
+    if (runtime === "podman" || runtime === "docker") {
+      void ensureKernelImage({ runtime }).then((ensured) =>
+        console.log(`  kernel  ${ensured.image}${ensured.digest ? ` (${ensured.digest.slice(0, 19)})` : ""}${ensured.matchesPin ? "" : " [unpinned]"} (${runtime})`));
+    } else {
+      console.log(`  kernel  ${KERNEL_IMAGE} (${runtime})`);
+    }
     if (open) {
       const [cmd, args] =
         process.platform === "win32" ? ["cmd", ["/c", "start", "", url]]

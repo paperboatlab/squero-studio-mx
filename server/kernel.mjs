@@ -41,8 +41,13 @@ export function pickDigest(repoDigests, id = "") {
   return shas[0] ?? (id.startsWith("sha256:") ? id : "");
 }
 
-/** Resolve and, if needed, pull the pinned kernel image when running in podman/docker. */
-export function ensureKernelImage({ image = KERNEL_IMAGE, runtime = kernelRuntime() } = {}) {
+/**
+ * Resolve and, if needed, pull the pinned kernel image when running in podman/docker. Asynchronous:
+ * the pull (a gigabyte and more the first time) must never stop the launcher serving the page.
+ * Concurrent callers share one pull.
+ */
+let pulling = null;
+export async function ensureKernelImage({ image = KERNEL_IMAGE, runtime = kernelRuntime() } = {}) {
   if (runtime !== "podman" && runtime !== "docker") {
     return { image: "native", digest: "", pulled: false, matchesPin: true };
   }
@@ -56,8 +61,12 @@ export function ensureKernelImage({ image = KERNEL_IMAGE, runtime = kernelRuntim
     if (localDev) return { ...localDev, pulled: false, matchesPin: false };
   }
   if (process.env.SQUERO_KERNEL_SKIP_PULL !== "1") {
-    const pulled = spawnSync(runtime, ["pull", image], { stdio: "inherit", timeout: 300000 });
-    if (pulled.status === 0) {
+    pulling ??= new Promise((done) => {
+      const child = spawn(runtime, ["pull", image], { stdio: "inherit" });
+      child.on("error", () => done(false));
+      child.on("exit", (code) => done(code === 0));
+    }).finally(() => { pulling = null; });
+    if (await pulling) {
       const after = inspectKernelImage(image, runtime);
       if (after) return { ...after, pulled: true, matchesPin: !KERNEL_DIGEST || after.digest === KERNEL_DIGEST };
     }
@@ -149,7 +158,7 @@ export function kernelRuntime() {
 }
 
 /** The command that runs the kernel. `workspace` is mounted at /workspace for load/save. */
-export function kernelCommand({ workspace, image = KERNEL_IMAGE, runtime = kernelRuntime(), name } = {}) {
+export async function kernelCommand({ workspace, image = KERNEL_IMAGE, runtime = kernelRuntime(), name } = {}) {
   if (runtime === "native") {
     const repo = KERNEL_REPO;
     const env = {};
@@ -166,7 +175,7 @@ export function kernelCommand({ workspace, image = KERNEL_IMAGE, runtime = kerne
     };
   }
   if (runtime === "podman" || runtime === "docker") {
-    const resolved = ensureKernelImage({ image, runtime });
+    const resolved = await ensureKernelImage({ image, runtime });
     const runImage = resolved.image;
     // --init: Julia isn't PID 1, so signals reach it (Cancel's SIGINT goes through the init).
     const args = ["run", "--rm", "-i", "--init", "--network=none", "--label", `${LABEL}=1`, "--label", `${OWNER}=${process.pid}`];
@@ -187,16 +196,22 @@ export function kernelCommand({ workspace, image = KERNEL_IMAGE, runtime = kerne
   throw new Error("no Julia runtime: install podman, docker or julia (or set SQUERO_JULIA)");
 }
 
-function bridge(socket, options) {
+async function bridge(socket, options) {
   let command;
   const name = `squero-kernel-${process.pid}-${++serial}`;
+  // What the page says while the image is still being pulled: held, then sent in order.
+  const early = [];
+  const hold = (data, isBinary) => early.push([data, isBinary]);
+  socket.on("message", hold);
   try {
-    command = kernelCommand({ ...options, name });
+    command = await kernelCommand({ ...options, name });
   } catch (error) {
     socket.send(JSON.stringify({ ok: false, error: String(error.message ?? error) }));
     socket.close(1011, "no kernel runtime");
     return;
   }
+  socket.off("message", hold);
+  if (socket.readyState !== socket.OPEN) return;  // the page left during the pull
   const child = spawn(command.cmd, command.args, {
     stdio: ["pipe", "pipe", "pipe"],
     env: { ...process.env, ...(command.env ?? {}) },
@@ -242,7 +257,7 @@ function bridge(socket, options) {
     if (socket.readyState === socket.OPEN) socket.close(1011, `kernel exited ${code ?? signal}`);
   });
 
-  socket.on("message", (data, isBinary) => {
+  const forward = (data, isBinary) => {
     if (!child.stdin.writable) return;
     if (isBinary) { child.stdin.write(data); return; }
     const text = data.toString();
@@ -250,7 +265,9 @@ function bridge(socket, options) {
     // (podman and docker pass it into the container); the kernel stays up.
     if (text.startsWith('{"op":"interrupt"')) { child.kill("SIGINT"); return; }
     child.stdin.write(text.endsWith("\n") ? text : `${text}\n`);
-  });
+  };
+  for (const [data, isBinary] of early) forward(data, isBinary);
+  socket.on("message", forward);
   socket.on("close", () => stopKernel(name));
 }
 
