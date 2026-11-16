@@ -401,42 +401,24 @@ body.resizing .app.split { transition: none; }
 .figtools { flex: none; display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
 .figrow.sel { background: var(--surface-sunken); border-color: var(--line-ink); }
 .figrow.on.sel { background: var(--surface-sunken); border-color: var(--line-ink); box-shadow: 0 0 0 1px var(--line-ink); }
-.figrun-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  padding: 5px 4px 2px;
-  margin-top: 4px;
-  border: 0;
-  border-bottom: 1px solid var(--line);
-  background: transparent;
-  color: var(--text-muted);
-  font: 400 10px var(--font-mono);
-  text-align: left;
-  cursor: pointer;
-}
-.figrun-head:first-child { margin-top: 0; }
-.figrun-head:hover { color: var(--text); }
-.figrun-head.on { color: var(--text); border-bottom-color: var(--line-ink); font-weight: 500; }
-.figrun-head .figrun-count { margin-left: auto; flex: none; }
+/* A run's heading over its figures: one line, the script in mono ink, when and how long in muted sans,
+   the count at the right; runs are set apart by space and a hairline, the chosen one in brackets. */
+.figrun-group + .figrun-group { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.figrun-head { display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 0 2px 4px; border: 0; background: none; font: var(--size-2xs) var(--font-sans); color: var(--text-muted); text-align: left; white-space: nowrap; cursor: pointer; }
+.figrun-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font: 500 var(--size-2xs) var(--font-mono); color: var(--text); }
+.figrun-meta { flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+.figrun-count { margin-left: auto; flex: none; }
+.figrun-head:hover .figrun-meta, .figrun-head:hover .figrun-count { color: var(--text); }
+.figrun-head.on .figrun-name::before { content: "[ "; }
+.figrun-head.on .figrun-name::after { content: " ]"; }
+.figrun-head:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 
-/* Simulation run dock in the figures stage. */
-.stage-body .sim-dock-wrap { position: absolute; left: 0; right: 0; bottom: 10px; display: flex; justify-content: center; pointer-events: none; z-index: 15; }
-.stage-body .sim-dock-wrap .dock { position: static; transform: none; pointer-events: auto; max-width: calc(100% - 20px); flex-wrap: wrap; }
-.sim-dock-opts { display: inline-flex; align-items: center; gap: 8px; }
-.sim-model-tag { font: 500 10.5px var(--font-mono); color: var(--text-muted); padding: 0 4px; white-space: nowrap; }
-.sim-opt { display: inline-flex; align-items: center; gap: 4px; font: 400 10.5px var(--font-mono); color: var(--text-muted); }
-.sim-opt select, .sim-opt input {
-  height: 22px;
-  padding: 0 5px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--surface-raised);
-  color: var(--text);
-  font: 400 10.5px var(--font-mono);
-}
-.sim-opt input { width: 56px; text-align: right; }
+/* The simulation run dock: the shared dock, in its own row under the figure (it floats over a Flow
+   canvas, but a figure has no room to give), shown only when there is a model to run. Its fields are
+   the shared .run-options wells. */
+.sim-dock-wrap { flex: none; display: flex; justify-content: center; }
+.sim-dock-wrap .dock { position: static; transform: none; max-width: 100%; overflow-x: auto; }
+.run-options .sim-num { width: 6ch; text-align: right; }
 .kernel-mismatch-note { margin: 0 0 8px; padding: 6px 8px; border: 1px solid var(--danger); border-radius: var(--radius-sm); color: var(--danger-text); background: color-mix(in srgb, var(--danger) 8%, transparent); }
 
 /* Files offline: the default folder is the workspace, so there is one action to take. */
@@ -509,7 +491,7 @@ body.resizing .app.split { transition: none; }
   max-width: calc(100% - 20px);
   box-shadow: var(--shadow-1);
 }
-.dbg-ico { font-size: 9px; line-height: 1; margin-right: 3px; }
+.dbg-ico { font-size: var(--size-2xs); line-height: 1; margin-right: 3px; }
 .debug-dock .key.dbg-stop,
 .dbg-session .key.dbg-stop {
   color: var(--danger-text);
@@ -525,7 +507,7 @@ body.resizing .app.split { transition: none; }
   align-items: center;
   gap: 5px;
   padding: 0 4px;
-  font: 400 10.5px var(--font-mono);
+  font: var(--size-2xs) var(--font-mono);
   color: var(--text-muted);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -548,16 +530,16 @@ body.resizing .app.split { transition: none; }
 .cm-bp-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 0 1px color-mix(in srgb, var(--danger) 35%, transparent); }
 .cm-bp-dot.disabled { background: transparent; border: 1.5px solid var(--text-muted); box-shadow: none; }
 .cm-bp-dot.cond { border-radius: 2px; transform: rotate(45deg); width: 6px; height: 6px; }
-.cm-bp-arrow { position: relative; z-index: 1; color: var(--signal); font-size: 9px; line-height: 1; text-shadow: 0 0 2px var(--surface); }
+.cm-bp-arrow { position: relative; z-index: 1; color: var(--signal); font-size: var(--size-2xs); line-height: 1; text-shadow: 0 0 2px var(--surface-raised); }
 .cm-debug-paused-line { background: color-mix(in srgb, var(--signal) 15%, transparent); box-shadow: inset 2px 0 0 var(--signal); }
 
 .dbg-panel { display: flex; flex-direction: column; gap: 10px; padding: 8px 10px; overflow: auto; }
 .dbg-session { display: flex; align-items: center; gap: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
-.dbg-session-stat { margin-left: auto; font: 400 10.5px var(--font-mono); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dbg-session-stat { margin-left: auto; font: var(--size-2xs) var(--font-mono); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dbg-session-stat.paused { color: var(--signal-text); }
 .dbg-session-stat.err { color: var(--danger-text); }
 .dbg-sec { display: flex; flex-direction: column; gap: 5px; }
-.dbg-sec h4 { margin: 0; font: 500 10px var(--font-sans); text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+.dbg-sec h4 { margin: 0; font: 500 var(--size-2xs) var(--font-sans); color: var(--text-muted); }
 .dbg-stack { display: flex; flex-direction: column; gap: 2px; }
 .dbg-frame {
   display: flex;
@@ -571,16 +553,16 @@ body.resizing .app.split { transition: none; }
   color: var(--text);
   text-align: left;
   cursor: pointer;
-  font: 400 11px var(--font-mono);
+  font: var(--size-2xs) var(--font-mono);
 }
-.dbg-frame:hover { background: var(--surface-hover); }
-.dbg-frame.on { background: color-mix(in srgb, var(--signal) 12%, transparent); border-color: color-mix(in srgb, var(--signal) 40%, var(--line)); }
-.dbg-idx { color: var(--text-muted); font-size: 10px; flex: none; }
+.dbg-frame:hover { background: var(--surface-sunken); }
+.dbg-frame.on { border-color: var(--line-ink); font-weight: 500; }
+.dbg-idx { color: var(--text-muted); flex: none; }
 .dbg-fn { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dbg-loc { margin-left: auto; color: var(--text-muted); font-size: 10px; flex: none; }
+.dbg-loc { margin-left: auto; color: var(--text-muted); flex: none; }
 .dbg-watch-in { margin: 0; padding: 0; border: 0; }
 .dbg-watch-in .box { display: flex; align-items: center; gap: 4px; padding: 3px 6px; background: var(--surface-well); border-radius: var(--radius-md); box-shadow: var(--well-shadow); }
-.dbg-watch-in input { flex: 1; min-width: 0; border: 0; background: transparent; outline: none; color: var(--text); font: 400 11px var(--font-mono); }
+.dbg-watch-in input { flex: 1; min-width: 0; border: 0; background: transparent; outline: none; color: var(--text); font: var(--size-2xs) var(--font-mono); }
 .dbg-watches, .dbg-bps { display: flex; flex-direction: column; gap: 3px; }
 .dbg-watch, .dbg-bp-row {
   display: flex;
@@ -590,37 +572,39 @@ body.resizing .app.split { transition: none; }
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: var(--surface-sunken);
-  font: 400 11px var(--font-mono);
+  font: var(--size-2xs) var(--font-mono);
 }
 .dbg-wexpr { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 45%; }
 .dbg-wval { margin-left: auto; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dbg-watch.err .dbg-wval { color: var(--danger-text); }
 .dbg-bp-row input[type="checkbox"] { margin: 0; accent-color: var(--signal); cursor: pointer; }
 .dbg-bp-loc { border: 0; background: transparent; padding: 0; color: var(--text); font: inherit; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dbg-bp-loc:hover { color: var(--signal-text); text-decoration: underline; }
+.dbg-bp-loc:hover { text-decoration: underline; }
 .dbg-bp-cond {
   margin-left: auto;
   border: 1px solid var(--line);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-muted);
-  font: 400 9.5px var(--font-mono);
+  font: var(--size-2xs) var(--font-mono);
   padding: 1px 5px;
   cursor: pointer;
 }
 .dbg-bp-cond.set { color: var(--signal-text); border-color: color-mix(in srgb, var(--signal) 45%, var(--line)); }
+/* A condition being typed: a well, as every field you type in. */
 .dbg-bp-cond-in {
   margin-left: auto;
   width: 100px;
-  border: 1px solid var(--signal);
-  border-radius: 3px;
-  background: var(--surface);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--surface-well);
+  box-shadow: var(--well-shadow);
   color: var(--text);
-  font: 400 10px var(--font-mono);
+  font: var(--size-2xs) var(--font-mono);
   padding: 1px 4px;
-  outline: none;
 }
+.dbg-bp-cond-in:focus { outline: 2px solid var(--focus); outline-offset: 1px; }
 .dbg-x { border: 0; background: transparent; color: var(--text-muted); font: 400 13px/1 var(--font-sans); cursor: pointer; padding: 0 2px; flex: none; }
 .dbg-x:hover { color: var(--danger-text); }
-.dbg-empty { color: var(--text-muted); font: 400 11px var(--font-sans); padding: 2px 0; }
+.dbg-empty { color: var(--text-muted); font: var(--size-2xs) var(--font-sans); padding: 2px 0; }
 .cin .prompt.dbg { color: var(--signal-text); }

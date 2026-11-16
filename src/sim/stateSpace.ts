@@ -1,13 +1,15 @@
 // The state-space and RHS simulation bridge: Julia computes A, B, C, D, x0 (or an ODE RHS `f`),
 // MX packages a `paperboat/0` `graph.run` for Paperboat's `state_space` / `rhs` blocks, and turns the
 // streamed `signal` samples into a 2D figure. MX never integrates locally.
-import type { ClientMsg } from "@paperboat/shared/protocol";
+import type { ClientMsg, RunSettings } from "@paperboat/shared/protocol";
+import { MATLAB_COLORS } from "@paperboat/shared";
 import type { Plot2DLayer as Layer2D } from "@paperboat/shared/plot";
 import type { FigureEntry, FigureRun } from "../plot/history.ts";
 import type { FigureScene, SceneAxis2D } from "../plot/scene.ts";
 import type { WorkspaceVariable } from "../workspace/samples.ts";
 
-export type Solver = "auto" | "rk4" | "rk45" | "rk2" | "euler" | "discrete" | "cvode" | "ida";
+/** A run's solver as the protocol names them, or auto (the backend's default). */
+export type Solver = "auto" | NonNullable<RunSettings["solver"]>;
 
 export type StateSpace = {
   A: number[][];
@@ -42,8 +44,6 @@ export type SignalSample = {
   t: number;
   v: number | string | number[];
 };
-
-const TRACE_COLORS = ["#0072bd", "#d95319", "#edb120", "#7e2f8e", "#77ac30", "#4dbeee", "#a2142f"];
 
 export function matrixParamText(value: number | number[] | number[][]): string {
   if (typeof value === "number") return String(value);
@@ -219,7 +219,7 @@ export function figureSceneFromSignals(
       for (const y of ys) {
         if (Number.isFinite(y)) { if (y < minY) minY = y; if (y > maxY) maxY = y; }
       }
-      const color = TRACE_COLORS[colorIdx++ % TRACE_COLORS.length];
+      const color = MATLAB_COLORS[colorIdx++ % MATLAB_COLORS.length];
       const prefix = node.replace(/_plot$/, "");
       const label = bucket.channels.length === 1 ? prefix : `${prefix}[${c + 1}]`;
       layers.push({ kind: "lines", x: bucket.t, y: ys, color, linewidth: 2, label });
