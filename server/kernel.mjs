@@ -6,8 +6,53 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
 
-export const KERNEL_IMAGE = process.env.SQUERO_KERNEL_IMAGE ?? "squero-julia-kernel:1.11.6-r3";
+export const KERNEL_REGISTRY = "ghcr.io/paperboatlab/squero-julia-kernel";
+export const KERNEL_TAG = "1.11.6-r3";
+export const KERNEL_DIGEST = "";
+export const KERNEL_LOCAL_IMAGE = `squero-julia-kernel:${KERNEL_TAG}`;
+export const KERNEL_PINNED_IMAGE = KERNEL_DIGEST ? `${KERNEL_REGISTRY}@${KERNEL_DIGEST}` : `${KERNEL_REGISTRY}:${KERNEL_TAG}`;
+export const KERNEL_IMAGE = process.env.SQUERO_KERNEL_IMAGE ?? KERNEL_PINNED_IMAGE;
 export const KERNEL_PROTOCOL = 0;
+
+/** Inspect a local container image's repo digest or image id, or null if absent. */
+export function inspectKernelImage(image = KERNEL_IMAGE, runtime = kernelRuntime()) {
+  if (runtime !== "podman" && runtime !== "docker") return null;
+  const res = spawnSync(runtime, ["image", "inspect", image, "--format", "{{json .RepoDigests}} {{.Id}}"], { encoding: "utf8", timeout: 10000 });
+  if (res.status !== 0) return null;
+  const line = (res.stdout ?? "").trim();
+  const split = line.lastIndexOf(" ");
+  const digestsJson = split >= 0 ? line.slice(0, split) : "[]";
+  const id = split >= 0 ? line.slice(split + 1).trim() : "";
+  let digests = [];
+  try { digests = JSON.parse(digestsJson); } catch { digests = []; }
+  const repoDigest = Array.isArray(digests) ? digests.find((d) => typeof d === "string" && d.includes("@sha256:")) : undefined;
+  const sha = repoDigest ? repoDigest.slice(repoDigest.indexOf("@") + 1) : (id.startsWith("sha256:") ? id : "");
+  return { image, digest: sha };
+}
+
+/** Resolve and, if needed, pull the pinned kernel image when running in podman/docker. */
+export function ensureKernelImage({ image = KERNEL_IMAGE, runtime = kernelRuntime() } = {}) {
+  if (runtime !== "podman" && runtime !== "docker") {
+    return { image: "native", digest: "", pulled: false, matchesPin: true };
+  }
+  const existing = inspectKernelImage(image, runtime);
+  if (existing) {
+    const matchesPin = !KERNEL_DIGEST || existing.digest === KERNEL_DIGEST;
+    return { ...existing, pulled: false, matchesPin };
+  }
+  if (!process.env.SQUERO_KERNEL_IMAGE && !KERNEL_DIGEST) {
+    const localDev = inspectKernelImage(KERNEL_LOCAL_IMAGE, runtime);
+    if (localDev) return { ...localDev, pulled: false, matchesPin: false };
+  }
+  if (process.env.SQUERO_KERNEL_SKIP_PULL !== "1") {
+    const pulled = spawnSync(runtime, ["pull", image], { stdio: "inherit", timeout: 300000 });
+    if (pulled.status === 0) {
+      const after = inspectKernelImage(image, runtime);
+      if (after) return { ...after, pulled: true, matchesPin: !KERNEL_DIGEST || after.digest === KERNEL_DIGEST };
+    }
+  }
+  return { image, digest: "", pulled: false, matchesPin: !KERNEL_DIGEST };
+}
 
 // SqueroBase (session, Paperboat bridges) and SqueroPlot (figures) are the kernel project's own
 // dependencies: path deps of the sibling checkouts natively, baked into the image otherwise.
@@ -110,10 +155,14 @@ export function kernelCommand({ workspace, image = KERNEL_IMAGE, runtime = kerne
     };
   }
   if (runtime === "podman" || runtime === "docker") {
+    const resolved = ensureKernelImage({ image, runtime });
+    const runImage = resolved.image;
     // --init: Julia isn't PID 1, so signals reach it (Cancel's SIGINT goes through the init).
     const args = ["run", "--rm", "-i", "--init", "--network=none", "--label", `${LABEL}=1`, "--label", `${OWNER}=${process.pid}`];
     if (name) args.push("--name", name);
     if (runtime === "podman") args.push("--userns=keep-id");
+    args.push("-e", `SQUERO_KERNEL_IMAGE=${runImage}`);
+    if (resolved.digest) args.push("-e", `SQUERO_KERNEL_DIGEST=${resolved.digest}`);
     if (workspace) {
       args.push("-v", `${workspace}:/workspace:rw`, "-w", "/workspace");
       // Keep the kernel image's depot for JSON3 and the stdlib, and the workspace depot for
@@ -121,8 +170,8 @@ export function kernelCommand({ workspace, image = KERNEL_IMAGE, runtime = kerne
       args.push("-e", "JULIA_DEPOT_PATH=/workspace/.julia:/home/kernel/.julia");
       args.push("-e", "JULIA_LOAD_PATH=@:/workspace:@stdlib");
     }
-    args.push(image);
-    return { cmd: runtime, args, runtime, name };
+    args.push(runImage);
+    return { cmd: runtime, args, runtime, name, image: runImage, digest: resolved.digest };
   }
   throw new Error("no Julia runtime: install podman, docker or julia (or set SQUERO_JULIA)");
 }

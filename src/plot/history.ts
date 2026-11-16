@@ -4,6 +4,16 @@
 import type { FigureFormat, FigureMeta } from "../kernel/protocol.ts";
 import type { FigureScene } from "./scene.ts";
 
+export type FigureRunMode = "file" | "cell" | "line" | "selection" | "console" | "debug" | "simulate";
+
+export type FigureRun = {
+  id: string;
+  started: number;
+  source: string;
+  mode: FigureRunMode;
+  durationMs?: number;
+};
+
 export type FigureEntry = {
   /** The history entry (one per figure version). */
   key: string;
@@ -13,6 +23,8 @@ export type FigureEntry = {
   /** The script that ran, and when. */
   source: string;
   time: number;
+  /** Run identity that drew this entry (used to group history and export a run). */
+  run?: FigureRun;
   title: string;
   width: number;
   height: number;
@@ -28,6 +40,12 @@ export type FigureEntry = {
   preview?: string;
 };
 
+export type FigureRunGroup = {
+  id: string;
+  run: FigureRun;
+  entries: FigureEntry[];
+};
+
 export const MIME: Record<FigureFormat, string> = {
   png: "image/png",
   svg: "image/svg+xml",
@@ -36,15 +54,22 @@ export const MIME: Record<FigureFormat, string> = {
   html: "text/html",
 };
 
+let runSeq = 0;
+
+export function createRunToken(source: string, mode: FigureRunMode, started = Date.now()): FigureRun {
+  return { id: `run-${started}-${++runSeq}`, started, source, mode };
+}
+
 export const entryKey = (meta: Pick<FigureMeta, "id" | "version">) => `${meta.id}@${meta.version}`;
 
-export function entryFrom(meta: FigureMeta, source: string, time = Date.now()): FigureEntry {
+export function entryFrom(meta: FigureMeta, source: string, time = Date.now(), run?: FigureRun): FigureEntry {
   return {
     key: entryKey(meta),
     figure: meta.id,
     version: meta.version,
     source,
     time,
+    ...(run ? { run } : {}),
     title: meta.title,
     width: meta.width,
     height: meta.height,
@@ -68,6 +93,46 @@ export function addEntries(history: FigureEntry[], fresh: FigureEntry[]): Figure
     added.push(entry);
   }
   return [...added.reverse(), ...history];
+}
+
+/**
+ * Group figure entries by run, newest run first, without interleaving entries from distinct runs.
+ * Runs that drew no figures never appear.
+ */
+export function groupFiguresByRun(history: readonly FigureEntry[]): FigureRunGroup[] {
+  const byId = new Map<string, FigureRunGroup>();
+  for (const entry of history) {
+    const run = entry.run ?? {
+      id: `entry:${entry.source}:${entry.time}`,
+      started: entry.time,
+      source: entry.source,
+      mode: "file" as const,
+    };
+    const existing = byId.get(run.id);
+    if (existing) {
+      existing.entries.push(entry);
+      if (run.durationMs !== undefined) existing.run = { ...existing.run, durationMs: run.durationMs };
+    } else {
+      byId.set(run.id, { id: run.id, run, entries: [entry] });
+    }
+  }
+  return [...byId.values()].sort((a, b) => b.run.started - a.run.started);
+}
+
+/**
+ * Return the latest version of each distinct figure drawn in a run (deduped for `Export run…`),
+ * ordered from first drawn to last drawn.
+ */
+export function latestRunFigures(history: readonly FigureEntry[], runId: string): FigureEntry[] {
+  const seen = new Set<string>();
+  const latestNewestFirst: FigureEntry[] = [];
+  for (const entry of history) {
+    if (entry.run?.id !== runId) continue;
+    if (seen.has(entry.figure)) continue;
+    seen.add(entry.figure);
+    latestNewestFirst.push(entry);
+  }
+  return latestNewestFirst.reverse();
 }
 
 /** The entry an editor line points at: one that line drew into, else the file's latest figure. */

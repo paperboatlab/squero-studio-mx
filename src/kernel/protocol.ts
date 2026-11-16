@@ -88,6 +88,7 @@ export type KernelHello = {
   op: "hello";
   julia: string;
   image: string;
+  image_digest?: string;
   protocol: number;
   packages: string[];
   /** SqueroBase and SqueroPlot versions the session loaded. */

@@ -214,12 +214,14 @@ type OnFigure = (line: number) => void;
 const answerGutter = (
   getVars: () => readonly AnswerVariable[],
   getFunctions: () => FunctionTable,
+  getDebugLocals: () => readonly AnswerVariable[] | undefined,
   onFigure?: OnFigure,
 ) => {
   let cache: {
     doc: EditorView["state"]["doc"];
     vars: readonly AnswerVariable[];
     fns: FunctionTable;
+    locals: readonly AnswerVariable[] | undefined;
     answers: (AnswerSpec | null)[];
   } | null = null;
 
@@ -227,12 +229,13 @@ const answerGutter = (
     const doc = view.state.doc;
     const vars = getVars();
     const fns = getFunctions();
-    if (cache && cache.doc === doc && cache.vars === vars && cache.fns === fns) {
+    const locals = getDebugLocals();
+    if (cache && cache.doc === doc && cache.vars === vars && cache.fns === fns && cache.locals === locals) {
       return cache.answers;
     }
     const lines = Array.from({ length: doc.lines }, (_, i) => doc.line(i + 1).text);
-    const answers = computeLineAnswers(lines, vars, fns);
-    cache = { doc, vars, fns, answers };
+    const answers = computeLineAnswers(lines, vars, fns, locals);
+    cache = { doc, vars, fns, locals, answers };
     return answers;
   };
 
@@ -263,7 +266,7 @@ const answerTheme = {
 };
 
 export function CodeEditor({
-  value, file, onChange, settings, appTheme, variables, functions, onFigure, onRunSelection, onPos, base, readOnly, breakpoints, pausedLine, onToggleBreakpoint,
+  value, file, onChange, settings, appTheme, variables, debugLocals, functions, onFigure, onRunSelection, onPos, base, readOnly, breakpoints, pausedLine, onToggleBreakpoint,
 }: {
   value: string;
   file: string;
@@ -271,6 +274,7 @@ export function CodeEditor({
   settings: EditorSettings;
   appTheme: "light" | "dark";
   variables: readonly AnswerVariable[];
+  debugLocals?: readonly AnswerVariable[];
   functions?: FunctionTable;
   onFigure?: OnFigure;
   onRunSelection?: (code: string, mode: "cell" | "line" | "selection") => void;
@@ -284,9 +288,12 @@ export function CodeEditor({
 }) {
   const vars = useRef(variables);
   vars.current = variables;
+  const dbgLocals = useRef(debugLocals);
+  dbgLocals.current = debugLocals;
   const fns = useRef(functions ?? {});
   fns.current = functions ?? {};
   const varList = () => vars.current;
+  const dbgList = () => dbgLocals.current;
   const fnMap = () => fns.current;
   const figureLink = useRef(onFigure);
   figureLink.current = onFigure;
@@ -396,8 +403,8 @@ export function CodeEditor({
 
   const resolved = paletteOf(settings.theme, appTheme, settings.themes).dark ? "dark" : "light";
   const extra = useMemo(
-    () => [debugExt, answerTheme[resolved], folded ? [] : answerGutter(varList, fnMap, (line) => figureLink.current?.(line))],
-    [debugExt, resolved, folded, variables, functions],
+    () => [debugExt, answerTheme[resolved], folded ? [] : answerGutter(varList, fnMap, dbgList, (line) => figureLink.current?.(line))],
+    [debugExt, resolved, folded, variables, debugLocals, functions],
   );
 
   return (

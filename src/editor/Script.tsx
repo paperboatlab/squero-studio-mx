@@ -20,7 +20,7 @@ export type ScriptDebugControls = {
 };
 
 export function Script({
-  running, runStatus, file, code, onChange, onRun, onCancel, dirty, onSave, settings, onSettings, configFile, appTheme, variables, functions, onFigure, onRunSelection, lastRun, base, readOnly, onCopyToWorkspace, breakpoints, onToggleBreakpoint, debug,
+  running, runStatus, file, code, onChange, onRun, onCancel, dirty, onSave, settings, onSettings, configFile, appTheme, variables, debugLocals, functions, onFigure, onRunSelection, lastRun, base, readOnly, onCopyToWorkspace, breakpoints, onToggleBreakpoint, debug,
 }: {
   /** The kernel is compiling or running something. */
   running?: boolean;
@@ -39,6 +39,7 @@ export function Script({
   configFile?: ConfigFile;
   appTheme: "light" | "dark";
   variables: readonly AnswerVariable[];
+  debugLocals?: readonly AnswerVariable[];
   functions?: FunctionTable;
   /** `→ figure`: show the figure this line (1-based) drew into. */
   onFigure?: (line: number) => void;
@@ -74,7 +75,7 @@ export function Script({
 
 
       <div className="code">
-        <CodeEditor key={file} value={code} file={file} onChange={onChange} settings={settings} appTheme={appTheme} variables={variables} functions={functions} onFigure={onFigure} onRunSelection={onRunSelection} onPos={setPos} base={base} readOnly={readOnly} breakpoints={breakpoints} pausedLine={debug?.paused ? debug.line : null} onToggleBreakpoint={onToggleBreakpoint} />
+        <CodeEditor key={file} value={code} file={file} onChange={onChange} settings={settings} appTheme={appTheme} variables={variables} debugLocals={debugLocals} functions={functions} onFigure={onFigure} onRunSelection={onRunSelection} onPos={setPos} base={base} readOnly={readOnly} breakpoints={breakpoints} pausedLine={debug?.paused ? debug.line : null} onToggleBreakpoint={onToggleBreakpoint} />
       </div>
       {!file && <div className="editor-empty">Open the workspace folder, or create a script with +.</div>}
       {debug?.active && (

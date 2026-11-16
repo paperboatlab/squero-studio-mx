@@ -2,12 +2,23 @@
 // there is no URL to pick and no "shared" page. A link is written only after its own
 // variables.load, so an MX broadcast can never overwrite a backend before it has spoken.
 import type { ClientMsg, Variable } from "@paperboat/shared/protocol";
-import { PaperboatLink, type LinkStatus } from "./link.ts";
+import { PaperboatLink, type LinkStatus, type PaperboatRunEvent } from "./link.ts";
+
+export type HubCapabilities = {
+  solvers: string[];
+  hasStateSpace: boolean;
+  hasRhs: boolean;
+  hasGraph: boolean;
+  defaultDt: number;
+  defaultDuration: number;
+};
 
 export class PaperboatHub {
   private links = new Map<string, PaperboatLink>();
   onStatus?: (status: LinkStatus, detail?: string) => void;
   onVariables?: (variables: Variable[], loaded: boolean) => void;
+  onCapabilities?: (caps: HubCapabilities) => void;
+  onRunEvent?: (url: string, event: PaperboatRunEvent) => void;
 
   get urls(): string[] {
     return [...this.links.keys()].sort();
@@ -29,6 +40,23 @@ export class PaperboatHub {
     return "idle";
   }
 
+  capabilities(): HubCapabilities {
+    const attached = [...this.links.values()].filter((l) => l.status === "attached");
+    const solvers = [...new Set(attached.flatMap((l) => l.solvers))];
+    const hasStateSpace = attached.some((l) => l.catalogTypes.has("state_space"));
+    const hasRhs = attached.some((l) => l.catalogTypes.has("rhs"));
+    const hasGraph = attached.some((l) => l.catalogTypes.has("graph"));
+    const first = attached[0];
+    return {
+      solvers,
+      hasStateSpace,
+      hasRhs,
+      hasGraph,
+      defaultDt: first?.defaultDt ?? 0.01,
+      defaultDuration: first?.defaultDuration ?? 10,
+    };
+  }
+
   /** Connect new backends, drop ones that are gone, and leave the rest alone. */
   sync(urls: string[]): void {
     const wanted = new Set(urls);
@@ -41,12 +69,27 @@ export class PaperboatHub {
     for (const url of urls) {
       if (this.links.has(url)) continue;
       const link = new PaperboatLink();
-      link.onStatus = () => this.emitStatus();
+      link.onStatus = () => { this.emitStatus(); this.emitCapabilities(); };
       link.onVariables = () => this.emitVariables();
+      link.onCapabilities = () => this.emitCapabilities();
+      link.onRunEvent = (event) => this.onRunEvent?.(url, event);
       this.links.set(url, link);
       link.connect(url);
     }
     this.emitStatus();
+    this.emitCapabilities();
+  }
+
+  /** Send a `graph.run` to the first attached backend that supports its blocks (or all if unknown). */
+  runGraph(msg: Extract<ClientMsg, { type: "graph.run" }>): string | null {
+    const attached = [...this.links.entries()].filter(([, l]) => l.status === "attached");
+    const match = attached.find(([, l]) => l.supportsGraph(msg)) ?? attached[0];
+    if (!match) return null;
+    return match[1].send(msg) ? match[0] : null;
+  }
+
+  cancelRun(): number {
+    return this.send({ type: "run.cancel" });
   }
 
   /** Broadcast to every loaded backend; returns how many accepted the message. */
@@ -63,10 +106,15 @@ export class PaperboatHub {
     this.links.clear();
     this.emitStatus();
     this.emitVariables();
+    this.emitCapabilities();
   }
 
   private emitStatus() {
     this.onStatus?.(this.status);
+  }
+
+  private emitCapabilities() {
+    this.onCapabilities?.(this.capabilities());
   }
 
   private emitVariables() {

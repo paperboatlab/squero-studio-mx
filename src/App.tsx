@@ -3,7 +3,7 @@ import { AppBar, BarEnd, GlideBrackets, HelpWindow, StatusPill, useDismiss, useT
 import { helpCommand, useShortcuts, type Command } from "@paperboat/shared";
 import type { ClientMsg, Variable } from "@paperboat/shared/protocol";
 import { bufferOf } from "./plot/export.ts";
-import { addEntries, entryForLine, entryFrom, entryLabel, MIME, type FigureEntry } from "./plot/history.ts";
+import { addEntries, createRunToken, entryForLine, entryFrom, entryLabel, groupFiguresByRun, latestRunFigures, MIME, type FigureEntry, type FigureRun } from "./plot/history.ts";
 import { unpackScene } from "./plot/scene.ts";
 import { FigureView } from "./plot/FigureView.tsx";
 import { ExportModal } from "./plot/ExportModal.tsx";
@@ -11,10 +11,11 @@ import { FIGURE_FORMATS, type FigureFormat, type FigureMeta, type KernelEvent, t
 import { SHIPPED_EXAMPLES, findShippedExample, type ShippedExample } from "./examples/catalog.ts";
 import type { WorkspaceVariable } from "./workspace/samples.ts";
 import { Script } from "./editor/Script.tsx";
+import type { AnswerVariable } from "./editor/answers.ts";
 import { useSqueroConfig, type ConfigStore } from "@paperboat/shared/editor";
 import { RunStatus, SqueroWordmark } from "@paperboat/shared/squero";
 import { AboutModal } from "./shell/AboutModal.tsx";
-import { probeKernel, type KernelInfo } from "./kernel/probe.ts";
+import { probeKernelHandshake, type KernelInfo, type KernelMismatch } from "./kernel/probe.ts";
 import { docNames, evalCode, figureArtifact, figureScene, kernel, plotOptimum, resetKernel, setArray, setKernelBreakpoints, debugContinue, debugEval, debugLocals, debugPause, debugStart, debugStep, debugStop, whois, withArrays } from "./kernel/client.ts";
 import type { BreakpointSpec, DebugFrame, DebugLocal, KernelEventMessage } from "./kernel/protocol.ts";
 import { TypeIcon } from "./workspace/TypeIcon.tsx";
@@ -26,7 +27,7 @@ import { IMPORT_EXTENSIONS, importFile, type ImportValue, type Imported } from "
 import { ImportDialog } from "./workspace/ImportDialog.tsx";
 import { VariableEditor } from "./workspace/VariableEditor.tsx";
 import { solveProblem } from "./paperboat/optimize.ts";
-import { FRONTEND_VERSION, JULIA_VERSION, KERNEL_PROTOCOL, KERNEL_VERSION, PAPERBOAT_PROTOCOL } from "./version.ts";
+import { formatKernelImage, FRONTEND_VERSION, JULIA_VERSION, KERNEL_DIGEST, KERNEL_PROTOCOL, KERNEL_VERSION, kernelImageRef, PAPERBOAT_PROTOCOL } from "./version.ts";
 import { FilePanel, type FilePanelHandle } from "./files/FilePanel.tsx";
 import { KernelPanel } from "./shell/KernelPanel.tsx";
 import { askWrite, canWrite, loadDirHandle, readTree, saveDirHandle, storageOf } from "./files/storage.ts";
@@ -35,9 +36,11 @@ import { downloadMat } from "./workspace/mat.ts";
 import { defineFunction, evaluate, variableFrom, varsOf, type FunctionTable } from "./kernel/localEval.ts";
 import { replaceLatexAtCaret } from "./editor/unicode.ts";
 import type { LinkStatus } from "./paperboat/link.ts";
-import { PaperboatHub } from "./paperboat/hub.ts";
+import { PaperboatHub, type HubCapabilities } from "./paperboat/hub.ts";
 import { discoverBackends } from "./paperboat/discovery.ts";
 import { mergeShared, setMessage } from "./paperboat/variables.ts";
+import { detectSimModel, figureEntryFromSignals, rhsRunRequest, stateSpaceRunRequest, type Solver } from "./sim/stateSpace.ts";
+import { SimRunDock } from "./sim/RunDock.tsx";
 
 type RightTab = "workspace" | "debug" | "figures";
 
@@ -67,12 +70,15 @@ export function App() {
   const [activeFigureId, setActiveFigureId] = useState<string | null>(null);
   const [figureSel, setFigureSel] = useState<string[]>([]);
   const [figureAnchor, setFigureAnchor] = useState<string | null>(null);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  const [exportEntriesOverride, setExportEntriesOverride] = useState<FigureEntry[] | null>(null);
   const [viewStates, setViewStates] = useState<Record<string, { state: ViewState; modified: boolean }>>({});
   const [resetSeq, setResetSeq] = useState(0);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [kernelOpen, setKernelOpen] = useState(false);
   const [kernelInfo, setKernelInfo] = useState<KernelInfo | null>(null);
+  const [kernelMismatch, setKernelMismatch] = useState<KernelMismatch | null>(null);
   const kernelUp = useRef(false);
   kernelUp.current = kernelInfo !== null;
   const helpProvider = useMemo(() => mxHelp(() => kernelUp.current), []);
@@ -95,6 +101,7 @@ export function App() {
   const debugSourceRef = useRef("");
   const debugStartedAtRef = useRef<number | null>(null);
   const debugSessionDoneRef = useRef(false);
+  const debugRunRef = useRef<FigureRun | null>(null);
   const debugEventRef = useRef<(event: KernelEventMessage) => void>(() => {});
   useEffect(() => kernel.onEvent((event) => debugEventRef.current(event)), []);
   const [files, setFiles] = useState<Record<string, string>>({});
@@ -145,6 +152,17 @@ export function App() {
   const [paperboat, setPaperboat] = useState<Variable[]>([]);
   const [pbLoaded, setPbLoaded] = useState(false);
   const [pbCount, setPbCount] = useState(0);
+  const [pbCaps, setPbCaps] = useState<HubCapabilities>({ solvers: [], hasStateSpace: false, hasRhs: false, hasGraph: false, defaultDt: 0.01, defaultDuration: 10 });
+  const [simSolver, setSimSolver] = useState<Solver>("auto");
+  const [simDt, setSimDt] = useState(0.01);
+  const [simDuration, setSimDuration] = useState(10);
+  const [simRunning, setSimRunning] = useState(false);
+  const [simProgress, setSimProgress] = useState<number | null>(null);
+  const [simStatusText, setSimStatusText] = useState<string | undefined>(undefined);
+  const simRunRef = useRef<FigureRun | null>(null);
+  const simSourceRef = useRef("");
+  const simTitleRef = useRef("Paperboat simulation");
+  const simStartedAtRef = useRef<number | null>(null);
   // The app theme and the editor settings, from the user's squero.toml (shared with OM).
   const { editor, setEditor, file: configFile, theme: themeChoice, setTheme: setThemeChoice } = useSqueroConfig(configStore, { editor: "mx.editor", theme: "mx.theme" });
   const appTheme = useTheme(themeChoice);
@@ -276,9 +294,32 @@ export function App() {
   const currentVars = workspace;
   const rows = useMemo(() => mergeShared(currentVars, paperboat), [currentVars, paperboat]);
 
+  const applyProbe = (res: Awaited<ReturnType<typeof probeKernelHandshake>>) => {
+    setKernelProbed(true);
+    if (res.status === "ready") {
+      setKernelInfo(res.info);
+      setKernelMismatch(null);
+      return res.info;
+    }
+    if (res.status === "mismatch") {
+      setKernelInfo(null);
+      setKernelMismatch(res.mismatch);
+      say(res.mismatch.message, "err");
+      return null;
+    }
+    setKernelInfo(null);
+    return null;
+  };
+
   useEffect(() => {
     let live = true;
-    void probeKernel(60000).then((info) => { if (live) { setKernelInfo(info); setKernelProbed(true); } });
+    void probeKernelHandshake(60000).then((res) => {
+      if (!live) return;
+      const info = applyProbe(res);
+      if (info) {
+        say(`julia ${info.julia} · kernel ${formatKernelImage(info.image, info.image_digest)} · squero-kernel/${info.protocol}`, "ok");
+      }
+    });
     return () => { live = false; };
   }, []);
 
@@ -302,6 +343,50 @@ export function App() {
     h.onVariables = (vars, loaded) => {
       setPaperboat(vars);
       setPbLoaded(loaded);
+    };
+    h.onCapabilities = (caps) => {
+      setPbCaps(caps);
+    };
+    h.onRunEvent = (_url, ev) => {
+      if (ev.type === "started") {
+        setSimRunning(true);
+        setSimProgress(0);
+        setSimStatusText(undefined);
+        return;
+      }
+      if (ev.type === "progress") {
+        setSimProgress(ev.fraction);
+        return;
+      }
+      if (ev.type === "log") {
+        say(`paperboat: ${ev.text}`, ev.level === "error" ? "err" : ev.level === "warn" ? "warn" : "info");
+        return;
+      }
+      if (ev.type === "finished") {
+        setSimRunning(false);
+        setSimProgress(null);
+        const ms = simStartedAtRef.current !== null ? Math.max(1, Math.round(performance.now() - simStartedAtRef.current)) : undefined;
+        simStartedAtRef.current = null;
+        setSimStatusText(ev.status === "done" ? `done · ${ev.samples.length} samples` : ev.status);
+        const run = simRunRef.current ? { ...simRunRef.current, ...(ms !== undefined ? { durationMs: ms } : {}) } : undefined;
+        if (ev.samples.length > 0) {
+          const entry = figureEntryFromSignals(
+            ev.samples,
+            simSourceRef.current || "simulation",
+            simTitleRef.current || "Paperboat simulation",
+            run,
+          );
+          if (entry) {
+            setFigures((prev) => addEntries(prev, [entry]));
+            setActiveFigureId(entry.key);
+            setFigureSel([entry.key]);
+            setFigureAnchor(entry.key);
+            setSelectedRunId(run?.id ?? null);
+            setChartHidden(false);
+          }
+        }
+        say(`paperboat run ${ev.status}${ev.samples.length ? ` · ${ev.samples.length} samples` : ""}`, ev.status === "done" ? "ok" : "warn");
+      }
     };
     let live = true;
     const poll = async () => {
@@ -381,13 +466,25 @@ export function App() {
     return overlay;
   };
 
-  const consoleEvalNow = async (code: string) => {
-    const info = kernelInfo ?? await probeKernel(60000);
-    if (!info) {
-      say("kernel unavailable · install Julia or start the kernel container", "warn");
-      return;
+  const ensureKernelReady = async (): Promise<KernelInfo | null> => {
+    if (kernelMismatch) {
+      say(kernelMismatch.message, "err");
+      return null;
     }
-    if (!kernelInfo) setKernelInfo(info);
+    if (kernelInfo) return kernelInfo;
+    const res = await probeKernelHandshake(60000);
+    const info = applyProbe(res);
+    if (!info && res.status !== "mismatch") {
+      say("kernel unavailable · install Julia or start the kernel container", "warn");
+    }
+    return info;
+  };
+
+  const consoleEvalNow = async (code: string) => {
+    const info = await ensureKernelReady();
+    if (!info) return;
+    const startedAt = performance.now();
+    const run = createRunToken(editorSource || "console", "console");
     const reply = await evalCode(code, editorSource, workspaceFilesOverlay());
     for (const line of (reply.stdout ?? "").split("\n")) if (line.trim()) say(line);
     // The kernel already applied `clear` between statements; the workspace follows `whos`.
@@ -395,6 +492,10 @@ export function App() {
     if (!reply.ok) {
       sayError(reply.error);
       return;
+    }
+    if (reply.figures?.length) {
+      await addFigures(reply.figures, editorSource || "console", run);
+      updateRunDuration(run.id, Math.max(1, Math.round(performance.now() - startedAt)));
     }
     // The kernel prints the value as Julia's REPL would; an older kernel sends only a description.
     if (reply.text !== undefined) {
@@ -525,7 +626,16 @@ export function App() {
       return;
     }
     if (head === "run") { runScript(); return; }
-    if (head === "version") { say(`julia ${JULIA_VERSION} · frontend ${FRONTEND_VERSION} · kernel ${KERNEL_VERSION} · ${KERNEL_PROTOCOL} · ${PAPERBOAT_PROTOCOL}`); return; }
+    if (head === "version") {
+      const liveJulia = kernelInfo?.julia ?? JULIA_VERSION;
+      const liveImage = formatKernelImage(
+        kernelInfo?.image ?? kernelMismatch?.image ?? kernelImageRef(),
+        kernelInfo?.image_digest ?? kernelMismatch?.imageDigest ?? KERNEL_DIGEST,
+      );
+      const liveProto = kernelInfo ? `squero-kernel/${kernelInfo.protocol}` : KERNEL_PROTOCOL;
+      say(`julia ${liveJulia} · frontend ${FRONTEND_VERSION} · kernel ${liveImage} · ${liveProto} · ${PAPERBOAT_PROTOCOL}`);
+      return;
+    }
     void consoleEval(cmd);
   };
 
@@ -598,10 +708,15 @@ export function App() {
     setFigures((prev) => prev.map((one) => (one.key === key ? { ...one, artifacts: { ...one.artifacts, ...got } } : one)));
   }, []);
 
+  /** Update a run's duration on its figures once the run finishes. */
+  const updateRunDuration = (runId: string, durationMs: number) => {
+    setFigures((prev) => prev.map((one) => (one.run?.id === runId && one.run ? { ...one, run: { ...one.run, durationMs } } : one)));
+  };
+
   /** New history entries for the figures a run (or the optimizer) drew: scene + SVG preview first, then all export formats. */
-  const addFigures = async (metas: FigureMeta[], source: string) => {
+  const addFigures = async (metas: FigureMeta[], source: string, run?: FigureRun) => {
     for (const meta of metas) if (meta.error) say(`figure ${meta.id}: ${meta.error}`, "warn");
-    const fresh = metas.filter((meta) => !meta.error && meta.version).map((meta) => entryFrom(meta, source));
+    const fresh = metas.filter((meta) => !meta.error && meta.version).map((meta) => entryFrom(meta, source, Date.now(), run));
     if (fresh.length === 0) return;
     for (const entry of fresh) {
       const [got, scReply] = await Promise.all([
@@ -617,6 +732,7 @@ export function App() {
     setActiveFigureId(shown);
     setFigureSel([shown]);
     setFigureAnchor(shown);
+    if (run) setSelectedRunId(run.id);
     setFigureFocus(null);
     setChartHidden(false);
     // The rest of the formats, so history exports without the kernel (a reset, a restart).
@@ -714,9 +830,26 @@ export function App() {
     return ids.map((id) => figures.find((f) => f.key === id)).filter((f): f is FigureEntry => !!f);
   }, [activeFigureId, figureSel, figures]);
 
+  const figureGroups = useMemo(() => groupFiguresByRun(figures), [figures]);
+  const activeRunId = useMemo(() => {
+    if (selectedRunId && figures.some((f) => f.run?.id === selectedRunId)) return selectedRunId;
+    return activeFigureId ? (figures.find((f) => f.key === activeFigureId)?.run?.id ?? null) : null;
+  }, [activeFigureId, figures, selectedRunId]);
+  const runExportEntries = useMemo(
+    () => (activeRunId ? latestRunFigures(figures, activeRunId) : []),
+    [figures, activeRunId],
+  );
+
   /** Open the Export preview dialog (defaults to scripted framing & script size). */
   const exportFigures = () => {
     if (selectedExportEntries.length === 0) return;
+    setExportEntriesOverride(null);
+    setExportOpen(true);
+  };
+
+  const exportRunFigures = () => {
+    if (runExportEntries.length === 0) return;
+    setExportEntriesOverride(runExportEntries);
     setExportOpen(true);
   };
 
@@ -788,6 +921,7 @@ export function App() {
   const runCodeViaKernelNow = async (code: string, mode: "cell" | "line" | "selection" | "file") => {
     const startedAt = performance.now();
     const source = editorSource;
+    const runToken = createRunToken(source, mode);
     const count = code.split("\n").filter((line) => line.trim()).length;
     say(mode === "file" ? `run ${source || "script"}` : `run ${mode} · ${count} line${count === 1 ? "" : "s"}`, "info");
     const reply = await evalCode(code, source, workspaceFilesOverlay());
@@ -801,7 +935,7 @@ export function App() {
 
     if (reply.figures?.length) {
       step("plotting");
-      await addFigures(reply.figures, source);
+      await addFigures(reply.figures, source, runToken);
     }
 
     let results: WorkspaceVariable[] = [];
@@ -820,15 +954,20 @@ export function App() {
       if (solved.x?.length === 2 && solved.grid) {
         // A normal SqueroPlot 3D surface with the optimum marked, registered in the history.
         const drawn = await plotOptimum(solved, `${solved.kind ?? "opt"} optimum (${solved.x.map((v) => v.toFixed(3)).join(", ")})`);
-        if (drawn.ok && drawn.figure) await addFigures([drawn.figure], source);
+        if (drawn.ok && drawn.figure) await addFigures([drawn.figure], source, runToken);
         else say(drawn.error ?? "could not draw the optimum", "warn");
       }
     }
 
     // Simulation requests go to every attached Paperboat backend; the run happens there.
-    for (const run of reply.runs ?? []) {
-      const sent = link.current?.send(run as ClientMsg) ?? 0;
-      say(sent ? `simulate → ${sent} Paperboat backend${sent === 1 ? "" : "s"}` : "simulate: no Paperboat backend is attached", sent ? "ok" : "warn");
+    for (const simReq of reply.runs ?? []) {
+      const msg = simReq as Extract<ClientMsg, { type: "graph.run" }>;
+      simSourceRef.current = source;
+      simTitleRef.current = `Simulation (${baseName(source)})`;
+      simRunRef.current = runToken;
+      simStartedAtRef.current = performance.now();
+      const target = link.current?.runGraph(msg) ?? null;
+      say(target ? `simulate → ${target}` : "simulate: no Paperboat backend is attached", target ? "ok" : "warn");
     }
 
     step("reading the workspace");
@@ -843,21 +982,23 @@ export function App() {
       setWorkspace((prev) => [...prev.filter((one) => !results.some((next) => next.name === one.name)), ...results]);
     }
 
-    setLastRun({ time: Date.now(), ms: Math.max(1, Math.round(performance.now() - startedAt)), lines: count, mode });
+    const ms = Math.max(1, Math.round(performance.now() - startedAt));
+    updateRunDuration(runToken.id, ms);
+    setLastRun({ time: Date.now(), ms, lines: count, mode });
   };
 
   const runCode = (code: string, mode: "cell" | "line" | "selection" | "file") => {
+    if (kernelMismatch) {
+      say(kernelMismatch.message, "err");
+      return;
+    }
     if (kernelInfo) {
       void runCodeViaKernel(code, mode);
       return;
     }
     // The first probe may still be starting Julia; wait for it before giving up.
-    void probeKernel(60000).then((info) => {
-      if (!info) {
-        say("kernel unavailable · install Julia or start the kernel container", "warn");
-        return;
-      }
-      setKernelInfo(info);
+    void ensureKernelReady().then((info) => {
+      if (!info) return;
       void runCodeViaKernel(code, mode);
     });
   };
@@ -889,7 +1030,7 @@ export function App() {
         setSelectedFile(file);
       }
       for (const ln of (event.stdout ?? "").split("\n")) if (ln.trim()) say(ln);
-      if (event.figures?.length) void addFigures(event.figures, debugSourceRef.current || file);
+      if (event.figures?.length) void addFigures(event.figures, debugSourceRef.current || file, debugRunRef.current ?? undefined);
       if (frameId !== null && watches.length > 0) void refreshWatches(frameId, watches);
       return;
     }
@@ -897,6 +1038,8 @@ export function App() {
       debugSessionDoneRef.current = true;
       const startedAt = debugStartedAtRef.current;
       debugStartedAtRef.current = null;
+      const dbgRun = debugRunRef.current;
+      debugRunRef.current = null;
       setDebugActive(false);
       setDebugPaused(false);
       setDebugLastOutcome(event.stopped ? "stopped" : event.ok ? "finished" : "error");
@@ -907,7 +1050,7 @@ export function App() {
       else if (!event.ok && event.error) sayError(event.error);
       void (async () => {
         const source = debugSourceRef.current || editorSource;
-        if (event.figures?.length) await addFigures(event.figures, source);
+        if (event.figures?.length) await addFigures(event.figures, source, dbgRun ?? undefined);
         const after = await whois();
         if (after.ok && Array.isArray(after.value)) {
           const variables = (await withArrays(after.value as WorkspaceVariable[])).map((one) => ({
@@ -916,8 +1059,10 @@ export function App() {
           setWorkspace(variables);
         }
         if (startedAt !== null) {
+          const ms = Math.max(1, Math.round(performance.now() - startedAt));
+          if (dbgRun) updateRunDuration(dbgRun.id, ms);
           const count = (files[source] ?? editorCode).split("\n").filter((l) => l.trim()).length;
-          setLastRun({ time: Date.now(), ms: Math.max(1, Math.round(performance.now() - startedAt)), lines: count, mode: "debug" });
+          setLastRun({ time: Date.now(), ms, lines: count, mode: "debug" });
         }
       })();
     }
@@ -976,12 +1121,17 @@ export function App() {
 
   const startDebugging = async () => {
     if (!editorFile || debugActive) return;
+    if (kernelMismatch) {
+      say(kernelMismatch.message, "err");
+      return;
+    }
     const startedAt = performance.now();
     const source = editorSource;
     const code = editorCode;
     debugSourceRef.current = source;
     debugStartedAtRef.current = startedAt;
     debugSessionDoneRef.current = false;
+    debugRunRef.current = createRunToken(source, "debug");
     setDebugFile(source);
     setDebugLine(null);
     setDebugFrames([]);
@@ -993,9 +1143,8 @@ export function App() {
     setRightTab("debug");
     setPhase({ phase: "debugging", since: startedAt });
     const reply = await busy((async () => {
-      const info = kernelInfo ?? await probeKernel(60000);
+      const info = await ensureKernelReady();
       if (!info) return null;
-      if (!kernelInfo) setKernelInfo(info);
       say(`debug ${source || "script"}`, "info");
       await Promise.all(
         Object.entries(breakpoints)
@@ -1007,8 +1156,8 @@ export function App() {
     })());
     if (!reply) {
       debugStartedAtRef.current = null;
+      debugRunRef.current = null;
       setPhase(null);
-      say("kernel unavailable · install Julia or start the kernel container", "warn");
       return;
     }
     if (!reply.ok) {
@@ -1313,8 +1462,60 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [dir, selectedFile, files, openExampleId, debugActive, debugPaused]);
 
-  const isBusy = running > 0 || (debugActive && !debugPaused);
+  const isBusy = running > 0 || (debugActive && !debugPaused) || simRunning;
   const stopAction = debugActive ? stopDebugging : kernelInfo ? cancelRun : undefined;
+
+  const pausedAnswerLocals = useMemo<AnswerVariable[] | undefined>(() => {
+    if (!debugPaused || debugLocalsList.length === 0) return undefined;
+    return debugLocalsList.map((l) => ({
+      name: l.name,
+      type: l.type,
+      shape: l.shape,
+      preview: Array.isArray(l.preview) ? l.preview.map(Number) : undefined,
+      value: typeof l.value === "number" || typeof l.value === "boolean" || typeof l.value === "string" || Array.isArray(l.value)
+        ? (l.value as AnswerVariable["value"])
+        : undefined,
+    }));
+  }, [debugPaused, debugLocalsList]);
+
+  const simModel = useMemo(() => detectSimModel(workspace), [workspace]);
+  const simWhyNot = simRunning
+    ? "A simulation run is already in progress"
+    : pbCount === 0
+    ? "Attach a Paperboat backend"
+    : !simModel
+    ? "Define A, B, C, D (or f) in the workspace"
+    : simModel.kind === "state_space" && pbCaps.hasGraph && !pbCaps.hasStateSpace
+    ? "Attached backend lacks state_space block"
+    : simModel.kind === "rhs" && pbCaps.hasGraph && !pbCaps.hasRhs
+    ? "Attached backend lacks rhs block"
+    : undefined;
+
+  const runPaperboatSimulation = () => {
+    if (!simModel || simWhyNot) return;
+    const req = simModel.kind === "state_space"
+      ? stateSpaceRunRequest({ model: simModel.model, solver: simSolver, step: simDt, duration: simDuration })
+      : rhsRunRequest({ f: simModel.f, x0: simModel.x0, solver: simSolver, step: simDt, duration: simDuration });
+    const source = editorSource || "simulation";
+    simSourceRef.current = source;
+    simTitleRef.current = simModel.kind === "state_space" ? "State-space simulation" : "ODE simulation";
+    simRunRef.current = createRunToken(source, "simulate");
+    simStartedAtRef.current = performance.now();
+    const target = link.current?.runGraph(req) ?? null;
+    if (target) {
+      setSimRunning(true);
+      setSimProgress(0);
+      setSimStatusText(undefined);
+      say(`simulate ${simModel.label} (${simSolver}, dt=${simDt}, T=${simDuration}) → ${target}`, "info");
+    } else {
+      say("simulate: no Paperboat backend is attached", "warn");
+    }
+  };
+
+  const cancelPaperboatSimulation = () => {
+    const n = link.current?.cancelRun() ?? 0;
+    if (n) say("paperboat: cancelling run", "warn");
+  };
 
   const commands: Command[] = [
     { id: "new-script", label: "New script…", menu: "file", group: "new", run: () => filePanel.current?.newFile() },
@@ -1365,10 +1566,10 @@ export function App() {
               title="Paperboat backends found by the launcher"
             />
             <StatusPill
-              label={kernelInfo ? `julia ${kernelInfo.julia} · kernel` : kernelProbed ? "julia · unavailable" : "julia · starting"}
-              labels={[`julia ${kernelInfo?.julia ?? "1.11.6"} · kernel`, "julia · unavailable", "julia · starting"]}
-              tone={kernelInfo ? "ok" : kernelProbed ? "bad" : "busy"}
-              title="Kernel, Julia versions and packages"
+              label={kernelInfo ? `julia ${kernelInfo.julia} · kernel` : kernelMismatch ? "julia · mismatch" : kernelProbed ? "julia · unavailable" : "julia · starting"}
+              labels={[`julia ${kernelInfo?.julia ?? JULIA_VERSION} · kernel`, "julia · mismatch", "julia · unavailable", "julia · starting"]}
+              tone={kernelInfo ? "ok" : (kernelMismatch || kernelProbed) ? "bad" : "busy"}
+              title={kernelMismatch ? kernelMismatch.message : "Kernel, Julia versions and packages"}
               onClick={() => setKernelOpen(true)}
             />
           </>}
@@ -1416,6 +1617,7 @@ export function App() {
         configFile={configFile}
         appTheme={appTheme}
         variables={workspace}
+        debugLocals={pausedAnswerLocals}
         functions={functions}
         onFigure={focusLine}
         onRunSelection={runCode}
@@ -1462,7 +1664,7 @@ export function App() {
             <button
               type="button"
               className="key small stage-btn"
-              onClick={() => setExportOpen(true)}
+              onClick={exportFigures}
               title="Export figure with preview (SVG, PDF, EPS, PNG, HTML)"
             >
               Export…
@@ -1485,9 +1687,26 @@ export function App() {
           ) : (
             <div className="stage-empty">
               <p>No figure yet.</p>
-              <span>Run a script that makes a <span className="mono">Figure</span> (SqueroPlot), or open the Figures tab.</span>
+              <span>Run a script that makes a <span className="mono">Figure</span> (SqueroPlot), or run a Paperboat simulation below.</span>
             </div>
           )}
+          <SimRunDock
+            canRun={!simWhyNot}
+            whyNot={simWhyNot}
+            running={simRunning}
+            progress={simProgress}
+            statusText={simStatusText}
+            solvers={pbCaps.solvers}
+            solver={simSolver}
+            step={simDt}
+            duration={simDuration}
+            modelLabel={simModel?.label ?? null}
+            onSolver={setSimSolver}
+            onStep={setSimDt}
+            onDuration={setSimDuration}
+            onRun={runPaperboatSimulation}
+            onCancel={cancelPaperboatSimulation}
+          />
         </div>
       </main>
 
@@ -1619,6 +1838,14 @@ export function App() {
               <button className="key small" onClick={exportFigures} disabled={selectedExportEntries.length === 0}>
                 Export…
               </button>
+              <button
+                className="key small"
+                onClick={exportRunFigures}
+                disabled={runExportEntries.length === 0}
+                title="Export the latest version of every figure in the selected run"
+              >
+                Export run…
+              </button>
               <button className="key small" onClick={removeSelectedFigures} disabled={figureSel.length === 0} title="Close the selected figures (Delete)">
                 Delete
               </button>
@@ -1626,34 +1853,53 @@ export function App() {
               <span className="tag">{figureSel.length ? `${figureSel.length} selected` : "no selection"}</span>
             </div>
             <div className="figlist" role="listbox" aria-multiselectable="true" aria-label="Figures">
-              {figures.map((f) => (
-                <div
-                  className={`figrow${f.key === activeFigureId ? " on" : ""}${figureSel.includes(f.key) ? " sel" : ""}`}
-                  key={f.key}
-                  role="option"
-                  aria-selected={figureSel.includes(f.key)}
-                  tabIndex={0}
-                  title={`${f.source} · ${f.figure}@${f.version}`}
-                  onClick={(e) => selectFigure(f.key, e.metaKey || e.ctrlKey, e.shiftKey)}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectFigure(f.key, e.metaKey || e.ctrlKey, e.shiftKey); } }}
-                >
-                  {f.preview ? <img className="figthumb" src={f.preview} alt="" /> : <span className="figmark">plot</span>}
-                  <div className="figmeta">
-                    <b>{entryLabel(f)}</b>
-                    <span>{baseName(f.source)} · {timeOf(f.time)} · {f.plots} plot{f.plots === 1 ? "" : "s"}</span>
+              {figureGroups.map((group) => {
+                const isSelectedRun = group.id === activeRunId;
+                const modeTag = group.run.mode === "file" ? "run" : group.run.mode;
+                const dur = group.run.durationMs !== undefined ? ` · ${group.run.durationMs} ms` : "";
+                const count = group.entries.length;
+                return (
+                  <div className="figrun-group" key={group.id}>
+                    <button
+                      type="button"
+                      className={`figrun-head${isSelectedRun ? " on" : ""}`}
+                      onClick={() => setSelectedRunId(group.id)}
+                      title={`Select run (${group.run.source})`}
+                    >
+                      <span>{modeTag} · {baseName(group.run.source)} · {timeOf(group.run.started)}{dur}</span>
+                      <span className="figrun-count">{count} figure{count === 1 ? "" : "s"}</span>
+                    </button>
+                    {group.entries.map((f) => (
+                      <div
+                        className={`figrow${f.key === activeFigureId ? " on" : ""}${figureSel.includes(f.key) ? " sel" : ""}`}
+                        key={f.key}
+                        role="option"
+                        aria-selected={figureSel.includes(f.key)}
+                        tabIndex={0}
+                        title={`${f.source} · ${f.figure}@${f.version}`}
+                        onClick={(e) => { setSelectedRunId(group.id); selectFigure(f.key, e.metaKey || e.ctrlKey, e.shiftKey); }}
+                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedRunId(group.id); selectFigure(f.key, e.metaKey || e.ctrlKey, e.shiftKey); } }}
+                      >
+                        {f.preview ? <img className="figthumb" src={f.preview} alt="" /> : <span className="figmark">plot</span>}
+                        <div className="figmeta">
+                          <b>{entryLabel(f)}</b>
+                          <span>{baseName(f.source)} · {timeOf(f.time)} · {f.plots} plot{f.plots === 1 ? "" : "s"}</span>
+                        </div>
+                        <button
+                          className="figx"
+                          type="button"
+                          aria-label={`Close ${entryLabel(f)}`}
+                          title="Close figure"
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); removeFigure(f.key); }}
+                        >
+                          <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M4 4l6 6M10 4l-6 6" /></svg>
+                        </button>
+                      </div>
+                    ))}
                   </div>
-                  <button
-                    className="figx"
-                    type="button"
-                    aria-label={`Close ${entryLabel(f)}`}
-                    title="Close figure"
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); removeFigure(f.key); }}
-                  >
-                    <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M4 4l6 6M10 4l-6 6" /></svg>
-                  </button>
-                </div>
-              ))}
+                );
+              })}
               {figures.length === 0 && <p className="hint">Run a script that draws with SqueroPlot; each figure that changed adds an entry here.</p>}
             </div>
             {figures.length > 0 && <p className="hint">Ctrl/⌘ click adds · Shift selects a range · Delete closes · exports the selection, or the shown figure.</p>}
@@ -1672,7 +1918,7 @@ export function App() {
       <section className="console">
         <div className="chead">
           <span className="on">console</span><span>repl</span><span className="sp" />
-          <span className="tag">julia {JULIA_VERSION} · frontend {FRONTEND_VERSION}</span>
+          <span className="tag">julia {kernelInfo?.julia ?? JULIA_VERSION} · frontend {FRONTEND_VERSION}</span>
           <button
             ref={consoleGear}
             type="button"
@@ -1740,7 +1986,7 @@ export function App() {
         </form>
       </section>
 
-      {aboutOpen && <AboutModal status={status} onClose={() => setAboutOpen(false)} />}
+      {aboutOpen && <AboutModal status={status} kernel={kernelInfo} mismatch={kernelMismatch} onClose={() => setAboutOpen(false)} />}
       {helpQuery !== null && <HelpWindow app="Squero Studio MX" provider={helpProvider} commands={commands} query={helpQuery} onClose={() => setHelpQuery(null)} />}
       {importing && (
         <ImportDialog
@@ -1768,15 +2014,15 @@ export function App() {
         accept={IMPORT_EXTENSIONS.join(",")}
         onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void readImport(f); }}
       />
-      {kernelOpen && <KernelPanel kernel={kernelInfo} onClose={() => setKernelOpen(false)} onSay={say} />}
-      {exportOpen && selectedExportEntries.length > 0 && (
+      {kernelOpen && <KernelPanel kernel={kernelInfo} mismatch={kernelMismatch} onClose={() => setKernelOpen(false)} onSay={say} />}
+      {exportOpen && (exportEntriesOverride ?? selectedExportEntries).length > 0 && (
         <ExportModal
-          entries={selectedExportEntries}
+          entries={exportEntriesOverride ?? selectedExportEntries}
           initialFormat="svg"
           viewStates={viewStates}
           onSaveArtifacts={saveEntryArtifacts}
           onSay={say}
-          onClose={() => setExportOpen(false)}
+          onClose={() => { setExportOpen(false); setExportEntriesOverride(null); }}
         />
       )}
     </div>
