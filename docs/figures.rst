@@ -16,17 +16,20 @@ box, and draws the objective's height to that box (lowest value on the floor, hi
 width), so a small cost over a large box is not flat; the camera fits the whole surface and the
 returned optimum is a red sphere with a drop line to its footprint.
 
-The browser groups figures by run (newest run first), supports Ctrl/Cmd-click to add/remove a
+The browser groups figures by run, newest first, each under a one-line heading: the script, when
+it ran and how long it took, and its number of figures (a cell, line or debug run says so before
+the script; the selected run is in brackets). It supports Ctrl/Cmd-click to add/remove a
 figure and Shift-click for a range; ``Delete`` closes the selected figures (Ctrl/Cmd+A selects
 all). ``Export…`` exports the selection (or the shown figure), and ``Export run…`` exports the
 latest version of every figure from the selected run as **PNG, SVG, EPS or PDF** (or HTML);
 several figures come as one ``mx-figures.zip``. PNG is a 2× capture of the rendered page; the
-vector formats embed the same capture.
+vector formats embed the same capture. A figure's thumbnail is its PNG.
 
 When a Paperboat backend is attached and the workspace defines ``A, B, C, D, x0`` (or an ODE
-``f``), the floating simulation dock at the bottom of the stage sends ``graph.run`` to
-Paperboat's ``control/state_space`` or ``control/rhs`` block and charts the returned signals
-here.
+``f``), a run dock appears under the figure (never over it): **Run** sends ``graph.run`` to
+Paperboat's ``control/state_space`` or ``control/rhs`` block with the chosen solver, step ``dt``
+and length, and charts the returned signals here. Hover the options for the model it found;
+without a model there is no dock.
 
 Open any script in the **examples** rail tab (or run ``open_example(1)``..``open_example(11)``)
 to inspect ``01-signals.jl``, ``03-surfaces.jl``, ``05-layouts-and-themes.jl`` and

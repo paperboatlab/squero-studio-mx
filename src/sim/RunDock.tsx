@@ -1,6 +1,6 @@
 // The MX simulation run dock: reuses `@paperboat/shared/components` `Dock` to send `graph.run`
 // (`control/state_space` or `control/rhs`) to an attached Paperboat backend and report progress.
-import { Dock } from "@paperboat/shared/components";
+import { Dock, NumberField } from "@paperboat/shared/components";
 import type { Solver } from "./stateSpace.ts";
 
 const DEFAULT_SOLVERS: Solver[] = ["auto", "rk4", "rk45", "rk2", "euler", "discrete", "cvode", "ida"];
@@ -55,50 +55,18 @@ export function SimRunDock({
         onRun={onRun}
         onCancel={onCancel}
         optionsSlot={
-          <div className="sim-dock-opts" title={modelLabel ?? whyNot ?? "Simulation settings"}>
-            {modelLabel && <span className="sim-model-tag">{modelLabel}</span>}
-            <label className="sim-opt">
-              <span>solver</span>
-              <select
-                value={solver}
-                onChange={(e) => onSolver(e.target.value as Solver)}
-                disabled={running}
-                aria-label="Simulation solver"
-              >
-                {options.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </label>
-            <label className="sim-opt">
-              <span>dt</span>
-              <input
-                type="number"
-                min="0.0001"
-                step="0.005"
-                value={step}
-                onChange={(e) => {
-                  const v = Number(e.target.value);
-                  if (Number.isFinite(v) && v > 0) onStep(v);
-                }}
-                disabled={running}
-                aria-label="Step size (s)"
-              />
-            </label>
-            <label className="sim-opt">
-              <span>T</span>
-              <input
-                type="number"
-                min="0.01"
-                step="1"
-                value={duration}
-                onChange={(e) => {
-                  const v = Number(e.target.value);
-                  if (Number.isFinite(v) && v > 0) onDuration(v);
-                }}
-                disabled={running}
-                aria-label="Duration (s)"
-              />
-            </label>
-          </div>
+          // The shared dock's run options: muted labels, values in wells (plates.css).
+          <span className="run-options" title={modelLabel ? `Simulates ${modelLabel} in the attached Paperboat backend` : whyNot}>
+            solver
+            <select value={solver} onChange={(e) => onSolver(e.target.value as Solver)} disabled={running} aria-label="Simulation solver">
+              {options.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+            dt
+            <NumberField className="sim-num" value={step} valid={(v) => v > 0} onChange={onStep} disabled={running} aria-label="Step size (s)" />
+            for
+            <NumberField className="sim-num" value={duration} valid={(v) => v > 0} onChange={onDuration} disabled={running} aria-label="Duration (s)" />
+            s
+          </span>
         }
       />
     </div>

@@ -738,7 +738,14 @@ export function App() {
     // The rest of the formats, so history exports without the kernel (a reset, a restart).
     for (const entry of fresh) {
       const got = await fetchArtifacts(entry, FIGURE_FORMATS);
-      setFigures((prev) => prev.map((one) => (one.key === entry.key ? { ...one, artifacts: { ...one.artifacts, ...got } } : one)));
+      // The thumbnail becomes the PNG: a few KB that always decodes, where the SVG (megabytes for
+      // a surface, masks over embedded rasters) can come up blank as a 44 px image.
+      const png = got.png ? URL.createObjectURL(new Blob([bufferOf(got.png)], { type: MIME.png })) : undefined;
+      setFigures((prev) => prev.map((one) => {
+        if (one.key !== entry.key) return one;
+        if (png && one.preview) URL.revokeObjectURL(one.preview);
+        return { ...one, artifacts: { ...one.artifacts, ...got }, ...(png ? { preview: png } : {}) };
+      }));
     }
   };
 
@@ -1687,9 +1694,12 @@ export function App() {
           ) : (
             <div className="stage-empty">
               <p>No figure yet.</p>
-              <span>Run a script that makes a <span className="mono">Figure</span> (SqueroPlot), or run a Paperboat simulation below.</span>
+              <span>Run a script that makes a <span className="mono">Figure</span> (SqueroPlot), or define <span className="mono">A, B, C, D</span> (or <span className="mono">f</span>) to simulate them in Paperboat.</span>
             </div>
           )}
+        </div>
+        {/* Below the figure, never over it, and only when there is a model to simulate. */}
+        {(simModel || simRunning) && (
           <SimRunDock
             canRun={!simWhyNot}
             whyNot={simWhyNot}
@@ -1707,7 +1717,7 @@ export function App() {
             onRun={runPaperboatSimulation}
             onCancel={cancelPaperboatSimulation}
           />
-        </div>
+        )}
       </main>
 
       <aside className="panel rightpane">
@@ -1855,8 +1865,10 @@ export function App() {
             <div className="figlist" role="listbox" aria-multiselectable="true" aria-label="Figures">
               {figureGroups.map((group) => {
                 const isSelectedRun = group.id === activeRunId;
-                const modeTag = group.run.mode === "file" ? "run" : group.run.mode;
-                const dur = group.run.durationMs !== undefined ? ` · ${group.run.durationMs} ms` : "";
+                // A whole-file run is the usual case: only another kind (cell, line, debug…) says so.
+                const modeTag = group.run.mode === "file" ? "" : `${group.run.mode} · `;
+                const ms = group.run.durationMs;
+                const dur = ms === undefined ? "" : ` · ${ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`}`;
                 const count = group.entries.length;
                 return (
                   <div className="figrun-group" key={group.id}>
@@ -1866,8 +1878,9 @@ export function App() {
                       onClick={() => setSelectedRunId(group.id)}
                       title={`Select run (${group.run.source})`}
                     >
-                      <span>{modeTag} · {baseName(group.run.source)} · {timeOf(group.run.started)}{dur}</span>
-                      <span className="figrun-count">{count} figure{count === 1 ? "" : "s"}</span>
+                      <span className="figrun-name">{modeTag}{baseName(group.run.source)}</span>
+                      <span className="figrun-meta">{timeOf(group.run.started)}{dur}</span>
+                      <span className="figrun-count">{count} {count === 1 ? "figure" : "figures"}</span>
                     </button>
                     {group.entries.map((f) => (
                       <div
