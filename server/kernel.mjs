@@ -7,8 +7,8 @@ import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
 
 export const KERNEL_REGISTRY = "ghcr.io/paperboatlab/squero-julia-kernel";
-export const KERNEL_TAG = "1.11.6-r3";
-export const KERNEL_DIGEST = "";
+export const KERNEL_TAG = "1.11.6-r4";
+export const KERNEL_DIGEST = "sha256:fa30028683f68e2954c6d43942498531b871e21e3aafa62810f41a14d2f892be";
 export const KERNEL_LOCAL_IMAGE = `squero-julia-kernel:${KERNEL_TAG}`;
 export const KERNEL_PINNED_IMAGE = KERNEL_DIGEST ? `${KERNEL_REGISTRY}@${KERNEL_DIGEST}` : `${KERNEL_REGISTRY}:${KERNEL_TAG}`;
 export const KERNEL_IMAGE = process.env.SQUERO_KERNEL_IMAGE ?? KERNEL_PINNED_IMAGE;
@@ -25,9 +25,20 @@ export function inspectKernelImage(image = KERNEL_IMAGE, runtime = kernelRuntime
   const id = split >= 0 ? line.slice(split + 1).trim() : "";
   let digests = [];
   try { digests = JSON.parse(digestsJson); } catch { digests = []; }
-  const repoDigest = Array.isArray(digests) ? digests.find((d) => typeof d === "string" && d.includes("@sha256:")) : undefined;
-  const sha = repoDigest ? repoDigest.slice(repoDigest.indexOf("@") + 1) : (id.startsWith("sha256:") ? id : "");
-  return { image, digest: sha };
+  return { image, digest: pickDigest(digests, id) };
+}
+
+/**
+ * The digest an image is known by: the pin when it is among its repo digests (a pulled multi-arch
+ * image has two, its index's and its platform manifest's, in no set order), else the first repo
+ * digest, else its image id.
+ */
+export function pickDigest(repoDigests, id = "") {
+  const shas = (Array.isArray(repoDigests) ? repoDigests : [])
+    .filter((d) => typeof d === "string" && d.includes("@sha256:"))
+    .map((d) => d.slice(d.indexOf("@") + 1));
+  if (KERNEL_DIGEST && shas.includes(KERNEL_DIGEST)) return KERNEL_DIGEST;
+  return shas[0] ?? (id.startsWith("sha256:") ? id : "");
 }
 
 /** Resolve and, if needed, pull the pinned kernel image when running in podman/docker. */
