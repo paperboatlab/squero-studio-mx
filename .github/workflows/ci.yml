@@ -2,7 +2,7 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
 
 concurrency:
@@ -21,6 +21,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: paperboatlab/paperboat-shared
+          ref: dev
           path: paperboat-shared
       - uses: actions/setup-node@v4
         with:
@@ -56,22 +57,27 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: paperboatlab/paperboat-shared
+          ref: dev
           path: paperboat-shared
       - uses: actions/checkout@v4
         with:
           repository: paperboatlab/paperboat
+          ref: dev
           path: paperboat
       - uses: actions/checkout@v4
         with:
           repository: paperboatlab/squero-julia-kernel
+          ref: dev
           path: squero-julia-kernel
       - uses: actions/checkout@v4
         with:
           repository: paperboatlab/squero-mx-base
+          ref: dev
           path: SqueroBase.jl
       - uses: actions/checkout@v4
         with:
           repository: paperboatlab/SqueroPlot.jl
+          ref: dev
           path: SqueroPlot.jl
       - uses: actions/setup-node@v4
         with:
