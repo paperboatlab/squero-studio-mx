@@ -1,36 +1,51 @@
-Figures and subplot
-===================
+Figures and plotting
+====================
 
-``subplot(m, n, p)`` followed by ``plot``, ``surf``, ``mesh``, ``imagesc`` or ``scatter`` adds a **figure**
-to the Figures browser, with a grid of shared tiles: line tiles are the Scope, surface tiles the
-Station SceneView, heat/scatter small canvases. A run adds one figure, newest first, with its
-script, time and plot count; click a row to show it, ``×`` closes it. Clicking a ``→ chart`` token
-in the editor shows the matching figure and outlines its tile. ``Edit ▸ Clear figures`` empties
-the browser.
+Squero Studio MX preloads **SqueroPlot.jl** into every kernel session, giving you a Makie-style
+2D and 3D plotting API (`Figure`, `Axis`, `Axis3`, `GridLayout`, `lines!`, `surface!`, `heatmap!`,
+`contourf!`, `barplot!`, `with_theme`, …) plus a quick MATLAB-like ``subplot(m, n, p)`` form.
 
-3D surfaces draw one origin frame through (0, 0, 0) in muted grey: x, y and z run in both
-directions past the data, with the ground grid on y = 0. A bottom-left triad and the top-right
-wireframe view cube carry the live x/y/z direction; the cube turns with the camera and its axes
-sit on one vertex. The optimization cost plot uses the same in-scene frame, sized to the decision
-box, and draws the objective's height to that box (lowest value on the floor, highest at 0.6 of its
-width), so a small cost over a large box is not flat; the camera fits the whole surface and the
-returned optimum is a red sphere with a drop line to its footprint.
+Interactive 2D and 3D stage
+---------------------------
 
-The browser groups figures by run, newest first, each under a one-line heading: the script, when
-it ran and how long it took, and its number of figures (a cell, line or debug run says so before
-the script; the selected run is in brackets). It supports Ctrl/Cmd-click to add/remove a
-figure and Shift-click for a range; ``Delete`` closes the selected figures (Ctrl/Cmd+A selects
-all). ``Export…`` exports the selection (or the shown figure), and ``Export run…`` exports the
-latest version of every figure from the selected run as **PNG, SVG, EPS or PDF** (or HTML);
-several figures come as one ``mx-figures.zip``. PNG is a 2× capture of the rendered page; the
-vector formats embed the same capture. A figure's thumbnail is its PNG.
+The center **figures** stage renders each figure interactively:
 
-When a Paperboat backend is attached and the workspace defines ``A, B, C, D, x0`` (or an ODE
-``f``), a run dock appears under the figure (never over it): **Run** sends ``graph.run`` to
-Paperboat's ``control/state_space`` or ``control/rhs`` block with the chosen solver, step ``dt``
-and length, and charts the returned signals here. Hover the options for the model it found;
-without a model there is no dock.
+- **2D axes**: drag to pan, scroll to zoom, toggle **grid** or **A/B** view controls in the tile
+  footer, and reset limits with a double-click.
+- **3D surfaces (``Axis3``)**: drag to orbit, scroll to zoom, snap to orthogonal planes with the
+  **Iso** button or top-right wireframe **view cube**, and toggle the ground **Grid**.
+- **Optimization surfaces**: when ``SqueroBase.optimize`` solves a 2D problem, MX automatically
+  adds an interactive 3D objective surface showing the returned optimum as a red sphere with a
+  drop line to the floor.
 
-Open any script in the **examples** rail tab (or run ``open_example(1)``..``open_example(11)``)
-to inspect ``01-signals.jl``, ``03-surfaces.jl``, ``05-layouts-and-themes.jl`` and
-``06-history-and-export.jl``.
+Jump back to source with editor badges
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Lines in the editor that create or add to a figure show a ``→ figure`` badge. Clicking that badge
+brings the matching figure into the center stage.
+
+Figures browser and export
+--------------------------
+
+Switch the right pane to **figures** (or **View ▸ Figures**) to browse every figure created in
+the session, grouped by run newest first:
+
+.. image:: mx-figures.png
+   :alt: Squero Studio MX Figures browser showing grouped run thumbnails alongside a dark-themed multi-panel layout
+
+- **Multi-select**: click a run header to select all figures in that run, ``Ctrl/Cmd``-click to
+  toggle individual figures, ``Shift``-click to select a range, or press ``Delete`` to close
+  selected figures.
+- **Export**: click **Export…** (in the stage or browser) for the selected figure(s), or
+  **Export run…** to export the latest version of every figure in the selected run.
+- **Formats**: **PNG** (2× rendered capture), **SVG**, **EPS**, **PDF**, or standalone interactive
+  **HTML**. Exporting multiple figures bundles them into ``mx-figures.zip``.
+
+Paperboat simulation run dock
+-----------------------------
+
+When your workspace defines linear state-space matrices (``A, B, C, D, x0``) or a nonlinear ODE
+right-hand side string (``f`` and ``x0``), a **simulation run dock** automatically appears at the
+bottom of the Figures stage. With a Paperboat backend attached, select a solver (``auto``, ``rk4``,
+``rk45``, ``rk2``, ``euler``, ``discrete``, ``cvode``, ``ida``), step ``dt``, and duration, and
+press **Run** to integrate on Paperboat and chart the streamed signals in MX.

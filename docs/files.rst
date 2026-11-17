@@ -1,35 +1,38 @@
-Files and menus
-===============
+Files, Git, and appearance
+==========================
 
-The Files rail is ``@paperboat/shared/files`` — the same tree as Squero Studio OM, with two tabs:
-**files** (your editable workspace) and **examples** (the read-only ``SqueroBase`` /
-``SqueroPlot`` tutorial bundled with MX). It supports
-folders, selection, new file/folder, rename, duplicate, delete, copy path and drag-to-move. ``.jl``
-files carry the Julia dots instead of a generic glyph. Both side panels collapse to a standing
-tab with the chevron in their header, like Lookout's drawers; ``View`` has matching toggles.
+Workspace folder
+----------------
 
-The workspace is the real folder ``~/Documents/paperboat/squero-studio/mx``; there is no
-in-memory copy. The dev/preview server exposes it at ``/__mx/workspace`` (set ``MX_WORKSPACE`` to
-point elsewhere), so the app opens the files on start with no folder-permission prompt and
-create/rename/move/delete/save write straight through. ``npm run build`` served as static files
-has no endpoint; there the folder key (or ``File ▸ Open workspace folder…``) uses the browser
-picker, which is also how another folder is opened. The chosen handle is remembered in
-IndexedDB and restored when its permission is still granted. ``Save`` / ``Ctrl+S`` writes the current
-file; an edited file shows ``•``. Double-click the project title in the top bar to rename it in
-place. The topbar menus also expose find, clear, chart visibility and run.
+By default, MX opens ``~/Documents/paperboat/squero-studio/mx`` (override with ``MX_WORKSPACE`` or
+``--workspace <dir>``). All create, rename, move, duplicate, delete, and save actions write straight
+to disk in that folder.
 
-When the workspace is inside a git repository, ``/__mx/workspace/git`` returns HEAD's copy of each
-tracked ``.jl`` and the ones HEAD lacks. The rail marks files ``M`` (differs from HEAD, unsaved edits
-included) or ``U`` (untracked), and the editor's git gutter diffs the live buffer against HEAD: a
-signal bar for added lines, a half-tone bar for changed ones, a wedge where lines were deleted.
-It reloads when files come or go and when the window regains focus (after a commit elsewhere).
-Read-only by design: stage and commit in a terminal or another client. A folder opened through the
-browser picker has no git.
+- Use the **+** button in the Files rail (or **File ▸ New script…** / **New folder…**) to create
+  scripts and folders, or drag entries to reorganize them.
+- Choose **File ▸ Open workspace folder…** (or the folder icon in the rail header) to switch to a
+  different directory.
+- Double-click the active filename in the top bar to rename it in place.
+- Unsaved files display ``•`` next to their title; press ``Ctrl/Cmd+S`` (or **Save**) to write to
+  disk.
 
-About
------
+Read-only Git indicators
+------------------------
 
-``About`` opens the dialog shared with OM (``AboutSquero`` in ``@paperboat/shared/squero``, which also holds the logo and the busy wave): the rippling wordmark, the frontend, Julia, kernel, Paperboat
-and license facts, and the credits. Floating surfaces follow one rule (shared ``useDismiss``): a
-press outside or Escape closes them, the trigger does not immediately reopen them, and focus
-returns to where it was — menus, the About dialog and the editor settings all use it.
+When your workspace folder is inside a Git repository, MX tracks working-tree state read-only:
+
+- The Files rail marks files ``M`` (modified relative to ``HEAD``, including unsaved editor edits) or
+  ``U`` (untracked).
+- The editor gutter shows live diffs against ``HEAD``: a signal bar for added lines, a half-tone
+  bar for changed lines, and a wedge where lines were deleted.
+- Staging and committing remain in your terminal or Git client; MX refreshes its indicators
+  automatically when files change or the window regains focus.
+
+Appearance and menus
+--------------------
+
+- Use the sun/moon toggle in the top-right bar to switch between light, dark, and system themes.
+- Open **View** to toggle any pane (**Files panel**, **Chart**, **Workspace panel**, **Console**) or
+  switch right-pane tabs.
+- Open **About** to inspect the running frontend, Julia, kernel image digest, Paperboat attachment
+  status, and license information.

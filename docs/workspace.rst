@@ -1,33 +1,67 @@
-The workspace
-=============
+Workspace, data import, and Paperboat link
+==========================================
 
-Like MATLAB's, the workspace is **the session**, not the open file: a run adds/overwrites its
-variables, other variables stay until ``clear``, and switching scripts does not change it. ``clear``
-empties it, ``clear x`` removes one binding and ``clc`` only clears the console. In a script,
-``clear()`` takes effect between statements, so what the script defines after it stays
-``07-session-and-workspace.jl`` shows ``clear(:scratch_gain, :scratch_matrix)`` leaving the
-intended bindings intact). Functions are listed too (``ƒ``) but stay in MX. The filter searches
-name, shape and type. Each card shows the value on the right (a scalar, or an array's first
-entries); the dot is the automatic broadcast to Paperboat.
+Like MATLAB's, the MX **workspace** belongs to the **session** rather than any individual script.
+Running a script adds or updates variables in the session, and switching between files leaves your
+workspace intact until you clear it.
 
-``File ▸ Export workspace (.mat)…`` writes a MAT v4 file (double matrices/vectors/scalars) that
-MATLAB and Octave load directly.
+Managing the workspace
+----------------------
 
-Every variable is **broadcast by default** to every running Paperboat backend: the launcher
-discovers them with ``paperboat list --json`` (``/__mx/backends``), MX connects to each one and sends
-its whole workspace with ``variables.set`` when it changes. There is no URL to pick and no shared
-page; the two conventional local ports are tried when the CLI is not installed. Scalars are
-numbers. Arrays are ``matrix`` variables: MX fetches each one whole from the kernel (``get``, a
-binary Float64 frame) after a run and sends its rows, a vector as a column (``1; 2; 3``). An array
-of more than 4096 values is sent without a value and with a note (shape, count, the limit, and
-to share a slice such as ``B[1:10, 1:10]``); a Paperboat run that uses it stops with that note.
-A preview is never sent as if it were the matrix.
+- ``clear()`` (or **Edit ▸ Clear workspace**, or ``clear`` in the console) resets the Julia session
+  and empties the workspace while preserving your **figures** history.
+- ``clear(:scratch_a, :scratch_b)`` drops only the named bindings; in a script, ``clear()`` takes
+  effect between statements so bindings created after it remain.
+- Functions appear in the workspace list with a ``ƒ`` badge (they stay local to Julia).
+- Use the **filter variables** input (or **Edit ▸ Find variables…**) to filter by name, shape, or
+  type.
+- A **scratch** evaluator at the bottom of the workspace pane lets you run quick one-off
+  expressions.
 
-The variable editor
+The Variable Editor
 -------------------
 
-Double-click a workspace card (or ``openvar A``) to open it as a grid.
+Double-click any variable card (or select it and choose **Edit ▸ Open variable**, or run
+``openvar K`` in the console) to inspect and edit scalars, vectors, or matrices in a grid:
 
-- Arrows move; type a number, press ``Enter`` or ``F2`` to edit; ``Enter`` and ``Tab`` commit and move on; ``Esc`` drops the edit.
-- Paste a block copied from a spreadsheet: it lands at the selected cell and grows the array.
-- ``+ row``, ``+ column``, ``− row``, ``− column`` change the shape. Every change goes to the kernel at once.
+.. image:: mx-variable-editor.png
+   :alt: Variable Editor modal displaying a 6x6 Float64 matrix with row/column editing controls
+
+- **Navigate and edit**: move with arrow keys, type a number or press :kbd:`Enter` / :kbd:`F2` to
+  edit a cell, press :kbd:`Enter` or :kbd:`Tab` to commit and advance, or :kbd:`Esc` to cancel.
+- **Resize**: use **+ row**, **+ column**, **− row**, and **− column** to change dimensions.
+- **Spreadsheet paste**: paste a rectangular block copied from Excel, LibreOffice Calc, or Google
+  Sheets; it fills from the active cell and grows the matrix if needed.
+
+Every edit updates the live binding in the Julia kernel right away.
+
+Importing and exporting data
+----------------------------
+
+Choose **File ▸ Import data…** or drag and drop a file onto the **workspace** pane. A preview
+dialog lets you inspect variables and resolve name conflicts before loading:
+
+- ``.csv``, ``.tsv``, ``.txt``, ``.dat``: delimiter (comma, tab, semicolon, or whitespace) is
+  detected automatically. A leading row of names creates one vector per column (non-numeric text
+  columns are listed and skipped); headerless files load as a single matrix.
+- ``.xlsx``: imports every worksheet; formula cells load with their cached values.
+- ``.mat``: reads MATLAB v4, v6, and compressed v7 files. (v7.3 files use HDF5—re-save with
+  ``save(..., "-v7")`` in MATLAB/Octave to import.)
+- ``.json``: numbers, arrays, arrays of rows, or arrays of objects such as
+  ``[{"t": 0, "y": 1}, ...]``.
+
+To export the current workspace back to MATLAB or Octave, choose **File ▸ Export workspace
+(.mat)…**, which writes a MAT v4 file containing numeric scalars, vectors, and matrices.
+
+Automatic Paperboat variable broadcast
+--------------------------------------
+
+Whenever one or more Paperboat backends are running (shown in the top bar as
+``paperboat · N attached``), MX automatically broadcasts workspace changes via ``variables.set``:
+
+- **Scalars** are sent as Paperboat numbers.
+- **Vectors and matrices** are sent as Paperboat ``matrix`` variables (vectors as column matrices)
+  up to **4096** elements.
+- Arrays larger than 4096 elements are not truncated or sampled silently: MX sends a diagnostic note
+  with the shape and limit, suggesting you bind a smaller slice (such as ``B[1:10, 1:10]``).
+- Functions and non-numeric Julia objects stay in MX and are not broadcast.
