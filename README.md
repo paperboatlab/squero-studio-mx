@@ -122,3 +122,7 @@ and the optimization bridge are in place. Next:
   SqueroBase from the `squero-mx-base` checkout, mounted read-only into the kernel.
 - `StationPanel`/`StationGraph` into `@paperboat/shared/station`.
 - A `paperboat-client` package for the protocol/reducer.
+
+## Licence
+
+GNU General Public License version 3 (see [LICENSE](LICENSE)).

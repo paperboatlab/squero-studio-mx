@@ -44,7 +44,7 @@ export function AboutModal({
         { label: "Kernel", value: kernelValue },
         { label: "Protocol", value: `${kernelProtocol} · ${PAPERBOAT_PROTOCOL}` },
         { label: "Paperboat", value: paperboat },
-        { label: "License", value: "Apache License 2.0" },
+        { label: "License", value: "GPL-3.0-only" },
       ]}
       credits={<>Built on <a href="https://julialang.org" target="_blank" rel="noreferrer">Julia</a> {shownJulia}, with the shared Paperboat UI, plot and station components.</>}
       onClose={onClose}
