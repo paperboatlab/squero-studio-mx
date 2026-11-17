@@ -1,37 +1,49 @@
-The console
-===========
+Console
+=======
 
-The bottom console is a real Julia REPL and the script stdout sink. Anything that is not a UI
-command is evaluated in the kernel session and prints its value as Julia's REPL does (a matrix
-keeps its columns) or its Julia error in red; scripts run from the editor print their stdout here
-too.
+The bottom **console** is a live Julia REPL connected to the active session, as well as the stdout
+and solver log sink for scripts run from the editor. Matrices keep column alignment, and Julia
+errors print in red.
 
+- Type ``\pi`` (or any LaTeX symbol) and press :kbd:`Tab` for Unicode characters.
+- Use :kbd:`Arrow Up` and :kbd:`Arrow Down` to recall previous commands.
+- Press ``Ctrl+C`` (with no text selected) to cancel a running evaluation.
 
-.. code-block:: text
+Built-in commands
+-----------------
 
-   help · whos · clear [name] · clc · open_example · attach · detach
-   run · version
+Anything that does not match a UI command below is evaluated directly in Julia:
 
+.. list-table::
+   :header-rows: 1
+   :widths: 34 66
 
-``clear`` resets the kernel session and the workspace; ``clear x`` removes one binding from the
-workspace; ``clc`` clears the console; ``open_example(1)`` or ``open_example("signals")`` opens
-a shipped tutorial example read-only in the editor. ``\pi`` then Tab becomes π. Arrow Up/Arrow Down recall history.
-The scratch line under the workspace still evaluates simple expressions locally until a kernel is
-attached.
+   * - Command
+     - What it does
+   * - ``help name``, ``doc name``, ``?name``
+     - Opens the Help window for ``name`` (same as pressing :kbd:`F1` on a word in the editor).
+   * - ``examples``
+     - Lists all 12 shipped tutorial scripts with their index and title.
+   * - ``open_example([n | "name"])``
+     - Opens a shipped tutorial script read-only in the editor (defaults to ``1``).
+   * - ``openvar A``
+     - Opens variable ``A`` in the grid Variable Editor.
+   * - ``whos``
+     - Prints the current workspace variables, shapes, and types.
+   * - ``clear`` / ``clear A``
+     - Resets the kernel session and clears the workspace, or removes just ``A``. Figures in
+       history are preserved.
+   * - ``clc``
+     - Clears the console output log without affecting workspace variables.
+   * - ``run``
+     - Runs the currently open script.
+   * - ``attach`` / ``detach``
+     - Connects to or disconnects from running Paperboat backends.
+   * - ``version``
+     - Prints the frontend, Julia, and kernel versions.
 
-Optimization specs go to the launcher's ``/__mx/optimize``, which runs
-``paperboat optimize <problem> --json --grid 41`` (the checkout's CLI, or ``$PAPERBOAT_BIN``; it runs
-asynchronously, so a long solve never stalls the launcher): the same readers, OSQP/Ipopt solver and
-``options.display`` trace the Paperboat blocks use. An NLP needs a Paperboat built with Ipopt. The app binds ``x_opt``/``f_opt`` and draws the
-optimum on the objective surface.
+Console settings
+----------------
 
-Commands
---------
-
-Anything else is Julia.
-
-- ``help name``, ``doc name`` or ``?name`` open this window on a name; ``F1`` looks up the selected word.
-- ``openvar A`` opens a variable in the variable editor.
-- ``whos`` lists the workspace; ``clear`` empties it, ``clear A`` drops one; ``clc`` clears the console.
-- ``open_example(1)`` or ``open_example("signals")`` opens a shipped tutorial example read-only in the editor.
-- ``run`` runs the open script; ``attach`` and ``detach`` find or leave Paperboat backends; ``version`` prints the versions.
+Click the sliders icon on the right side of the console header to toggle command echoing,
+REPL-style result echoing, auto-scroll, and console font size.
