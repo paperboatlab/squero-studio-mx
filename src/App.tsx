@@ -25,7 +25,7 @@ import type { ScriptDebugControls } from "./editor/Script.tsx";
 import { mxHelp, wordAtCaret } from "./shell/help.ts";
 import { IMPORT_EXTENSIONS, importFile, type ImportValue, type Imported } from "./workspace/importData.ts";
 import { ImportDialog } from "./workspace/ImportDialog.tsx";
-import { VariableEditor } from "./workspace/VariableEditor.tsx";
+import { VariableEditor } from "@paperboat/shared/components";
 import { solveProblem } from "./paperboat/optimize.ts";
 import { formatKernelImage, FRONTEND_VERSION, JULIA_VERSION, KERNEL_DIGEST, KERNEL_PROTOCOL, KERNEL_VERSION, kernelImageRef, PAPERBOAT_PROTOCOL } from "./version.ts";
 import { FilePanel, type FilePanelHandle } from "./files/FilePanel.tsx";
