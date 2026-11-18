@@ -457,28 +457,14 @@ body.resizing .app.split { transition: none; }
 .import-as label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
 .import-name { margin-left: auto; width: 160px; padding: 3px 6px; font: 400 11px var(--font-mono); color: var(--text); background: var(--surface-panel); border: 1px solid var(--line); border-radius: var(--radius-sm); }
 .import-grid { overflow: auto; max-height: 190px; }
-.import-grid table, .ve-grid { border-collapse: collapse; font: 400 11px var(--font-mono); font-variant-numeric: tabular-nums; }
+.import-grid table { border-collapse: collapse; font: 400 11px var(--font-mono); font-variant-numeric: tabular-nums; }
 .import-grid th, .import-grid td { padding: 3px 10px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
 .import-grid th { position: sticky; top: 0; background: var(--surface-sunken); font-weight: 600; color: var(--text); }
 .import-grid td.more { text-align: left; color: var(--text-muted); }
 .import-summary { flex: 1; min-width: 0; align-self: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 11px var(--font-mono); color: var(--text-muted); }
 .import-summary b { color: var(--danger-text); font-weight: 500; }
 
-/* The variable editor: a spreadsheet grid with sticky row and column numbers. */
-.ve-window { width: min(900px, calc(100vw - 32px)); }
-.ve-tools { flex: none; display: flex; align-items: center; gap: 6px; padding: 8px var(--space-4); border-bottom: 1px solid var(--line); }
-.ve-tools .sp { flex: 1; }
-.ve-scroll { flex: 1; min-height: 0; overflow: auto; background: var(--surface-panel); }
-.ve-grid { outline: none; }
-.ve-grid th { position: sticky; top: 0; z-index: 1; min-width: 34px; padding: 3px 8px; background: var(--surface-sunken); color: var(--text-muted); font-weight: 400; border: 1px solid var(--line); }
-.ve-grid tbody th { left: 0; top: auto; text-align: right; }
-.ve-grid thead th:first-child { left: 0; z-index: 2; }
-.ve-grid th.on { color: var(--text); background: var(--surface-raised); }
-.ve-grid td { min-width: 72px; height: 22px; padding: 0 8px; text-align: right; white-space: nowrap; border: 1px solid var(--line); cursor: cell; }
-.ve-grid td.on { box-shadow: inset 0 0 0 2px var(--signal); }
-.ve-grid td input { width: 100%; min-width: 64px; box-sizing: border-box; padding: 0; border: 0; outline: none; background: transparent; font: inherit; text-align: right; color: var(--text); }
-.ve-grid td input.bad { color: var(--danger-text); }
-.ve-more { margin: 6px var(--space-4) 10px; }
+/* The variable editor (.ve-*) lives in @paperboat/shared/plates.css. */
 
 /* Debugger: breakpoint gutter, paused line, floating editor dock, and [ debug ] panel. */
 .editor { position: relative; }
