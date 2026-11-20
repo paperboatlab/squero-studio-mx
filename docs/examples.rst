@@ -48,7 +48,7 @@ SqueroPlot.jl curriculum (1–6)
      - 2D comprehensions with ``surface!``, ``wireframe!``, vertex-coloured ``mesh!``, ``heatmap!``,
        ``contourf!``/``contour!``, ``Colorbar``, and ``Label`` title rows.
    * - 4
-     - ``04-dashboard.jl``
+     - ``04-board.jl``
      - Statistical views: ``barplot!``, ``errorbars!``, ``hist!``, ``band!``, ``area!``, twin y
        axes (``twinx``), and log-scale ``stem!``.
    * - 5
@@ -78,7 +78,7 @@ SqueroBase.jl & Paperboat curriculum (7–12)
    * - 8
      - ``08-simulation.jl``
      - State-space pole analysis in ``LinearAlgebra`` plus queuing a ``graph.run``
-       (``control/state_space``) to attached Paperboat backends via ``simulate``.
+       (``control/state_space``) to attached Paperboat stations via ``simulate``.
    * - 9
      - ``09-optimization-lp.jl``
      - Linear programming via ``optimize(problem)`` (``f``, ``A``, ``b``, ``lb``), feasible polygon

@@ -5,9 +5,9 @@ Install and start Squero Studio MX from the Paperboat CLI:
 
 .. code-block:: sh
 
-   paperboat pkg install squero-studio-mx
-   paperboat start squero-studio-mx   # http://localhost:59202
-   paperboat stop squero-studio-mx
+   paperboat squero install squero-studio-mx
+   paperboat squero start squero-studio-mx   # http://localhost:59202
+   paperboat squero stop squero-studio-mx
 
 The Squero Studios share the ``592xx`` port range (OM defaults to ``59201``, MX to ``59202``,
 picking the next free port if taken). Installing ``squero-studio-mx`` also sets up
@@ -45,7 +45,7 @@ Next steps
 ----------
 
 - Walk through :doc:`tutorial` to try features unique to Squero Studio MX (the grid variable editor,
-  Paperboat-backed optimization, and live backend simulation).
+  Paperboat-backed optimization, and live station simulation).
 - Browse the 12 built-in tutorial scripts in :doc:`examples` by typing ``examples`` or
   ``open_example(1)`` in the console.
 - Press :kbd:`F1` at any time (or run ``help <name>`` in the console) to search MX and Paperboat

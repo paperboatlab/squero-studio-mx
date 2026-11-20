@@ -28,7 +28,7 @@ What MX adds beyond standard Julia
   live call stack, locals, and watch expressions.
 - **Direct Paperboat bridges (``SqueroBase``)**: solve LP/QP/NLP problems via ``optimize(...)`` in
   Paperboat's C++ solvers, automatically broadcast workspace variables to running Paperboat
-  backends, and launch ``state_space`` / ``rhs`` simulations straight from the workbench.
+  stations, and launch ``state_space`` / ``rhs`` simulations straight from the workbench.
 
 .. toctree::
    :maxdepth: 1

@@ -37,7 +37,7 @@ import { defineFunction, evaluate, variableFrom, varsOf, type FunctionTable } fr
 import { replaceLatexAtCaret } from "./editor/unicode.ts";
 import type { LinkStatus } from "./paperboat/link.ts";
 import { PaperboatHub, type HubCapabilities } from "./paperboat/hub.ts";
-import { discoverBackends } from "./paperboat/discovery.ts";
+import { discoverStations } from "./paperboat/discovery.ts";
 import { mergeShared, setMessage } from "./paperboat/variables.ts";
 import { detectSimModel, figureEntryFromSignals, rhsRunRequest, stateSpaceRunRequest, type Solver } from "./sim/stateSpace.ts";
 import { SimRunDock } from "./sim/RunDock.tsx";
@@ -170,7 +170,7 @@ export function App() {
   const attachedCount = useRef(0);
   const [lines, setLines] = useState<Line[]>([
     { level: "info", text: `julia ${JULIA_VERSION} · kernel ${KERNEL_VERSION} · frontend ${FRONTEND_VERSION} · ${KERNEL_PROTOCOL} · ${PAPERBOAT_PROTOCOL}` },
-    { level: "info", text: "paperboat: every workspace variable broadcasts when a backend is up" },
+    { level: "info", text: "paperboat: every workspace variable broadcasts when a station is up" },
     { level: "ok", text: "matrices and vectors travel to blocks, not project variables" },
   ]);
   const [input, setInput] = useState("");
@@ -180,7 +180,7 @@ export function App() {
   const [history, setHistory] = useState<string[]>([]);
   const [histAt, setHistAt] = useState(-1);
   const link = useRef<PaperboatHub | null>(null);
-  const refreshBackends = useRef<() => void>(() => {});
+  const refreshStations = useRef<() => void>(() => {});
   const consoleEnd = useRef<HTMLDivElement>(null);
   const say = (text: string, level: Line["level"] = "info", cmd = false) => setLines((l) => [...l, { level, text, cmd }]);
   /** Julia's `\pi` + Tab in a plain input: replace at the caret, keep the caret after the symbol. */
@@ -335,7 +335,7 @@ export function App() {
         attachedCount.current = count;
         lastSent.current = "";
         if (count > 0) say(`paperboat: ${count} instance${count === 1 ? "" : "s"} attached`, "ok");
-        else if (s === "failed") say("paperboat: no backend answered", "warn");
+        else if (s === "failed") say("paperboat: no station answered", "warn");
       } else if (s === "failed" && count === 0) {
         setPbLoaded(false);
       }
@@ -390,17 +390,17 @@ export function App() {
     };
     let live = true;
     const poll = async () => {
-      const found = await discoverBackends();
+      const found = await discoverStations();
       if (!live) return;
-      // The launcher knows every backend it started; the two conventional ports keep a
-      // hand-started backend working even when the CLI is not installed.
-      const urls = found.ok && found.backends.length
-        ? found.backends.map((backend) => backend.ws)
+      // The launcher knows every station it started; the two conventional ports keep a
+      // hand-started station working even when the CLI is not installed.
+      const urls = found.ok && found.stations.length
+        ? found.stations.map((station) => station.ws)
         : ["ws://localhost:8765", "ws://localhost:8780"];
       h.sync([...new Set(urls)]);
       setPbCount(h.attached.length);
     };
-    refreshBackends.current = () => { void poll(); };
+    refreshStations.current = () => { void poll(); };
     void poll();
     const timer = setInterval(() => { void poll(); }, 5000);
     return () => {
@@ -413,11 +413,11 @@ export function App() {
 
   const attach = () => {
     lastSent.current = "";
-    refreshBackends.current();
+    refreshStations.current();
     say("paperboat: looking for running instances…");
   };
 
-  // Every variable is broadcast automatically, once the backend's list has loaded.
+  // Every variable is broadcast automatically, once the station's list has loaded.
   useEffect(() => {
     if (status !== "attached" || !pbLoaded || pbCount === 0) return;
     const msg = setMessage(currentVars);
@@ -966,7 +966,7 @@ export function App() {
       }
     }
 
-    // Simulation requests go to every attached Paperboat backend; the run happens there.
+    // Simulation requests go to every attached Paperboat station; the run happens there.
     for (const simReq of reply.runs ?? []) {
       const msg = simReq as Extract<ClientMsg, { type: "graph.run" }>;
       simSourceRef.current = source;
@@ -974,7 +974,7 @@ export function App() {
       simRunRef.current = runToken;
       simStartedAtRef.current = performance.now();
       const target = link.current?.runGraph(msg) ?? null;
-      say(target ? `simulate → ${target}` : "simulate: no Paperboat backend is attached", target ? "ok" : "warn");
+      say(target ? `simulate → ${target}` : "simulate: no Paperboat station is attached", target ? "ok" : "warn");
     }
 
     step("reading the workspace");
@@ -1489,13 +1489,13 @@ export function App() {
   const simWhyNot = simRunning
     ? "A simulation run is already in progress"
     : pbCount === 0
-    ? "Attach a Paperboat backend"
+    ? "Attach a Paperboat station"
     : !simModel
     ? "Define A, B, C, D (or f) in the workspace"
     : simModel.kind === "state_space" && pbCaps.hasGraph && !pbCaps.hasStateSpace
-    ? "Attached backend lacks state_space block"
+    ? "Attached station lacks state_space block"
     : simModel.kind === "rhs" && pbCaps.hasGraph && !pbCaps.hasRhs
-    ? "Attached backend lacks rhs block"
+    ? "Attached station lacks rhs block"
     : undefined;
 
   const runPaperboatSimulation = () => {
@@ -1515,7 +1515,7 @@ export function App() {
       setSimStatusText(undefined);
       say(`simulate ${simModel.label} (${simSolver}, dt=${simDt}, T=${simDuration}) → ${target}`, "info");
     } else {
-      say("simulate: no Paperboat backend is attached", "warn");
+      say("simulate: no Paperboat station is attached", "warn");
     }
   };
 
@@ -1531,7 +1531,7 @@ export function App() {
     { id: "save", label: "Save", menu: "file", group: "workspace", shortcut: "Ctrl+S", run: () => void saveCurrent(), enabled: !openExample && dirty.has(selectedFile) && dir !== null, why: openExample ? "example is read-only" : dir ? "no unsaved changes" : "open a folder first" },
     { id: "import", label: "Import data…", menu: "file", group: "workspace", run: () => importInput.current?.click() },
     { id: "export", label: "Export workspace (.mat)…", menu: "file", group: "workspace", run: exportWorkspace, enabled: workspace.length > 0, why: "the workspace is empty" },
-    { id: "attach", label: "Find Paperboat backends", menu: "file", group: "connect", run: attach },
+    { id: "attach", label: "Find Paperboat stations", menu: "file", group: "connect", run: attach },
     { id: "find", label: "Find variables…", menu: "edit", group: "find", run: () => { setRightTab("workspace"); requestAnimationFrame(() => searchRef.current?.focus()); } },
     { id: "open-variable", label: "Open variable", menu: "edit", group: "find", run: () => void openVariable(selectedVar), enabled: !!selectedVar, why: "select a variable first" },
     { id: "clear-workspace", label: "Clear workspace", menu: "edit", group: "console", run: clearWorkspace },
@@ -1570,7 +1570,7 @@ export function App() {
               label={status === "attached" ? `paperboat · ${pbCount} attached` : status === "connecting" ? "paperboat · connecting" : "paperboat · not attached"}
               labels={[`paperboat · ${pbCount} attached`, "paperboat · connecting", "paperboat · not attached"]}
               tone={status === "attached" ? "ok" : status === "failed" ? "bad" : "busy"}
-              title="Paperboat backends found by the launcher"
+              title="Paperboat stations found by the launcher"
             />
             <StatusPill
               label={kernelInfo ? `julia ${kernelInfo.julia} · kernel` : kernelMismatch ? "julia · mismatch" : kernelProbed ? "julia · unavailable" : "julia · starting"}

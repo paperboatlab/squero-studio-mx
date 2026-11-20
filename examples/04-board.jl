@@ -1,4 +1,4 @@
-# 04-dashboard.jl — Statistical plots, bands, areas, twin y axes, and log scales.
+# 04-board.jl — Statistical plots, bands, areas, twin y axes, and log scales.
 #   [Julia] Base Julia and stdlibs · [SqueroPlot] plotting (see 01-signals.jl)
 
 using Statistics                           # [Julia] mean, std (preloaded by the kernel)

@@ -77,7 +77,7 @@ export async function ensureKernelImage({ image = KERNEL_IMAGE, runtime = kernel
 // SqueroBase (session, Paperboat bridges) and SqueroPlot (figures) are the kernel project's own
 // dependencies: path deps of the sibling checkouts natively, baked into the image otherwise.
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-// The kernel checkout beside this app (a sibling checkout, or the pkg store's), not beside
+// The kernel checkout beside this app (a sibling checkout, or the squero store's), not beside
 // whatever folder the launcher was started from.
 const KERNEL_REPO = process.env.SQUERO_KERNEL_REPO ?? path.resolve(HERE, "../../squero-julia-kernel");
 

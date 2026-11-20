@@ -43,7 +43,7 @@ export const demoWorkspaces: Record<string, WorkspaceVariable[]> = {
   "examples/03-surfaces.jl": [
     { name: "Z", shape: "60 × 60", type: "Matrix{Float64}", preview: [0.1, 0.3, 0.85, 0.4, 0.2] },
   ],
-  "examples/04-dashboard.jl": [
+  "examples/04-board.jl": [
     { name: "temperature", shape: "24", type: "Vector{Float64}", preview: [0.2, 0.4, 0.8, 0.6, 0.3] },
     { name: "samples", shape: "2000", type: "Vector{Float64}", preview: [0.1, 0.5, 0.7, 0.4, 0.2] },
   ],

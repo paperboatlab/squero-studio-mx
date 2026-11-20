@@ -46,6 +46,6 @@ Paperboat simulation run dock
 
 When your workspace defines linear state-space matrices (``A, B, C, D, x0``) or a nonlinear ODE
 right-hand side string (``f`` and ``x0``), a **simulation run dock** automatically appears at the
-bottom of the Figures stage. With a Paperboat backend attached, select a solver (``auto``, ``rk4``,
+bottom of the Figures stage. With a Paperboat station attached, select a solver (``auto``, ``rk4``,
 ``rk45``, ``rk2``, ``euler``, ``discrete``, ``cvode``, ``ida``), step ``dt``, and duration, and
 press **Run** to integrate on Paperboat and chart the streamed signals in MX.

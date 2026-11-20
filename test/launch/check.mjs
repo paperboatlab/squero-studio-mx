@@ -1,4 +1,4 @@
-// A running squero-mx, as `paperboat start squero-studio-mx` leaves it: the page is served, and the
+// A running squero-mx, as `paperboat squero start squero-studio-mx` leaves it: the page is served, and the
 // kernel bridge answers hello and evaluates a matrix product. CI's launch job runs it.
 //   node test/launch/check.mjs [port]      (59202 by default)
 import WebSocket from "ws";

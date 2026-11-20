@@ -56,7 +56,7 @@ To export the current workspace back to MATLAB or Octave, choose **File ▸ Expo
 Automatic Paperboat variable broadcast
 --------------------------------------
 
-Whenever one or more Paperboat backends are running (shown in the top bar as
+Whenever one or more Paperboat stations are running (shown in the top bar as
 ``paperboat · N attached``), MX automatically broadcasts workspace changes via ``variables.set``:
 
 - **Scalars** are sent as Paperboat numbers.

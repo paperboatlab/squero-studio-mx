@@ -8,7 +8,7 @@ import type { FigureEntry, FigureRun } from "../plot/history.ts";
 import type { FigureScene, SceneAxis2D } from "../plot/scene.ts";
 import type { WorkspaceVariable } from "../workspace/samples.ts";
 
-/** A run's solver as the protocol names them, or auto (the backend's default). */
+/** A run's solver as the protocol names them, or auto (the station's default). */
 export type Solver = "auto" | NonNullable<RunSettings["solver"]>;
 
 export type StateSpace = {

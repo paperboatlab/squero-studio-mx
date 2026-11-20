@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // squero-mx — the native launcher: serve dist/, the default workspace, and the Julia kernel.
-// `paperboat start squero-studio-mx` runs this. `--port`, `--open`, `--workspace`.
+// `paperboat squero start squero-studio-mx` runs this. `--port`, `--open`, `--workspace`.
 import { createReadStream, existsSync, mkdirSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import path from "node:path";
@@ -11,7 +11,7 @@ import { attachKernel, ensureKernelImage, kernelRuntime, KERNEL_IMAGE } from "..
 import { optimizeMiddleware } from "../server/optimize.mjs";
 import { juliaMiddleware } from "../server/julia.mjs";
 import { configMiddleware } from "../server/config.mjs";
-import { backendsMiddleware } from "../server/backends.mjs";
+import { stationsMiddleware } from "../server/stations.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const dist = path.resolve(here, "../dist");
@@ -57,7 +57,7 @@ const MIME = {
 const workspaceApi = workspaceMiddleware(workspace);
 const optimizeApi = optimizeMiddleware();
 const juliaApi = juliaMiddleware({ workspace });
-const backendsApi = backendsMiddleware();
+const stationsApi = stationsMiddleware();
 const configApi = configMiddleware();
 const server = createServer((req, res) => {
   const url = new URL(req.url ?? "/", "http://localhost");
@@ -73,8 +73,8 @@ const server = createServer((req, res) => {
     void configApi(req, res);
     return;
   }
-  if (url.pathname.startsWith("/__mx/backends")) {
-    backendsApi(req, res, () => { res.statusCode = 404; res.end(); });
+  if (url.pathname.startsWith("/__mx/stations")) {
+    stationsApi(req, res, () => { res.statusCode = 404; res.end(); });
     return;
   }
   if (url.pathname.startsWith("/__mx/workspace")) {

@@ -2,7 +2,7 @@
 #   [Julia] setup (A, B, C, D, x0, f) · [Paperboat] state_space / rhs blocks + solvers
 #
 # Run this script to populate A, B, C, D, x0 (or `f` for nonlinear ODEs) in the workspace,
-# attach a Paperboat backend (`paperboat start`), and press Run in the bottom stage dock.
+# attach a Paperboat station (`paperboat start`), and press Run in the bottom stage dock.
 
 A = [0.0 1.0; -4.0 -0.6]
 B = [0.0; 1.0;;]

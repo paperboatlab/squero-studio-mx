@@ -23,7 +23,7 @@ The kernel loads `SqueroPlot` and `SqueroBase` into every session, so scripts ne
 | 1 | `01-signals.jl` | Basic 2D plotting | `Figure`, `Axis`, `lines!`, `stem!`, `stairs!`, `scatter!`, `hlines!`, `axislegend` |
 | 2 | `02-lorenz.jl` | Linked 2D & 3D axes | `Axis3`, 3D `lines!`, `linkxaxes!`, `hidexdecorations!`, `colsize!` |
 | 3 | `03-surfaces.jl` | 2D fields, surfaces & meshes | `surface!`, `wireframe!`, `mesh!`, `heatmap!`, `contourf!`, `contour!`, `Colorbar`, `Label` |
-| 4 | `04-dashboard.jl` | Statistics, bands & twin/log axes | `barplot!`, `errorbars!`, `hist!`, `band!`, `area!`, `twinx`, `scatterlines!`, log `stem!` |
+| 4 | `04-board.jl` | Statistics, bands & twin/log axes | `barplot!`, `errorbars!`, `hist!`, `band!`, `area!`, `twinx`, `scatterlines!`, log `stem!` |
 | 5 | `05-layouts-and-themes.jl` | Layouts, themes, legends & text | `GridLayout`, `with_theme(theme_dark())`, `Legend`, `series!`, `linesegments!`, `rich`, `superscript`, `subscript` |
 | 6 | `06-history-and-export.jl` | Cells, snapshots & export | `#%%` cells, `snapshot`, `save`, `to_html(; interactive = true)`, `render`, `poly!` |
 | 7 | `07-session-and-workspace.jl` | Session & workspace control | `clear(:x)`, `clear()`, `clc()`, `open_example(...)` |
