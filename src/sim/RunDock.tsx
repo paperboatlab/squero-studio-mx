@@ -1,5 +1,5 @@
 // The MX simulation run dock: reuses `@paperboat/shared/components` `Dock` to send `graph.run`
-// (`control/state_space` or `control/rhs`) to an attached Paperboat backend and report progress.
+// (`control/state_space` or `control/rhs`) to an attached Paperboat station and report progress.
 import { Dock, NumberField } from "@paperboat/shared/components";
 import type { Solver } from "./stateSpace.ts";
 
@@ -56,7 +56,7 @@ export function SimRunDock({
         onCancel={onCancel}
         optionsSlot={
           // The shared dock's run options: muted labels, values in wells (plates.css).
-          <span className="run-options" title={modelLabel ? `Simulates ${modelLabel} in the attached Paperboat backend` : whyNot}>
+          <span className="run-options" title={modelLabel ? `Simulates ${modelLabel} in the attached Paperboat station` : whyNot}>
             solver
             <select value={solver} onChange={(e) => onSolver(e.target.value as Solver)} disabled={running} aria-label="Simulation solver">
               {options.map((s) => <option key={s} value={s}>{s}</option>)}

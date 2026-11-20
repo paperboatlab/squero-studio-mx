@@ -38,7 +38,7 @@ Anything that does not match a UI command below is evaluated directly in Julia:
    * - ``run``
      - Runs the currently open script.
    * - ``attach`` / ``detach``
-     - Connects to or disconnects from running Paperboat backends.
+     - Connects to or disconnects from running Paperboat stations.
    * - ``version``
      - Prints the frontend, Julia, and kernel versions.
 

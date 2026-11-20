@@ -103,7 +103,7 @@ p { margin: 0; }
 .lines .err { color: var(--danger-text); }
 :root[data-theme="dark"] .lines .ok { color: #8ad19a; }
 
-/* The Scope is built for a dashboard cell; in the MX stage it must fill the panel. */
+/* The Scope is built for a board cell; in the MX stage it must fill the panel. */
 .scope-wrap .instrument.scope { display: flex; flex-direction: column; }
 .scope-wrap .instrument.scope .screen { flex: 1; min-height: 0; }
 

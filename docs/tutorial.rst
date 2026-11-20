@@ -113,12 +113,12 @@ Part 3 — Broadcast variables and simulate on Paperboat
 ------------------------------------------------------
 
 MX never tries to re-implement Paperboat's ODE/DAE solvers in Julia. Instead, it connects to any
-running Paperboat backend and lets you drive simulations straight from your Julia workspace:
+running Paperboat station and lets you drive simulations straight from your Julia workspace:
 
 1. **Automatic variable broadcast**: every scalar, vector, and matrix (up to 4096 entries) in the
-   MX workspace is pushed to attached Paperboat backends automatically. When a Paperboat flow uses
+   MX workspace is pushed to attached Paperboat stations automatically. When a Paperboat flow uses
    a variable matching a name in your MX workspace, editing that variable in MX updates the
-   backend live.
+   station live.
 2. **State-space / ODE simulation**: define ``A, B, C, D, x0`` (for a linear state-space model) or
    an ODE right-hand side string ``f`` (with ``x0``) in Julia:
 
@@ -146,7 +146,7 @@ running Paperboat backend and lets you drive simulations straight from your Juli
    )
    simulate(graph; duration = 10, dt = 0.01, solver = :rk45)
 
-Start any Paperboat backend (for example ``paperboat start`` in a terminal), and the top-bar chip
+Start any Paperboat station (for example ``paperboat start`` in a terminal), and the top-bar chip
 switches to ``paperboat · 1 attached``. You can then either:
 
 - Run the script above to dispatch ``graph.run`` via ``simulate(...)``, or

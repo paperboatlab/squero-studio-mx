@@ -1,9 +1,9 @@
-# 08-simulation.jl — State-space analysis in Julia & backend simulation via `SqueroBase.simulate`.
+# 08-simulation.jl — State-space analysis in Julia & station simulation via `SqueroBase.simulate`.
 #   [Julia] Base Julia and LinearAlgebra · [SqueroPlot] plotting · [SqueroBase] `simulate` bridge · [Paperboat] solver
 #
 # MX never integrates a Paperboat model itself: `simulate` sends a `graph.run` request to every
-# attached Paperboat backend, whose `control/state_space` block integrates with the chosen solver.
-# Start a backend (`paperboat start`) to watch the live run there.
+# attached Paperboat station, whose `control/state_space` block integrates with the chosen solver.
+# Start a station (`paperboat start`) to watch the live run there.
 
 using LinearAlgebra                         # [Julia] eigvals, rank (preloaded by the kernel)
 
@@ -37,7 +37,7 @@ lines!(ax2, t, free_decay; color = :steelblue, linewidth = 2, label = "y(t)")
 hlines!(ax2, [0.0]; color = :gray60, linewidth = 0.7)
 axislegend(ax2; position = :rt)
 
-# Queue the `graph.run` message for any attached Paperboat backend (rk45 solver for 10 s).
+# Queue the `graph.run` message for any attached Paperboat station (rk45 solver for 10 s).
 matrix(M) = join([join(M[i, :], " ") for i in axes(M, 1)], "; ")   # [Julia] "a b; c d" block text format
 vec(v) = join(v, "; ")
 graph = (

@@ -1,6 +1,6 @@
-// Every running Paperboat backend at once. MX broadcasts the whole workspace to each of them;
+// Every running Paperboat station at once. MX broadcasts the whole workspace to each of them;
 // there is no URL to pick and no "shared" page. A link is written only after its own
-// variables.load, so an MX broadcast can never overwrite a backend before it has spoken.
+// variables.load, so an MX broadcast can never overwrite a station before it has spoken.
 import type { ClientMsg, Variable } from "@paperboat/shared/protocol";
 import { PaperboatLink, type LinkStatus, type PaperboatRunEvent } from "./link.ts";
 
@@ -57,11 +57,11 @@ export class PaperboatHub {
     };
   }
 
-  /** Connect new backends, drop ones that are gone, and leave the rest alone. */
+  /** Connect new stations, drop ones that are gone, and leave the rest alone. */
   sync(urls: string[]): void {
     const wanted = new Set(urls);
     for (const [url, link] of this.links) {
-      // A backend that restarted, or a socket that failed, gets a fresh link on the next poll.
+      // A station that restarted, or a socket that failed, gets a fresh link on the next poll.
       if (wanted.has(url) && link.status !== "failed" && link.status !== "idle") continue;
       link.close();
       this.links.delete(url);
@@ -80,7 +80,7 @@ export class PaperboatHub {
     this.emitCapabilities();
   }
 
-  /** Send a `graph.run` to the first attached backend that supports its blocks (or all if unknown). */
+  /** Send a `graph.run` to the first attached station that supports its blocks (or all if unknown). */
   runGraph(msg: Extract<ClientMsg, { type: "graph.run" }>): string | null {
     const attached = [...this.links.entries()].filter(([, l]) => l.status === "attached");
     const match = attached.find(([, l]) => l.supportsGraph(msg)) ?? attached[0];
@@ -92,7 +92,7 @@ export class PaperboatHub {
     return this.send({ type: "run.cancel" });
   }
 
-  /** Broadcast to every loaded backend; returns how many accepted the message. */
+  /** Broadcast to every loaded station; returns how many accepted the message. */
   send(msg: ClientMsg): number {
     let count = 0;
     for (const link of this.links.values()) {

@@ -1,4 +1,4 @@
-// Discover every running Paperboat backend through the launcher's own `paperboat list --json`.
+// Discover every running Paperboat station through the launcher's own `paperboat list --json`.
 // The browser should not have to know ports: MX broadcasts its workspace to all of them.
 import { spawn } from "node:child_process";
 import { paperboatBinary } from "./optimize.mjs";
@@ -19,48 +19,48 @@ const runList = (binary) => new Promise((resolve) => {
   };
   const timer = setTimeout(() => {
     child.kill("SIGKILL");
-    finish({ ok: false, error: "paperboat list timed out", backends: [] });
+    finish({ ok: false, error: "paperboat list timed out", stations: [] });
   }, 10000);
   child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
   child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
-  child.on("error", (error) => finish({ ok: false, error: error.message, backends: [] }));
+  child.on("error", (error) => finish({ ok: false, error: error.message, stations: [] }));
   child.on("close", (code) => {
     if (code !== 0) {
-      finish({ ok: false, error: (stderr || stdout || `paperboat list exited ${code}`).trim().slice(0, 800), backends: [] });
+      finish({ ok: false, error: (stderr || stdout || `paperboat list exited ${code}`).trim().slice(0, 800), stations: [] });
       return;
     }
     let rows;
     try {
       rows = JSON.parse(stdout.trim() || "[]");
     } catch {
-      finish({ ok: false, error: (stderr || "paperboat list printed no JSON").trim().slice(0, 800), backends: [] });
+      finish({ ok: false, error: (stderr || "paperboat list printed no JSON").trim().slice(0, 800), stations: [] });
       return;
     }
     const seen = new Set();
-    const backends = [];
+    const stations = [];
     for (const row of Array.isArray(rows) ? rows : []) {
-      if (row?.kind !== "backend") continue;
+      if (row?.kind !== "station") continue;
       const ws = String(row.ws_url ?? row.url ?? (row.port ? `ws://localhost:${row.port}` : ""));
       if (!ws.startsWith("ws") || seen.has(ws)) continue;
       seen.add(ws);
-      backends.push({
+      stations.push({
         name: String(row.domain ?? row.name ?? "paperboat"),
         engine: String(row.engine ?? ""),
         port: Number(row.port ?? 0),
         ws,
       });
     }
-    finish({ ok: true, error: "", backends });
+    finish({ ok: true, error: "", stations });
   });
 });
 
-export function listBackends() {
+export function listStations() {
   const now = Date.now();
   if (cached.value && now - cached.at < 2000) return Promise.resolve(cached.value);
   if (inflight) return inflight;
   const binary = paperboatBinary();
   if (!binary) {
-    cached = { at: now, value: { ok: false, error: "paperboat not found: build ../paperboat or set PAPERBOAT_BIN", backends: [] } };
+    cached = { at: now, value: { ok: false, error: "paperboat not found: build ../paperboat or set PAPERBOAT_BIN", stations: [] } };
     return Promise.resolve(cached.value);
   }
   inflight = runList(binary)
@@ -72,12 +72,12 @@ export function listBackends() {
   return inflight;
 }
 
-/** A Connect-style middleware for `/__mx/backends`. */
-export function backendsMiddleware() {
+/** A Connect-style middleware for `/__mx/stations`. */
+export function stationsMiddleware() {
   return (req, res, next) => {
     const url = new URL(req.url ?? "/", "http://localhost");
-    const route = url.pathname.startsWith("/__mx/backends")
-      ? url.pathname.slice("/__mx/backends".length) || "/"
+    const route = url.pathname.startsWith("/__mx/stations")
+      ? url.pathname.slice("/__mx/stations".length) || "/"
       : url.pathname;
     if (route !== "/") {
       next();
@@ -89,7 +89,7 @@ export function backendsMiddleware() {
       res.end(JSON.stringify({ ok: false, error: "GET /" }));
       return;
     }
-    void listBackends().then((value) => {
+    void listStations().then((value) => {
       res.statusCode = 200;
       res.setHeader("content-type", "application/json; charset=utf-8");
       res.setHeader("cache-control", "no-store");

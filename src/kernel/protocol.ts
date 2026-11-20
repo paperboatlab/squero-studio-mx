@@ -176,7 +176,7 @@ export type KernelReply = {
   figure?: FigureMeta;
   /** Optimization problem specs, for the Paperboat solver. */
   problems?: unknown[];
-  /** `graph.run` requests for a Paperboat backend (SqueroBase.simulate). */
+  /** `graph.run` requests for a Paperboat station (SqueroBase.simulate). */
   runs?: unknown[];
   /** Session events the app applies after the statement (`clear`, `clc`). */
   events?: KernelEvent[];

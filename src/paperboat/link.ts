@@ -1,4 +1,4 @@
-// A client for a Paperboat backend (`paperboat/0`). Shares workspace variables, reads
+// A client for a Paperboat station (`paperboat/0`). Shares workspace variables, reads
 // capabilities (`hello`, `catalog`), and streams `graph.run` execution (`run.*`, `signal`s).
 import type { ClientMsg, ServerMsg, Variable } from "@paperboat/shared/protocol";
 import type { SignalSample } from "../sim/stateSpace.ts";
@@ -15,7 +15,7 @@ export class PaperboatLink {
   private socket: WebSocket | null = null;
   private loadTimer: number | null = null;
   status: LinkStatus = "idle";
-  /** True once this backend has sent its current list, or a moment after the socket opens when
+  /** True once this station has sent its current list, or a moment after the socket opens when
    *  it has no default variables at all. Only then is it safe to write. */
   loaded = false;
   variables: Variable[] = [];
@@ -38,7 +38,7 @@ export class PaperboatLink {
       this.socket = socket;
       socket.onopen = () => {
         this.setStatus("attached");
-        // A backend with no default variables sends no variables.load. Give it a beat to
+        // A station with no default variables sends no variables.load. Give it a beat to
         // speak, then treat the empty list as loaded so the workspace can be broadcast.
         this.loadTimer = window.setTimeout(() => {
           if (this.socket !== socket || this.loaded) return;
@@ -46,7 +46,7 @@ export class PaperboatLink {
           this.onVariables?.(this.variables);
         }, 400);
       };
-      socket.onerror = () => this.setStatus("failed", "the backend did not answer");
+      socket.onerror = () => this.setStatus("failed", "the station did not answer");
       socket.onclose = () => {
         if (this.loadTimer !== null) window.clearTimeout(this.loadTimer);
         this.loadTimer = null;

@@ -29,7 +29,7 @@ squero-studio-mx/        this repository
 Install and launch with the `paperboat` CLI (or the Paperboat Launcher desktop app):
 
 ```sh
-paperboat start squero-studio-mx
+paperboat squero start squero-studio-mx
 ```
 
 From a checkout (requires Node.js 22, `../paperboat-shared` next to this folder, and either
@@ -58,7 +58,7 @@ npm run build
 ## Status
 
 - Shared 2D and 3D plotting refinements in `@paperboat/shared/plot` (`pb#312`).
-- Julia backend host (`paperboat new --julia`, `pb#323`) integration with `SqueroBase.jl`.
+- Julia station host (`paperboat new --julia`, `pb#323`) integration with `SqueroBase.jl`.
 - Shared `StationPanel` and `StationGraph` extraction into `@paperboat/shared/station`.
 
 ## Licence
