@@ -1,5 +1,7 @@
 import type { Server } from "node:http";
 import type { Http2SecureServer } from "node:http2";
+export declare const NO_RUNTIME: string;
+export declare function explainRunFailure(text?: string): string;
 export declare const KERNEL_REGISTRY: string;
 export declare const KERNEL_TAG: string;
 export declare const KERNEL_DIGEST: string;

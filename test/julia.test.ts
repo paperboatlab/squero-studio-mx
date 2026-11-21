@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { juliaVersion, parseJuliaupStatus, parsePackages, validPackageName } from "../server/julia.mjs";
+import { explainRunFailure } from "../server/kernel.mjs";
 
 const STATUS = ` Default  Channel  Version                 Update
 --------------------------------------------------
@@ -37,4 +38,9 @@ test("package names and add specs are validated", () => {
   assert.equal(validPackageName("Example@0.5", false), false);
   assert.equal(validPackageName("http://example.com/x.jl", true), false);
   assert.equal(validPackageName(""), false);
+});
+
+test("a container that cannot mount the workspace is explained, other errors keep their last line", () => {
+  assert.match(explainRunFailure("Error: crun: cannot stat `self/fd/5`: Permission denied: OCI permission denied"), /MX_WORKSPACE/);
+  assert.equal(explainRunFailure("pulling\nError: image not known\n"), "Error: image not known");
 });

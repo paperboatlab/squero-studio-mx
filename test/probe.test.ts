@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseJuliaVersion, validateKernelHello } from "../src/kernel/probe.ts";
+import { kernelUnavailableMessage, parseJuliaVersion, validateKernelHello } from "../src/kernel/probe.ts";
 
 test("parseJuliaVersion extracts major, minor, patch and rejects invalid strings", () => {
   assert.deepEqual(parseJuliaVersion("1.11.6"), { major: 1, minor: 11, patch: 6 });
@@ -55,4 +55,11 @@ test("validateKernelHello rejects protocol mismatch and malformed hello", () => 
   const malformed = validateKernelHello({ op: "eval", julia: "1.11.6", protocol: 0 }, "1.11.6", 0);
   assert.equal(malformed.ok, false);
   if (!malformed.ok) assert.equal(malformed.mismatch.reason, "malformed");
+});
+
+test("an unavailable kernel says why instead of blaming a missing Julia", () => {
+  assert.match(kernelUnavailableMessage("kernel: timed out"), /downloading/);
+  assert.match(kernelUnavailableMessage("kernel: closed"), /podman info/);
+  assert.match(kernelUnavailableMessage("No Julia runtime found."), /No Julia runtime found/);
+  assert.match(kernelUnavailableMessage("kernel: can't mount the workspace (sync or network drive?): set MX_WORKSPACE to a local folder"), /^kernel unavailable · kernel: can.t mount/);
 });
