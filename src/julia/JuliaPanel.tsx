@@ -1,5 +1,5 @@
-// The julia up panel: juliaup channels, the workspace project, its direct packages, and the
-// General registry, in the shared package panel (@paperboat/shared/packages). This file is the
+// The packages part of the kernel tab: the workspace project, its direct packages, the General
+// registry and, for a native kernel only, juliaup's channels, in the shared package panel (@paperboat/shared/packages). This file is the
 // adapter: it loads through the launcher (client.ts) and hands the panel data and actions.
 // Launcher work is slow (Pkg can resolve for a while), so one operation runs at a time.
 import { useEffect, useRef, useState } from "react";
@@ -23,6 +23,8 @@ export function JuliaPanel({ onSay }: { onSay?: (text: string, level: Level) => 
   const [featured, setFeatured] = useState<RegistryItem[]>([]);
   const [shelf, setShelf] = useState({ loading: "", error: "", source: "", loaded: false });
   const alive = useRef(true);
+  /** Each opened package's newest version: picking it adds the package without a pin. */
+  const latest = useRef(new Map<string, string>());
 
   const refresh = async (announce = false) => {
     setBusy("reading julia");
@@ -66,11 +68,13 @@ export function JuliaPanel({ onSay }: { onSay?: (text: string, level: Level) => 
     };
   }, [shelf.loaded]);
 
-  const run = async (label: string, job: () => Promise<JuliaStatus>, done: string) => {
+  // Pkg's output shows as it prints: an add can resolve and precompile for minutes.
+  const run = async (label: string, job: (onLog: (text: string) => void) => Promise<JuliaStatus>, done: string) => {
     setBusy(label);
     setError("");
+    setOutput("");
     try {
-      const next = await job();
+      const next = await job((text) => { if (alive.current) setOutput((prev) => (prev + text).slice(-8000)); });
       if (!alive.current) return;
       setStatus(next);
       setOutput(next.output ?? "");
@@ -91,6 +95,8 @@ export function JuliaPanel({ onSay }: { onSay?: (text: string, level: Level) => 
   const packages = status?.packages ?? [];
   const channels = status?.juliaup.channels ?? [];
   const canPackages = Boolean(status?.julia.present);
+  // juliaup manages the host's Julia; a container kernel brings its own, so the section is noise there.
+  const native = status?.runtime.kind === "native";
 
   return (
     <PackagePanel
@@ -98,7 +104,7 @@ export function JuliaPanel({ onSay }: { onSay?: (text: string, level: Level) => 
       error={error}
       output={output}
       loading={busy ? "Reading the Julia kernel, workspace and packages" : undefined}
-      runtime={{
+      runtime={native ? {
         title: "julia up",
         tag: status ? (status.juliaup.present ? `juliaup ${status.juliaup.version ?? ""}`.trim() : "juliaup not found") : undefined,
         channels: channels.map((c) => ({ name: c.channel, version: c.version, update: c.update || undefined, current: c.default })),
@@ -111,24 +117,23 @@ export function JuliaPanel({ onSay }: { onSay?: (text: string, level: Level) => 
           label: "Update",
           title: "Update the juliaup channels on this machine",
           disabled: !status?.juliaup.present,
-          run: () => void run("updating julia", () => juliaUpdate("julia"), "juliaup: updated"),
+          run: () => void run("updating julia", (log) => juliaUpdate("julia", log), "juliaup: updated"),
         },
-      }}
+      } : null}
       environment={
         status && {
           title: "environment",
-          tag: status.julia.present ? `julia ${status.julia.version}` : "no julia",
           path: project?.path,
-          tags: [project?.exists ? "Project.toml" : "no Project.toml yet", `${status.runtime.kind} · ${status.runtime.image}`],
+          tags: [project?.exists ? "Project.toml" : "no Project.toml yet (the first package adds it)", `runs in ${status.runtime.kind}`],
           packages: packages.map((p) => ({ name: p.name, version: p.version })),
           empty: "No packages in this project yet. Add one from the registry.",
-          remove: canPackages ? (name) => void run(`removing ${name}`, () => juliaPackage("remove", name), `julia: removed ${name}`) : undefined,
+          remove: canPackages ? (name) => void run(`removing ${name}`, (log) => juliaPackage("remove", name, log), `julia: removed ${name} · Restart the kernel to unload it`) : undefined,
           actions: [
             { label: "Reload", run: () => void refresh(true) },
             {
               label: "Update packages",
               disabled: !canPackages || packages.length === 0,
-              run: () => void run("updating packages", () => juliaUpdate("packages"), "julia: packages updated"),
+              run: () => void run("updating packages", (log) => juliaUpdate("packages", log), "julia: packages updated · Restart the kernel to load them"),
             },
           ],
         }
@@ -138,6 +143,7 @@ export function JuliaPanel({ onSay }: { onSay?: (text: string, level: Level) => 
         source: shelf.source,
         items: featured,
         itemsLabel: "popular",
+        pickVersion: true,
         loading: shelf.loading,
         error: shelf.error,
         retry: () => setShelf((s) => ({ ...s, loaded: false })),
@@ -149,6 +155,7 @@ export function JuliaPanel({ onSay }: { onSay?: (text: string, level: Level) => 
         detail: async (name) => {
           const d = await loadRegistryPackage(name);
           if (!d.ok) throw new Error(d.error ?? `not in the registry: ${name}`);
+          latest.current.set(d.name, d.latest);
           return {
             name: d.name,
             latest: d.latest,
@@ -163,7 +170,11 @@ export function JuliaPanel({ onSay }: { onSay?: (text: string, level: Level) => 
             ],
           };
         },
-        add: (name) => void run(`adding ${name}`, () => juliaPackage("add", name), `julia: added ${name}`),
+        // The card picks a version; the newest is a plain add, so Pkg may resolve a compatible one.
+        add: (name, version) => {
+          const spec = version && version !== latest.current.get(name) ? `${name}@${version}` : name;
+          void run(`adding ${spec}`, (log) => juliaPackage("add", spec, log), `julia: added ${spec}`);
+        },
       }}
     />
   );

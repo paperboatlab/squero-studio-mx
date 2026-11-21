@@ -6,20 +6,8 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { KERNEL_IMAGE, NO_RUNTIME, explainRunFailure, kernelRuntime } from "./kernel.mjs";
+import { KERNEL_IMAGE, MOUNT_ARGS, NO_RUNTIME, kernelRuntime } from "./kernel.mjs";
 import { registryFeatured, registryPackage, registrySearch } from "./registry.mjs";
-
-const LIST = `
-print("JULIA\\t", VERSION, "\\n")
-using Pkg
-Pkg.activate(ARGS[1]; io = devnull)
-deps = Pkg.dependencies()
-for (name, uuid) in sort(collect(Pkg.project().dependencies); by = first)
-    info = get(deps, uuid, nothing)
-    version = info === nothing || info.version === nothing ? "" : string(info.version)
-    println("PKG\\t", name, "\\t", uuid, "\\t", version)
-end
-`;
 
 const ADD = `using Pkg; Pkg.activate(ARGS[1]; io = devnull); Pkg.add(ARGS[2])`;
 const REMOVE = `using Pkg; Pkg.activate(ARGS[1]; io = devnull); Pkg.rm(ARGS[2])`;
@@ -47,20 +35,34 @@ export function parseJuliaupStatus(text) {
   return channels;
 }
 
-/** Package rows the Julia listing prints as `PKG<TAB>name<TAB>uuid<TAB>version`. */
-export function parsePackages(text) {
-  const packages = [];
-  for (const line of text.split(/\r?\n/)) {
-    if (!line.startsWith("PKG\t")) continue;
-    const [, name, uuid, version = ""] = line.split("\t");
-    if (name) packages.push({ name, uuid, version });
+/**
+ * The project's direct dependencies with their resolved versions, read from the Project.toml and
+ * Manifest.toml Pkg writes (canonical TOML, so lines suffice): no Julia process, so it is instant.
+ */
+export function parseProject(projectText = "", manifestText = "") {
+  const deps = [];
+  let inDeps = false;
+  for (const raw of projectText.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line.startsWith("[")) { inDeps = line === "[deps]"; continue; }
+    const hit = inDeps && /^"?([A-Za-z_][A-Za-z0-9_.]*)"?\s*=\s*"([0-9a-f-]{36})"/.exec(line);
+    if (hit) deps.push({ name: hit[1], uuid: hit[2] });
   }
-  return packages;
-}
-
-export function juliaVersion(text) {
-  const line = text.split(/\r?\n/).find((one) => one.startsWith("JULIA\t"));
-  return line ? line.split("\t")[1] ?? "" : "";
+  const versions = new Map();
+  let current = "";
+  for (const raw of manifestText.split(/\r?\n/)) {
+    const line = raw.trim();
+    const head = /^\[\[deps\.("?)([^"\]]+)\1\]\]$/.exec(line);
+    if (head) { current = head[2]; continue; }
+    if (line.startsWith("[")) { current = ""; continue; }
+    const version = current && /^version\s*=\s*"([^"]+)"/.exec(line);
+    if (version && !versions.has(current)) versions.set(current, version[1]);
+  }
+  const julia = /^julia_version\s*=\s*"([^"]+)"/m.exec(manifestText)?.[1] ?? "";
+  return {
+    julia,
+    packages: deps.sort((a, b) => a.name.localeCompare(b.name)).map((d) => ({ ...d, version: versions.get(d.name) ?? "" })),
+  };
 }
 
 export function validPackageName(name, add = false) {
@@ -70,7 +72,7 @@ export function validPackageName(name, add = false) {
   return (add ? ADD_SPEC : NAME).test(value);
 }
 
-const runCommand = (cmd, args, timeout) => new Promise((resolve) => {
+const runCommand = (cmd, args, timeout, onData) => new Promise((resolve) => {
   const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"], env: process.env });
   let stdout = "";
   let stderr = "";
@@ -85,8 +87,8 @@ const runCommand = (cmd, args, timeout) => new Promise((resolve) => {
     child.kill("SIGKILL");
     finish({ ok: false, output: `${stdout}${stderr}`.trim(), error: `${cmd}: timed out` });
   }, timeout);
-  child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
-  child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
+  child.stdout.on("data", (chunk) => { stdout += chunk.toString(); onData?.(chunk.toString()); });
+  child.stderr.on("data", (chunk) => { stderr += chunk.toString(); onData?.(chunk.toString()); });
   child.on("error", (error) => finish({ ok: false, output: `${stdout}${stderr}`.trim(), error: error.message }));
   child.on("close", (code) => {
     const output = `${stdout}${stderr}`.trim();
@@ -105,7 +107,8 @@ const runner = ({ workspace, runtime, image, network = false, script, args = [] 
     if (!network) call.push("--network=none");
     if (runtime === "podman") call.push("--user", "0:0"); // see kernelCommand: reaches FUSE workspaces
     call.push(
-      "-v", `${workspace}:/workspace:rw${runtime === "podman" ? ",z" : ""}`,
+      ...MOUNT_ARGS,
+      "-v", `${workspace}:/workspace:rw`,
       "-w", "/workspace",
       "-e", "JULIA_DEPOT_PATH=/workspace/.julia:/home/kernel/.julia",
       "-e", "JULIA_LOAD_PATH=@:/workspace:@stdlib",
@@ -124,7 +127,7 @@ const runner = ({ workspace, runtime, image, network = false, script, args = [] 
   return null;
 };
 
-const execute = (call, timeout) => runCommand(call.cmd, call.args, timeout);
+const execute = (call, timeout, onData) => runCommand(call.cmd, call.args, timeout, onData);
 
 async function juliaupInfo() {
   const tool = await probe("juliaup", ["--version"]);
@@ -139,10 +142,14 @@ async function juliaupInfo() {
   };
 }
 
+const readText = (file) => fs.readFile(file, "utf8").catch(() => "");
+
 export async function juliaStatus({ workspace, runtime = kernelRuntime(), image = KERNEL_IMAGE }) {
   const projectPath = path.resolve(workspace);
   const projectFile = path.join(projectPath, "Project.toml");
-  const status = {
+  await fs.mkdir(projectPath, { recursive: true });
+  const project = parseProject(await readText(projectFile), await readText(path.join(projectPath, "Manifest.toml")));
+  return {
     runtime: { kind: runtime, image },
     project: {
       path: projectPath,
@@ -150,26 +157,15 @@ export async function juliaStatus({ workspace, runtime = kernelRuntime(), image 
       exists: existsSync(projectFile),
       projectFile,
     },
-    juliaup: await juliaupInfo(),
-    julia: { present: false, version: "" },
-    packages: [],
-    packageError: "",
+    // juliaup manages the host's Julia: only a native kernel runs it.
+    juliaup: runtime === "native" ? await juliaupInfo() : { present: false, channels: [] },
+    julia: { present: runtime !== "none", version: project.julia },
+    packages: project.packages,
+    packageError: runtime === "none" ? NO_RUNTIME : "",
   };
-  await fs.mkdir(projectPath, { recursive: true });
-  const call = runner({ workspace: projectPath, runtime, image, script: LIST });
-  if (!call) {
-    status.packageError = NO_RUNTIME;
-    return status;
-  }
-  const listed = await execute(call, 120000);
-  const version = juliaVersion(listed.output);
-  status.julia = { present: Boolean(version), version };
-  if (!listed.ok) status.packageError = explainRunFailure(listed.error) || listed.error;
-  status.packages = parsePackages(listed.output);
-  return status;
 }
 
-async function packageOp(options, action, name) {
+async function packageOp(options, action, name, onData) {
   const projectPath = path.resolve(options.workspace);
   const call = runner({
     workspace: projectPath,
@@ -181,14 +177,14 @@ async function packageOp(options, action, name) {
   });
   if (!call) return { ok: false, output: "", error: NO_RUNTIME };
   await fs.mkdir(projectPath, { recursive: true });
-  return await execute(call, 600000);
+  return await execute(call, 600000, onData);
 }
 
-async function updateJuliaup() {
+async function updateJuliaup(onData) {
   if (!(await probe("juliaup", ["--version"]))) {
     return { ok: false, output: "", error: "juliaup is not installed" };
   }
-  return await execute({ cmd: "juliaup", args: ["update"] }, 600000);
+  return await execute({ cmd: "juliaup", args: ["update"] }, 600000, onData);
 }
 
 const body = (req) =>
@@ -199,6 +195,19 @@ const body = (req) =>
     req.on("end", () => resolve(data));
     req.on("error", reject);
   });
+
+/**
+ * A slow Pkg job, streamed: NDJSON `{"log": text}` lines as Pkg prints, then one
+ * `{"done": true, ...status, ok, error, output}` line.
+ */
+async function stream(res, job, options) {
+  res.statusCode = 200;
+  res.setHeader("content-type", "application/x-ndjson; charset=utf-8");
+  res.setHeader("cache-control", "no-store");
+  const run = await job((text) => res.write(`${JSON.stringify({ log: text })}\n`));
+  const status = await juliaStatus(options);
+  res.end(`${JSON.stringify({ done: true, ...status, ok: run.ok, error: run.error, output: run.output })}\n`);
+}
 
 /** A Connect-style middleware for `/__mx/julia`. */
 export function juliaMiddleware({ workspace, runtime = kernelRuntime(), image = KERNEL_IMAGE }) {
@@ -240,27 +249,13 @@ export function juliaMiddleware({ workspace, runtime = kernelRuntime(), image = 
         const name = String(payload?.name ?? "").trim();
         if (action !== "add" && action !== "remove") return reply(400, { ok: false, error: "action must be add or remove" });
         if (!validPackageName(name, action === "add")) return reply(400, { ok: false, error: `not a package name: ${name || "empty"}` });
-        const run = await packageOp(options, action, name);
-        const status = await juliaStatus(options);
-        return reply(200, {
-          ...status,
-          ok: run.ok,
-          error: run.error,
-          output: run.output,
-        });
+        return stream(res, (onData) => packageOp(options, action, name, onData), options);
       }
       if (req.method === "POST" && route === "/update") {
         const payload = JSON.parse(await body(req));
         const target = payload?.target;
         if (target !== "julia" && target !== "packages") return reply(400, { ok: false, error: "target must be julia or packages" });
-        const run = target === "julia" ? await updateJuliaup() : await packageOp(options, "update");
-        const status = await juliaStatus(options);
-        return reply(200, {
-          ...status,
-          ok: run.ok,
-          error: run.error,
-          output: run.output,
-        });
+        return stream(res, (onData) => (target === "julia" ? updateJuliaup(onData) : packageOp(options, "update", undefined, onData)), options);
       }
       return reply(405, { ok: false, error: "GET / or POST /package, /update" });
     } catch (error) {

@@ -15,3 +15,4 @@ export declare function pickDigest(repoDigests: unknown, id?: string): string;
 export declare function ensureKernelImage(options?: { image?: string; runtime?: string }): Promise<{ image: string; digest: string; pulled: boolean; matchesPin: boolean }>;
 export declare function kernelCommand(options?: { workspace?: string; image?: string; runtime?: string }): Promise<{ cmd: string; args: string[]; runtime: string; env?: Record<string, string>; image?: string; digest?: string }>;
 export declare function attachKernel(server: Server | Http2SecureServer, options: { workspace?: string; image?: string; path?: string }): { close(): void };
+export declare const MOUNT_ARGS: string[];
