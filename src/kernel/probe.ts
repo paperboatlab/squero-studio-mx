@@ -21,7 +21,16 @@ export type KernelMismatch = {
 export type KernelProbeResult =
   | { status: "ready"; info: KernelInfo }
   | { status: "mismatch"; mismatch: KernelMismatch }
-  | { status: "unavailable" };
+  | { status: "unavailable"; error: string };
+
+/** What to tell the user when the kernel never answered, from the error the launcher or client reported. */
+export function kernelUnavailableMessage(error: string): string {
+  if (/timed out/.test(error))
+    return "kernel unavailable · no answer yet. On first start the kernel image (about 1.5 GB) is still downloading; wait a minute and run again. If it keeps failing, check the terminal running Squero Studio MX.";
+  if (/closed|exited|failed/.test(error))
+    return `kernel unavailable · the kernel stopped (${error}). Check that Podman or Docker works (podman info) and see the terminal running Squero Studio MX for the cause.`;
+  return `kernel unavailable · ${error || "no reply from the launcher"}`;
+}
 
 export function parseJuliaVersion(text: unknown): { major: number; minor: number; patch: number } | null {
   if (typeof text !== "string") return null;
@@ -115,7 +124,7 @@ let pending: Promise<KernelProbeResult> | null = null;
 
 async function hello(timeout: number): Promise<KernelProbeResult> {
   const reply = await kernel.request({ op: "hello" }, timeout);
-  if (!reply.ok) return { status: "unavailable" };
+  if (!reply.ok) return { status: "unavailable", error: String(reply.error ?? "") };
   const check = validateKernelHello(reply);
   return check.ok ? { status: "ready", info: check.info } : { status: "mismatch", mismatch: check.mismatch };
 }

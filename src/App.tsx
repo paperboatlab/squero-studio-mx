@@ -15,7 +15,7 @@ import type { AnswerVariable } from "./editor/answers.ts";
 import { useSqueroConfig, type ConfigStore } from "@paperboat/shared/editor";
 import { RunStatus, SqueroWordmark } from "@paperboat/shared/squero";
 import { AboutModal } from "./shell/AboutModal.tsx";
-import { probeKernelHandshake, type KernelInfo, type KernelMismatch } from "./kernel/probe.ts";
+import { kernelUnavailableMessage, probeKernelHandshake, type KernelInfo, type KernelMismatch } from "./kernel/probe.ts";
 import { docNames, evalCode, figureArtifact, figureScene, kernel, plotOptimum, resetKernel, setArray, setKernelBreakpoints, debugContinue, debugEval, debugLocals, debugPause, debugStart, debugStep, debugStop, whois, withArrays } from "./kernel/client.ts";
 import type { BreakpointSpec, DebugFrame, DebugLocal, KernelEventMessage } from "./kernel/protocol.ts";
 import { TypeIcon } from "./workspace/TypeIcon.tsx";
@@ -475,7 +475,7 @@ export function App() {
     const res = await probeKernelHandshake(60000);
     const info = applyProbe(res);
     if (!info && res.status !== "mismatch") {
-      say("kernel unavailable · install Julia or start the kernel container", "warn");
+      say(kernelUnavailableMessage(res.status === "unavailable" ? res.error : ""), "warn");
     }
     return info;
   };
