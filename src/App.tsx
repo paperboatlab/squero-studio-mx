@@ -42,7 +42,7 @@ import { mergeShared, setMessage } from "./paperboat/variables.ts";
 import { detectSimModel, figureEntryFromSignals, rhsRunRequest, stateSpaceRunRequest, type Solver } from "./sim/stateSpace.ts";
 import { SimRunDock } from "./sim/RunDock.tsx";
 
-type RightTab = "workspace" | "debug" | "figures";
+type RightTab = "workspace" | "debug" | "figures" | "kernel";
 
 /** The workspace lives on disk; this is the folder the picker starts from and the default. */
 export const DEFAULT_WORKSPACE = "~/Documents/paperboat/squero-studio/mx";
@@ -76,7 +76,8 @@ export function App() {
   const [viewStates, setViewStates] = useState<Record<string, { state: ViewState; modified: boolean }>>({});
   const [resetSeq, setResetSeq] = useState(0);
   const [aboutOpen, setAboutOpen] = useState(false);
-  const [kernelOpen, setKernelOpen] = useState(false);
+  // The kernel tab stays mounted once opened, so a package job keeps reporting while another tab shows.
+  const [kernelSeen, setKernelSeen] = useState(false);
   const [kernelInfo, setKernelInfo] = useState<KernelInfo | null>(null);
   const [kernelMismatch, setKernelMismatch] = useState<KernelMismatch | null>(null);
   const kernelUp = useRef(false);
@@ -120,7 +121,9 @@ export function App() {
   const [varQuery, setVarQuery] = useState("");
   const filePanel = useRef<FilePanelHandle>(null);
   const searchRef = useRef<HTMLInputElement>(null);
-  const [stageW, setStageW] = useState(540);
+  // The figure stage starts at about a quarter of the window, so the editor isn't squeezed on a laptop.
+  const defaultStageW = () => Math.round(Math.min(540, Math.max(300, window.innerWidth * 0.28)));
+  const [stageW, setStageW] = useState(defaultStageW);
   const [consoleH, setConsoleH] = useState(154);
   const [consoleHidden, setConsoleHidden] = useState(false);
   /** Kernel work in flight (a run or a console command): compiling, running, drawing. */
@@ -872,6 +875,23 @@ export function App() {
     say(`figure → ${entryLabel(match)}`, "ok");
   };
 
+  const showKernel = () => { setKernelSeen(true); setRightTab("kernel"); setRightHidden(false); };
+
+  /** A fresh session: the launcher removes this kernel; the probe starts the next one. */
+  const restartKernel = async () => {
+    kernel.restart();
+    setKernelInfo(null);
+    setKernelMismatch(null);
+    setKernelProbed(false);
+    setWorkspace([]);
+    setFunctions({});
+    setSelectedVar("");
+    say("kernel · restarting, every variable is cleared", "warn");
+    const info = applyProbe(await probeKernelHandshake(60000));
+    if (info) say(`kernel · restarted · julia ${info.julia}`, "ok");
+    else say(kernelUnavailableMessage(""), "warn");
+  };
+
   const clearWorkspace = () => {
     setWorkspace([]);
     setFunctions({});
@@ -1262,7 +1282,7 @@ export function App() {
     setFolders(tree.folders);
     setSelectedFile(Object.keys(tree.files).sort()[0] ?? "");
     setDirty(new Set());
-    say(`${restored ? "synced" : "opened"} ${tree.root} · ${Object.keys(tree.files).length} files`, "ok");
+    say(`${restored ? "synced" : "opened"} ${tree.root} · ${Object.keys(tree.files).length} file${Object.keys(tree.files).length === 1 ? "" : "s"}`, "ok");
   };
 
   const applyHandle = async (handle: FileSystemDirectoryHandle, restored = false) => {
@@ -1275,7 +1295,7 @@ export function App() {
     setFolders(tree.folders);
     setSelectedFile(Object.keys(tree.files).sort()[0] ?? "");
     setDirty(new Set());
-    say(`${restored ? "restored" : "opened"} ${handle.name} · ${Object.keys(tree.files).length} files`, "ok");
+    say(`${restored ? "restored" : "opened"} ${handle.name} · ${Object.keys(tree.files).length} file${Object.keys(tree.files).length === 1 ? "" : "s"}`, "ok");
   };
 
   useEffect(() => {
@@ -1544,7 +1564,8 @@ export function App() {
     { id: "debug-tab", label: "Debug tab", menu: "view", group: "panels", checked: rightTab === "debug", run: () => setRightTab("debug") },
     { id: "figures-tab", label: "Figures", menu: "view", group: "panels", checked: rightTab === "figures", run: () => setRightTab("figures") },
     { id: "console", label: "Console", menu: "view", group: "panels", checked: !consoleHidden, run: () => setConsoleHidden((v) => !v) },
-    { id: "kernel-panel", label: "Kernel…", menu: "view", group: "about", run: () => setKernelOpen(true) },
+    { id: "kernel-panel", label: "Kernel and packages", menu: "view", group: "panels", checked: rightTab === "kernel", run: showKernel },
+    { id: "kernel-restart", label: "Restart kernel", menu: "run", group: "kernel", run: () => void restartKernel() },
     { id: "run", label: "Run script", menu: "run", group: "run", run: runScript },
     { id: "debug-start", label: debugActive ? "Stop debugging" : "Start debugging", menu: "run", group: "debug", run: () => { if (debugActive) stopDebugging(); else void startDebugging(); } },
     { id: "cancel", label: "Cancel run", menu: "run", group: "run", shortcut: "Ctrl+C", run: debugActive ? stopDebugging : cancelRun, enabled: isBusy, why: "nothing is running" },
@@ -1577,7 +1598,7 @@ export function App() {
               labels={[`julia ${kernelInfo?.julia ?? JULIA_VERSION} · kernel`, "julia · mismatch", "julia · unavailable", "julia · starting"]}
               tone={kernelInfo ? "ok" : (kernelMismatch || kernelProbed) ? "bad" : "busy"}
               title={kernelMismatch ? kernelMismatch.message : "Kernel, Julia versions and packages"}
-              onClick={() => setKernelOpen(true)}
+              onClick={showKernel}
             />
           </>}
           theme={themeChoice}
@@ -1642,7 +1663,7 @@ export function App() {
         aria-label="Resize the chart"
         title="Drag to resize · double-click to reset"
         onPointerDown={startResize}
-        onDoubleClick={() => setStageW(540)}
+        onDoubleClick={() => setStageW(defaultStageW())}
       />
 
       <main className="stage">
@@ -1727,6 +1748,7 @@ export function App() {
             <button role="tab" aria-selected={rightTab === "workspace"} className={`opt${rightTab === "workspace" ? " on" : ""}`} onClick={() => setRightTab("workspace")}>workspace</button>
             <button role="tab" aria-selected={rightTab === "debug"} className={`opt${rightTab === "debug" ? " on" : ""}`} onClick={() => setRightTab("debug")}>debug</button>
             <button role="tab" aria-selected={rightTab === "figures"} className={`opt${rightTab === "figures" ? " on" : ""}`} onClick={() => setRightTab("figures")}>figures</button>
+            <button role="tab" aria-selected={rightTab === "kernel"} className={`opt${rightTab === "kernel" ? " on" : ""}`} onClick={showKernel}>kernel</button>
           </div>
           <span className="sp" />
           <button type="button" className="panel-toggle" onClick={() => setRightHidden(true)} title="Hide workspace" aria-label="Hide workspace" aria-expanded={!rightHidden}>
@@ -1835,7 +1857,7 @@ export function App() {
             onRemoveBp={deleteBp}
             onJumpToBp={jumpToBp}
           />
-        ) : (
+        ) : rightTab === "figures" ? (
           <div
             className="tabbody figtab"
             onKeyDown={(e) => {
@@ -1917,6 +1939,18 @@ export function App() {
             </div>
             {figures.length > 0 && <p className="hint">Ctrl/⌘ click adds · Shift selects a range · Delete closes · exports the selection, or the shown figure.</p>}
           </div>
+        ) : null}
+        {kernelSeen && (
+          <div className="kernel-host" hidden={rightTab !== "kernel"}>
+            <KernelPanel
+              kernel={kernelInfo}
+              mismatch={kernelMismatch}
+              state={kernelMismatch ? "mismatch" : !kernelInfo ? (kernelProbed ? "unavailable" : "starting") : running > 0 ? "running" : "ready"}
+              onRestart={() => void restartKernel()}
+              onInterrupt={kernelInfo ? cancelRun : undefined}
+              onSay={say}
+            />
+          </div>
         )}
         <button type="button" className="panel-stand" onClick={() => setRightHidden(false)} title="Show workspace" aria-label="Show workspace">
           <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M9 3 5 7l4 4" /></svg>
@@ -1931,7 +1965,6 @@ export function App() {
       <section className="console">
         <div className="chead">
           <span className="on">console</span><span>repl</span><span className="sp" />
-          <span className="tag">julia {kernelInfo?.julia ?? JULIA_VERSION} · frontend {FRONTEND_VERSION}</span>
           <button
             ref={consoleGear}
             type="button"
@@ -2027,7 +2060,6 @@ export function App() {
         accept={IMPORT_EXTENSIONS.join(",")}
         onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void readImport(f); }}
       />
-      {kernelOpen && <KernelPanel kernel={kernelInfo} mismatch={kernelMismatch} onClose={() => setKernelOpen(false)} onSay={say} />}
       {exportOpen && (exportEntriesOverride ?? selectedExportEntries).length > 0 && (
         <ExportModal
           entries={exportEntriesOverride ?? selectedExportEntries}
