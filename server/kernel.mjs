@@ -13,8 +13,8 @@ export const NO_RUNTIME =
 
 /** A container run's stderr, said plainly. Rootless Podman can't bind-mount a FUSE drive (Google Drive, rclone, network shares). */
 export function explainRunFailure(text = "") {
-  if (/OCI permission denied|cannot stat/.test(text)) {
-    return "can't mount the workspace (sync or network drive?): set MX_WORKSPACE to a local folder";
+  if (/OCI permission denied|cannot stat|Permission denied/.test(text)) {
+    return "can't open the workspace (a sync or network drive Docker can't reach?): set MX_WORKSPACE to a local folder or use Podman";
   }
   return (text.trim().split(/\r?\n/).filter(Boolean).pop() ?? "").slice(0, 200);
 }
@@ -193,7 +193,9 @@ export async function kernelCommand({ workspace, image = KERNEL_IMAGE, runtime =
     // --init: Julia isn't PID 1, so signals reach it (Cancel's SIGINT goes through the init).
     const args = ["run", "--rm", "-i", "--init", "--network=none", "--label", `${LABEL}=1`, "--label", `${OWNER}=${process.pid}`];
     if (name) args.push("--name", name);
-    if (runtime === "podman") args.push("--userns=keep-id");
+    // Rootless Podman maps container root to the host user, so this can open a FUSE workspace
+    // (Drive, rclone) that keep-id's mapped uid can't, and files still land owned by the user.
+    if (runtime === "podman") args.push("--user", "0:0");
     args.push("-e", `SQUERO_KERNEL_IMAGE=${runImage}`);
     if (resolved.digest) args.push("-e", `SQUERO_KERNEL_DIGEST=${resolved.digest}`);
     if (workspace) {
