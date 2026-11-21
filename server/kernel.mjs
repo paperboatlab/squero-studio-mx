@@ -6,6 +6,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
 
+// Said wherever no runtime is found: what to install and where, since the kernel image itself is pulled automatically.
+export const NO_RUNTIME =
+  "No Julia runtime found. Install Podman (https://podman.io/docs/installation; Fedora: sudo dnf install podman, Debian/Ubuntu: sudo apt install podman, macOS: brew install podman) " +
+  "or Docker, or Julia 1.11 (https://julialang.org/install), then restart Squero Studio MX. The kernel image downloads itself on first start. SQUERO_JULIA=native forces a local Julia.";
+
 export const KERNEL_REGISTRY = "ghcr.io/paperboatlab/squero-julia-kernel";
 export const KERNEL_TAG = "1.11.6-r4";
 export const KERNEL_DIGEST = "sha256:fa30028683f68e2954c6d43942498531b871e21e3aafa62810f41a14d2f892be";
@@ -193,7 +198,7 @@ export async function kernelCommand({ workspace, image = KERNEL_IMAGE, runtime =
     args.push(runImage);
     return { cmd: runtime, args, runtime, name, image: runImage, digest: resolved.digest };
   }
-  throw new Error("no Julia runtime: install podman, docker or julia (or set SQUERO_JULIA)");
+  throw new Error(NO_RUNTIME);
 }
 
 async function bridge(socket, options) {
