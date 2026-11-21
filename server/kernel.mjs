@@ -13,11 +13,16 @@ export const NO_RUNTIME =
 
 /** A container run's stderr, said plainly. Rootless Podman can't bind-mount a FUSE drive (Google Drive, rclone, network shares). */
 export function explainRunFailure(text = "") {
-  if (/OCI permission denied|cannot stat|Permission denied/.test(text)) {
+  if (/OCI permission denied|cannot stat|permission denied|EACCES/i.test(text)) {
     return "can't open the workspace (a sync or network drive Docker can't reach?): set MX_WORKSPACE to a local folder or use Podman";
   }
-  return (text.trim().split(/\r?\n/).filter(Boolean).pop() ?? "").slice(0, 200);
+  // Julia's own error line says what went wrong; the last line is only "in expression starting at".
+  const lines = text.trim().split(/\r?\n/).filter(Boolean);
+  return (lines.find((line) => /^ERROR:/.test(line.trim())) ?? lines.pop() ?? "").trim().slice(0, 200);
 }
+
+/** Mount options for the workspace: no SELinux relabel (it rewrites the user's files' labels and fails on FUSE), so no label confinement either. */
+export const MOUNT_ARGS = ["--security-opt", "label=disable"];
 
 export const KERNEL_REGISTRY = "ghcr.io/paperboatlab/squero-julia-kernel";
 export const KERNEL_TAG = "1.11.6-r4";
@@ -196,6 +201,7 @@ export async function kernelCommand({ workspace, image = KERNEL_IMAGE, runtime =
     // Rootless Podman maps container root to the host user, so this can open a FUSE workspace
     // (Drive, rclone) that keep-id's mapped uid can't, and files still land owned by the user.
     if (runtime === "podman") args.push("--user", "0:0");
+    args.push(...MOUNT_ARGS);
     args.push("-e", `SQUERO_KERNEL_IMAGE=${runImage}`);
     if (resolved.digest) args.push("-e", `SQUERO_KERNEL_DIGEST=${resolved.digest}`);
     if (workspace) {

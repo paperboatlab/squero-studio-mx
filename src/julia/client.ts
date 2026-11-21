@@ -48,20 +48,37 @@ export async function loadJulia(): Promise<JuliaStatus> {
   return read(await fetch(BASE, { headers: { accept: "application/json" } }));
 }
 
-export async function juliaPackage(action: "add" | "remove", name: string): Promise<JuliaStatus> {
-  return read(await fetch(`${BASE}/package`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ action, name }),
-  }));
+/** A Pkg job: `onLog` gets Pkg's output as it prints; resolves with the status after it. */
+async function streamed(res: Response, onLog?: (text: string) => void): Promise<JuliaStatus> {
+  if (!res.body || !(res.headers.get("content-type") ?? "").includes("ndjson")) return read(res);
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+  let pending = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    pending += value;
+    let newline: number;
+    while ((newline = pending.indexOf("\n")) >= 0) {
+      const line = pending.slice(0, newline);
+      pending = pending.slice(newline + 1);
+      if (!line.trim()) continue;
+      const message = JSON.parse(line) as { log?: string; done?: boolean } & JuliaStatus;
+      if (message.done) return message;
+      if (message.log) onLog?.(message.log);
+    }
+  }
+  throw new Error("the launcher stopped before the job finished");
 }
 
-export async function juliaUpdate(target: "julia" | "packages"): Promise<JuliaStatus> {
-  return read(await fetch(`${BASE}/update`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ target }),
-  }));
+const post = (route: string, body: unknown) =>
+  fetch(`${BASE}${route}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+
+export async function juliaPackage(action: "add" | "remove", name: string, onLog?: (text: string) => void): Promise<JuliaStatus> {
+  return streamed(await post("/package", { action, name }), onLog);
+}
+
+export async function juliaUpdate(target: "julia" | "packages", onLog?: (text: string) => void): Promise<JuliaStatus> {
+  return streamed(await post("/update", { target }), onLog);
 }
 
 export async function searchRegistry(query: string): Promise<RegistrySearch> {

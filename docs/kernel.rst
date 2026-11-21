@@ -2,20 +2,33 @@ Julia kernel and packages
 ===========================
 
 The kernel status pill in the top-right bar (``julia <version> · kernel``) shows the live Julia
-runtime and opens the **Kernel** management panel when clicked (also available under **View ▸
-Kernel…**).
+runtime. Clicking it opens the **kernel** tab of the right pane (also **View ▸ Kernel and
+packages**). The tab sits beside workspace, debug and figures, so MX stays usable while a package
+installs.
 
-Managing Julia versions and packages
-------------------------------------
+The session
+-----------
 
-Inside the Kernel panel you can:
+The top of the tab shows the kernel's state (idle, running, starting, unavailable), its Julia
+version, image and protocol, and two keys:
 
-- **Inspect the active session**: see the Julia version, kernel protocol/image digest, and
-  preloaded packages (``SqueroBase``, ``SqueroPlot``).
-- **Manage toolchains (`juliaup`)**: view installed Julia channels and run ``juliaup update``.
-- **Browse the General registry**: search Julia's General registry by package name, inspect
-  ``Package.toml`` metadata, version history, and dependencies, and click **Add** to install a
-  package directly into the current workspace's ``Project.toml`` and ``Manifest.toml``.
+- **Interrupt** (while code runs) stops the running code; the session and its variables stay.
+- **Restart** (also **Run ▸ Restart kernel**) starts a fresh Julia session. Every variable is
+  cleared and packages are loaded again; use it after removing or updating a package.
+
+Managing packages
+-----------------
+
+Below the session:
+
+- **environment** lists the workspace project's direct packages and their resolved versions, read
+  straight from its ``Project.toml`` and ``Manifest.toml``, so it shows at once.
+- **registry** searches Julia's General registry. Open a package to see its description, versions
+  and dependencies, pick a version (the newest is a plain add), and click **Add** to install it
+  into the workspace's ``Project.toml`` and ``Manifest.toml``. Pkg's output streams into the tab
+  while it resolves and precompiles.
+- **juliaup** channels and ``juliaup update`` are shown only for a native kernel
+  (``SQUERO_JULIA=native``): a container kernel brings its own Julia.
 
 Packages installed for a workspace persist in that workspace's environment and are immediately
 importable via ``using <Package>`` in your scripts and console.

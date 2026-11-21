@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { juliaVersion, parseJuliaupStatus, parsePackages, validPackageName } from "../server/julia.mjs";
+import { parseJuliaupStatus, parseProject, validPackageName } from "../server/julia.mjs";
 import { explainRunFailure } from "../server/kernel.mjs";
 
 const STATUS = ` Default  Channel  Version                 Update
@@ -16,18 +16,34 @@ test("juliaup status becomes channels", () => {
   ]);
 });
 
-test("package rows ignore Pkg chatter and keep versions", () => {
-  const text = [
-    "JULIA\t1.11.6",
-    "  Resolving package versions...",
-    "PKG\tJSON3\tabc\t1.14.1",
-    "PKG\tLinearAlgebra\tdef\t",
+test("Project.toml and Manifest.toml give direct deps with resolved versions", () => {
+  const project = [
+    'name = "ws"',
+    "[deps]",
+    'JSON3 = "0f8b85d8-7281-11e9-16c2-39a750bddbf1"',
+    'LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"',
+    "[compat]",
+    'JSON3 = "1"',
   ].join("\n");
-  assert.deepEqual(parsePackages(text), [
-    { name: "JSON3", uuid: "abc", version: "1.14.1" },
-    { name: "LinearAlgebra", uuid: "def", version: "" },
-  ]);
-  assert.equal(juliaVersion(text), "1.11.6");
+  const manifest = [
+    'julia_version = "1.11.6"',
+    "[[deps.JSON3]]",
+    'deps = ["Dates"]',
+    'uuid = "0f8b85d8-7281-11e9-16c2-39a750bddbf1"',
+    'version = "1.14.1"',
+    "    [deps.JSON3.extensions]",
+    '    version = "9.9.9"',
+    "[[deps.Parsers]]",
+    'version = "2.8.0"',
+  ].join("\n");
+  assert.deepEqual(parseProject(project, manifest), {
+    julia: "1.11.6",
+    packages: [
+      { name: "JSON3", uuid: "0f8b85d8-7281-11e9-16c2-39a750bddbf1", version: "1.14.1" },
+      { name: "LinearAlgebra", uuid: "37e2e46d-f89d-539d-b4ee-838fcccc9c8e", version: "" },
+    ],
+  });
+  assert.deepEqual(parseProject("", ""), { julia: "", packages: [] });
 });
 
 test("package names and add specs are validated", () => {
@@ -43,4 +59,6 @@ test("package names and add specs are validated", () => {
 test("a container that cannot mount the workspace is explained, other errors keep their last line", () => {
   assert.match(explainRunFailure("Error: crun: cannot stat `self/fd/5`: Permission denied: OCI permission denied"), /MX_WORKSPACE/);
   assert.equal(explainRunFailure("pulling\nError: image not known\n"), "Error: image not known");
+  assert.match(explainRunFailure('ERROR: LoadError: IOError: readdir("/workspace"): permission denied (EACCES)\nin expression starting at /opt/kernel.jl:335'), /MX_WORKSPACE/);
+  assert.equal(explainRunFailure("ERROR: LoadError: UndefVarError: x\nStacktrace:\n in expression starting at k.jl:1"), "ERROR: LoadError: UndefVarError: x");
 });

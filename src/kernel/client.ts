@@ -78,6 +78,13 @@ class KernelClient {
     if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify({ op: "interrupt" }));
   }
 
+  /** Close the session: the launcher removes the kernel, and the next request starts a fresh one. */
+  restart() {
+    this.socket?.close(1000, "restart");
+    this.socket = null;
+    this.opening = null;
+  }
+
   /** `timeout` 0: wait as long as it takes (a run; Cancel stops it). `frame`: binary bytes right after the line (`set`). */
   async request(message: Record<string, unknown>, timeout = 120000, frame?: ArrayBuffer): Promise<KernelReply> {
     let socket: WebSocket;

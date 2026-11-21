@@ -218,7 +218,7 @@ export const FilePanel = forwardRef<FilePanelHandle, FilePanelProps>(function Fi
           <svg viewBox="0 0 16 16" aria-hidden><path d="M1.5 4.5h4.7l1.3 1.8h7v7.2h-13z" /></svg>
         </button>
       )}
-      foot={`${entries.filter((e) => e.kind === "file").length} files · ${active ? "1 open" : "none open"}`}
+      foot={`${plural(entries.filter((e) => e.kind === "file").length, "file")} · ${active ? "1 open" : "none open"}`}
       collapsed={collapsed}
       onToggle={onToggle}
       tree={offline ? (
@@ -240,3 +240,5 @@ export const FilePanel = forwardRef<FilePanelHandle, FilePanelProps>(function Fi
     />
   );
 });
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
