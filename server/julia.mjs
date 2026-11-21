@@ -103,7 +103,7 @@ const runner = ({ workspace, runtime, image, network = false, script, args = [] 
   if (runtime === "podman" || runtime === "docker") {
     const call = ["run", "--rm", "--entrypoint", "julia"];
     if (!network) call.push("--network=none");
-    if (runtime === "podman") call.push("--userns=keep-id");
+    if (runtime === "podman") call.push("--user", "0:0"); // see kernelCommand: reaches FUSE workspaces
     call.push(
       "-v", `${workspace}:/workspace:rw${runtime === "podman" ? ",z" : ""}`,
       "-w", "/workspace",
