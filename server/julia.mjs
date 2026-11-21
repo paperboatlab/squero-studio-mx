@@ -6,7 +6,7 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { KERNEL_IMAGE, NO_RUNTIME, kernelRuntime } from "./kernel.mjs";
+import { KERNEL_IMAGE, NO_RUNTIME, explainRunFailure, kernelRuntime } from "./kernel.mjs";
 import { registryFeatured, registryPackage, registrySearch } from "./registry.mjs";
 
 const LIST = `
@@ -164,7 +164,7 @@ export async function juliaStatus({ workspace, runtime = kernelRuntime(), image 
   const listed = await execute(call, 120000);
   const version = juliaVersion(listed.output);
   status.julia = { present: Boolean(version), version };
-  if (!listed.ok) status.packageError = listed.error;
+  if (!listed.ok) status.packageError = explainRunFailure(listed.error) || listed.error;
   status.packages = parsePackages(listed.output);
   return status;
 }

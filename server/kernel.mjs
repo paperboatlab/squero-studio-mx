@@ -11,6 +11,14 @@ export const NO_RUNTIME =
   "No Julia runtime found. Install Podman (https://podman.io/docs/installation; Fedora: sudo dnf install podman, Debian/Ubuntu: sudo apt install podman, macOS: brew install podman) " +
   "or Docker, or Julia 1.11 (https://julialang.org/install), then restart Squero Studio MX. The kernel image downloads itself on first start. SQUERO_JULIA=native forces a local Julia.";
 
+/** A container run's stderr, said plainly. Rootless Podman can't bind-mount a FUSE drive (Google Drive, rclone, network shares). */
+export function explainRunFailure(text = "") {
+  if (/OCI permission denied|cannot stat/.test(text)) {
+    return "can't mount the workspace (sync or network drive?): set MX_WORKSPACE to a local folder";
+  }
+  return (text.trim().split(/\r?\n/).filter(Boolean).pop() ?? "").slice(0, 200);
+}
+
 export const KERNEL_REGISTRY = "ghcr.io/paperboatlab/squero-julia-kernel";
 export const KERNEL_TAG = "1.11.6-r4";
 export const KERNEL_DIGEST = "sha256:fa30028683f68e2954c6d43942498531b871e21e3aafa62810f41a14d2f892be";
@@ -252,14 +260,16 @@ async function bridge(socket, options) {
   };
 
   child.stdout.on("data", (chunk) => { buffer = Buffer.concat([buffer, chunk]); pump(); });
-  child.stderr.on("data", (chunk) => process.stderr.write(`[kernel] ${chunk}`));
+  let errTail = "";
+  child.stderr.on("data", (chunk) => { process.stderr.write(`[kernel] ${chunk}`); errTail = (errTail + chunk).slice(-2000); });
   child.on("error", (error) => {
     socket.send(JSON.stringify({ ok: false, error: `kernel: ${error.message}` }));
     socket.close(1011, "kernel failed");
   });
   child.on("exit", (code, signal) => {
     live.delete(name);
-    if (socket.readyState === socket.OPEN) socket.close(1011, `kernel exited ${code ?? signal}`);
+    const why = code ? explainRunFailure(errTail) : "";
+    if (socket.readyState === socket.OPEN) socket.close(1011, (why || `kernel exited ${code ?? signal}`).slice(0, 120));
   });
 
   const forward = (data, isBinary) => {

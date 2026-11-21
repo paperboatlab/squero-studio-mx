@@ -61,4 +61,5 @@ test("an unavailable kernel says why instead of blaming a missing Julia", () => 
   assert.match(kernelUnavailableMessage("kernel: timed out"), /downloading/);
   assert.match(kernelUnavailableMessage("kernel: closed"), /podman info/);
   assert.match(kernelUnavailableMessage("No Julia runtime found."), /No Julia runtime found/);
+  assert.match(kernelUnavailableMessage("kernel: can't mount the workspace (sync or network drive?): set MX_WORKSPACE to a local folder"), /^kernel unavailable · kernel: can.t mount/);
 });

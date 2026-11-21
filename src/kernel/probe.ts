@@ -27,7 +27,7 @@ export type KernelProbeResult =
 export function kernelUnavailableMessage(error: string): string {
   if (/timed out/.test(error))
     return "kernel unavailable · no answer yet. On first start the kernel image (about 1.5 GB) is still downloading; wait a minute and run again. If it keeps failing, check the terminal running Squero Studio MX.";
-  if (/closed|exited|failed/.test(error))
+  if (/^kernel: closed$|^kernel exited/.test(error))
     return `kernel unavailable · the kernel stopped (${error}). Check that Podman or Docker works (podman info) and see the terminal running Squero Studio MX for the cause.`;
   return `kernel unavailable · ${error || "no reply from the launcher"}`;
 }

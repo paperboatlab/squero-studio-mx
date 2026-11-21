@@ -36,9 +36,11 @@ class KernelClient {
         this.opening = null;
         reject(new Error("kernel: connection failed"));
       };
-      socket.onclose = () => {
+      socket.onclose = (event) => {
         this.socket = null;
-        for (const waiter of this.waiting.values()) waiter.resolve({ ok: false, error: "kernel: closed" });
+        // the launcher's close reason says why (no runtime, workspace not mountable, ...)
+        const error = event.reason ? `kernel: ${event.reason}` : "kernel: closed";
+        for (const waiter of this.waiting.values()) waiter.resolve({ ok: false, error });
         this.waiting.clear();
       };
       socket.onmessage = (event) => {
